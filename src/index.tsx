@@ -1,12 +1,980 @@
 import { Hono } from 'hono'
-import { renderer } from './renderer'
+import { cors } from 'hono/cors'
+import { serveStatic } from 'hono/cloudflare-workers'
 
-const app = new Hono()
+type Bindings = {
+  DB: D1Database;
+}
 
-app.use(renderer)
+const app = new Hono<{ Bindings: Bindings }>()
+
+// Enable CORS
+app.use('/api/*', cors())
+
+// Serve static files
+app.use('/static/*', serveStatic({ root: './' }))
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+// Simple password hashing (in production, use proper bcrypt)
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const data = encoder.encode(password)
+  const hash = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(hash))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  const passwordHash = await hashPassword(password)
+  return passwordHash === hash
+}
+
+// Simple JWT generation (using Web Crypto API)
+async function generateToken(payload: any): Promise<string> {
+  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+  const body = btoa(JSON.stringify(payload))
+  const signature = btoa(`${header}.${body}.secret`)
+  return `${header}.${body}.${signature}`
+}
+
+// Verify JWT token
+function verifyToken(token: string): any | null {
+  try {
+    const parts = token.split('.')
+    if (parts.length !== 3) return null
+    const payload = JSON.parse(atob(parts[1]))
+    return payload
+  } catch {
+    return null
+  }
+}
+
+// Auth middleware
+async function authMiddleware(c: any, next: any) {
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  
+  const token = authHeader.substring(7)
+  const payload = verifyToken(token)
+  
+  if (!payload) {
+    return c.json({ error: 'Invalid token' }, 401)
+  }
+  
+  c.set('userId', payload.userId)
+  await next()
+}
+
+// ============================================================================
+// AUTHENTICATION ROUTES
+// ============================================================================
+
+app.post('/api/auth/register', async (c) => {
+  try {
+    const { email, password, name } = await c.req.json()
+    
+    if (!email || !password || !name) {
+      return c.json({ error: 'All fields are required' }, 400)
+    }
+    
+    const passwordHash = await hashPassword(password)
+    
+    const result = await c.env.DB.prepare(`
+      INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)
+    `).bind(email, passwordHash, name).run()
+    
+    const token = await generateToken({ userId: result.meta.last_row_id, email })
+    
+    return c.json({ 
+      token, 
+      user: { id: result.meta.last_row_id, email, name }
+    })
+  } catch (error: any) {
+    if (error.message.includes('UNIQUE constraint failed')) {
+      return c.json({ error: 'Email already exists' }, 400)
+    }
+    return c.json({ error: 'Registration failed' }, 500)
+  }
+})
+
+app.post('/api/auth/login', async (c) => {
+  try {
+    const { email, password } = await c.req.json()
+    
+    const user = await c.env.DB.prepare(`
+      SELECT id, email, password_hash, name FROM users WHERE email = ?
+    `).bind(email).first()
+    
+    if (!user) {
+      return c.json({ error: 'Invalid credentials' }, 401)
+    }
+    
+    const isValid = await verifyPassword(password, user.password_hash as string)
+    
+    if (!isValid) {
+      return c.json({ error: 'Invalid credentials' }, 401)
+    }
+    
+    const token = await generateToken({ userId: user.id, email: user.email })
+    
+    return c.json({ 
+      token, 
+      user: { id: user.id, email: user.email, name: user.name }
+    })
+  } catch (error) {
+    return c.json({ error: 'Login failed' }, 500)
+  }
+})
+
+// ============================================================================
+// COMPANY ROUTES
+// ============================================================================
+
+app.get('/api/companies', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  
+  const companies = await c.env.DB.prepare(`
+    SELECT * FROM companies WHERE user_id = ? ORDER BY ticker ASC
+  `).bind(userId).all()
+  
+  return c.json(companies.results)
+})
+
+app.get('/api/companies/:id', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const companyId = c.req.param('id')
+  
+  const company = await c.env.DB.prepare(`
+    SELECT * FROM companies WHERE id = ? AND user_id = ?
+  `).bind(companyId, userId).first()
+  
+  if (!company) {
+    return c.json({ error: 'Company not found' }, 404)
+  }
+  
+  return c.json(company)
+})
+
+app.post('/api/companies', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const data = await c.req.json()
+  
+  const result = await c.env.DB.prepare(`
+    INSERT INTO companies (
+      user_id, ticker, company_name, market_cap, exchange, 
+      sector, industry, is_wonderful, research_score, anti_fragile_score
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    userId, 
+    data.ticker, 
+    data.company_name, 
+    data.market_cap || null,
+    data.exchange || null,
+    data.sector || null,
+    data.industry || null,
+    data.is_wonderful ? 1 : 0,
+    data.research_score || null,
+    data.anti_fragile_score || null
+  ).run()
+  
+  return c.json({ id: result.meta.last_row_id, ...data })
+})
+
+app.put('/api/companies/:id', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const companyId = c.req.param('id')
+  const data = await c.req.json()
+  
+  await c.env.DB.prepare(`
+    UPDATE companies SET
+      ticker = ?, company_name = ?, market_cap = ?, exchange = ?,
+      sector = ?, industry = ?, is_wonderful = ?, research_score = ?,
+      anti_fragile_score = ?, next_earnings_date = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND user_id = ?
+  `).bind(
+    data.ticker,
+    data.company_name,
+    data.market_cap || null,
+    data.exchange || null,
+    data.sector || null,
+    data.industry || null,
+    data.is_wonderful ? 1 : 0,
+    data.research_score || null,
+    data.anti_fragile_score || null,
+    data.next_earnings_date || null,
+    companyId,
+    userId
+  ).run()
+  
+  return c.json({ success: true })
+})
+
+app.delete('/api/companies/:id', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const companyId = c.req.param('id')
+  
+  await c.env.DB.prepare(`
+    DELETE FROM companies WHERE id = ? AND user_id = ?
+  `).bind(companyId, userId).run()
+  
+  return c.json({ success: true })
+})
+
+// ============================================================================
+// ACCOUNT BALANCES ROUTES
+// ============================================================================
+
+app.get('/api/accounts', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  
+  // Get latest balances for each account type
+  const balances = await c.env.DB.prepare(`
+    SELECT * FROM account_balances 
+    WHERE user_id = ? 
+    AND (month, year) = (
+      SELECT month, year FROM account_balances 
+      WHERE user_id = ? 
+      ORDER BY year DESC, month DESC LIMIT 1
+    )
+    ORDER BY account_type
+  `).bind(userId, userId).all()
+  
+  return c.json(balances.results)
+})
+
+app.get('/api/accounts/history', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  
+  const history = await c.env.DB.prepare(`
+    SELECT * FROM account_balances 
+    WHERE user_id = ? 
+    ORDER BY year DESC, month DESC
+  `).bind(userId).all()
+  
+  return c.json(history.results)
+})
+
+app.post('/api/accounts', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const data = await c.req.json()
+  
+  const result = await c.env.DB.prepare(`
+    INSERT OR REPLACE INTO account_balances (
+      user_id, account_type, balance_cad, balance_usd, cash_balance_usd, month, year
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    userId,
+    data.account_type,
+    data.balance_cad,
+    data.balance_usd,
+    data.cash_balance_usd,
+    data.month,
+    data.year
+  ).run()
+  
+  return c.json({ success: true })
+})
+
+app.get('/api/accounts/total', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  
+  const totals = await c.env.DB.prepare(`
+    SELECT 
+      SUM(balance_cad) as total_cad,
+      SUM(balance_usd) as total_usd,
+      SUM(cash_balance_usd) as total_cash_usd
+    FROM account_balances 
+    WHERE user_id = ? 
+    AND (month, year) = (
+      SELECT month, year FROM account_balances 
+      WHERE user_id = ? 
+      ORDER BY year DESC, month DESC LIMIT 1
+    )
+  `).bind(userId, userId).first()
+  
+  return c.json(totals)
+})
+
+// ============================================================================
+// STOCK TRADES ROUTES
+// ============================================================================
+
+app.get('/api/stocks', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const isOpen = c.req.query('open')
+  
+  let query = 'SELECT * FROM stock_trades WHERE user_id = ?'
+  let params = [userId]
+  
+  if (isOpen !== undefined) {
+    query += ' AND is_open = ?'
+    params.push(isOpen === 'true' ? 1 : 0)
+  }
+  
+  query += ' ORDER BY trade_date DESC'
+  
+  const stmt = c.env.DB.prepare(query)
+  const stocks = await stmt.bind(...params).all()
+  
+  return c.json(stocks.results)
+})
+
+app.post('/api/stocks', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const data = await c.req.json()
+  
+  const result = await c.env.DB.prepare(`
+    INSERT INTO stock_trades (
+      user_id, company_id, ticker, trade_type, quantity, price, 
+      account_type, trade_date, is_open, cost_basis_adjustment, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    userId,
+    data.company_id || null,
+    data.ticker,
+    data.trade_type,
+    data.quantity,
+    data.price,
+    data.account_type,
+    data.trade_date,
+    data.is_open !== undefined ? (data.is_open ? 1 : 0) : 1,
+    data.cost_basis_adjustment || 0,
+    data.notes || null
+  ).run()
+  
+  return c.json({ id: result.meta.last_row_id, ...data })
+})
+
+app.put('/api/stocks/:id', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const tradeId = c.req.param('id')
+  const data = await c.req.json()
+  
+  await c.env.DB.prepare(`
+    UPDATE stock_trades SET
+      ticker = ?, trade_type = ?, quantity = ?, price = ?,
+      account_type = ?, trade_date = ?, is_open = ?,
+      cost_basis_adjustment = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND user_id = ?
+  `).bind(
+    data.ticker,
+    data.trade_type,
+    data.quantity,
+    data.price,
+    data.account_type,
+    data.trade_date,
+    data.is_open ? 1 : 0,
+    data.cost_basis_adjustment || 0,
+    data.notes || null,
+    tradeId,
+    userId
+  ).run()
+  
+  return c.json({ success: true })
+})
+
+app.delete('/api/stocks/:id', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const tradeId = c.req.param('id')
+  
+  await c.env.DB.prepare(`
+    DELETE FROM stock_trades WHERE id = ? AND user_id = ?
+  `).bind(tradeId, userId).run()
+  
+  return c.json({ success: true })
+})
+
+// ============================================================================
+// OPTION TRADES ROUTES
+// ============================================================================
+
+app.get('/api/options', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const isOpen = c.req.query('open')
+  
+  let query = 'SELECT * FROM option_trades WHERE user_id = ?'
+  let params = [userId]
+  
+  if (isOpen !== undefined) {
+    query += ' AND is_open = ?'
+    params.push(isOpen === 'true' ? 1 : 0)
+  }
+  
+  query += ' ORDER BY trade_date DESC'
+  
+  const stmt = c.env.DB.prepare(query)
+  const options = await stmt.bind(...params).all()
+  
+  return c.json(options.results)
+})
+
+app.post('/api/options', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const data = await c.req.json()
+  
+  const result = await c.env.DB.prepare(`
+    INSERT INTO option_trades (
+      user_id, company_id, ticker, strategy_type, strike_price,
+      strike_price_2, strike_price_3, strike_price_4, premium, quantity,
+      expiration_date, account_type, trade_date, is_open, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    userId,
+    data.company_id || null,
+    data.ticker,
+    data.strategy_type,
+    data.strike_price,
+    data.strike_price_2 || null,
+    data.strike_price_3 || null,
+    data.strike_price_4 || null,
+    data.premium,
+    data.quantity,
+    data.expiration_date,
+    data.account_type,
+    data.trade_date,
+    data.is_open !== undefined ? (data.is_open ? 1 : 0) : 1,
+    data.notes || null
+  ).run()
+  
+  return c.json({ id: result.meta.last_row_id, ...data })
+})
+
+app.put('/api/options/:id', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const tradeId = c.req.param('id')
+  const data = await c.req.json()
+  
+  await c.env.DB.prepare(`
+    UPDATE option_trades SET
+      ticker = ?, strategy_type = ?, strike_price = ?,
+      strike_price_2 = ?, strike_price_3 = ?, strike_price_4 = ?,
+      premium = ?, quantity = ?, expiration_date = ?,
+      account_type = ?, trade_date = ?, is_open = ?,
+      close_date = ?, close_price = ?, profit_loss = ?,
+      notes = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND user_id = ?
+  `).bind(
+    data.ticker,
+    data.strategy_type,
+    data.strike_price,
+    data.strike_price_2 || null,
+    data.strike_price_3 || null,
+    data.strike_price_4 || null,
+    data.premium,
+    data.quantity,
+    data.expiration_date,
+    data.account_type,
+    data.trade_date,
+    data.is_open ? 1 : 0,
+    data.close_date || null,
+    data.close_price || null,
+    data.profit_loss || null,
+    data.notes || null,
+    tradeId,
+    userId
+  ).run()
+  
+  return c.json({ success: true })
+})
+
+app.delete('/api/options/:id', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const tradeId = c.req.param('id')
+  
+  await c.env.DB.prepare(`
+    DELETE FROM option_trades WHERE id = ? AND user_id = ?
+  `).bind(tradeId, userId).run()
+  
+  return c.json({ success: true })
+})
+
+// ============================================================================
+// P/L REPORTING ROUTES
+// ============================================================================
+
+app.get('/api/reports/pl', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const year = c.req.query('year')
+  const month = c.req.query('month')
+  
+  // Get stock trades P/L
+  let stockQuery = `
+    SELECT 
+      strftime('%Y', trade_date) as year,
+      strftime('%m', trade_date) as month,
+      account_type,
+      SUM(CASE WHEN trade_type = 'SELL' THEN (price * quantity) ELSE -(price * quantity) END) as total
+    FROM stock_trades
+    WHERE user_id = ?
+  `
+  
+  const stockParams = [userId]
+  
+  if (year) {
+    stockQuery += ` AND strftime('%Y', trade_date) = ?`
+    stockParams.push(year)
+  }
+  
+  if (month) {
+    stockQuery += ` AND strftime('%m', trade_date) = ?`
+    stockParams.push(month.padStart(2, '0'))
+  }
+  
+  stockQuery += ` GROUP BY year, month, account_type`
+  
+  const stockPL = await c.env.DB.prepare(stockQuery).bind(...stockParams).all()
+  
+  // Get option trades P/L
+  let optionQuery = `
+    SELECT 
+      strftime('%Y', trade_date) as year,
+      strftime('%m', trade_date) as month,
+      account_type,
+      strategy_type,
+      SUM(premium * quantity * 100) as total_premium,
+      SUM(CASE WHEN profit_loss IS NOT NULL THEN profit_loss ELSE 0 END) as realized_pl
+    FROM option_trades
+    WHERE user_id = ?
+  `
+  
+  const optionParams = [userId]
+  
+  if (year) {
+    optionQuery += ` AND strftime('%Y', trade_date) = ?`
+    optionParams.push(year)
+  }
+  
+  if (month) {
+    optionQuery += ` AND strftime('%m', trade_date) = ?`
+    optionParams.push(month.padStart(2, '0'))
+  }
+  
+  optionQuery += ` GROUP BY year, month, account_type, strategy_type`
+  
+  const optionPL = await c.env.DB.prepare(optionQuery).bind(...optionParams).all()
+  
+  return c.json({
+    stocks: stockPL.results,
+    options: optionPL.results
+  })
+})
+
+// Export to CSV endpoint
+app.get('/api/reports/export', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const type = c.req.query('type') || 'stocks'
+  const year = c.req.query('year')
+  
+  let query = ''
+  let params = [userId]
+  
+  if (type === 'stocks') {
+    query = `SELECT * FROM stock_trades WHERE user_id = ?`
+    if (year) {
+      query += ` AND strftime('%Y', trade_date) = ?`
+      params.push(year)
+    }
+    query += ` ORDER BY trade_date DESC`
+  } else if (type === 'options') {
+    query = `SELECT * FROM option_trades WHERE user_id = ?`
+    if (year) {
+      query += ` AND strftime('%Y', trade_date) = ?`
+      params.push(year)
+    }
+    query += ` ORDER BY trade_date DESC`
+  }
+  
+  const data = await c.env.DB.prepare(query).bind(...params).all()
+  
+  if (data.results.length === 0) {
+    return c.text('No data to export', 404)
+  }
+  
+  // Generate CSV
+  const headers = Object.keys(data.results[0])
+  let csv = headers.join(',') + '\n'
+  
+  data.results.forEach((row: any) => {
+    const values = headers.map(header => {
+      const value = row[header]
+      return value !== null && value !== undefined ? `"${value}"` : ''
+    })
+    csv += values.join(',') + '\n'
+  })
+  
+  return c.text(csv, 200, {
+    'Content-Type': 'text/csv',
+    'Content-Disposition': `attachment; filename="${type}_${year || 'all'}.csv"`
+  })
+})
+
+// ============================================================================
+// FRONTEND ROUTES
+// ============================================================================
 
 app.get('/', (c) => {
-  return c.render(<h1>Hello!</h1>)
+  return c.html(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Generational Investing - Portfolio Management</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+        <style>
+            :root {
+                --teal: #004F59;
+                --gold: #C9B25F;
+                --gray: #7A7A7A;
+                --black: #000000;
+            }
+            body {
+                font-family: 'Avenir', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            }
+            .bg-brand-teal { background-color: var(--teal); }
+            .bg-brand-gold { background-color: var(--gold); }
+            .text-brand-teal { color: var(--teal); }
+            .text-brand-gold { color: var(--gold); }
+            .border-brand-teal { border-color: var(--teal); }
+            .border-brand-gold { border-color: var(--gold); }
+            .btn-primary {
+                background-color: var(--teal);
+                color: white;
+                padding: 0.75rem 1.5rem;
+                border-radius: 0.5rem;
+                font-weight: 600;
+                transition: all 0.2s;
+            }
+            .btn-primary:hover {
+                background-color: #003940;
+            }
+            .btn-secondary {
+                background-color: var(--gold);
+                color: white;
+                padding: 0.75rem 1.5rem;
+                border-radius: 0.5rem;
+                font-weight: 600;
+                transition: all 0.2s;
+            }
+            .btn-secondary:hover {
+                background-color: #b39d50;
+            }
+            .card {
+                background: white;
+                border-radius: 0.75rem;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                padding: 1.5rem;
+            }
+            .nav-link {
+                color: white;
+                padding: 0.5rem 1rem;
+                border-radius: 0.5rem;
+                transition: all 0.2s;
+            }
+            .nav-link:hover, .nav-link.active {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+            .hidden { display: none; }
+        </style>
+    </head>
+    <body class="bg-gray-50">
+        <div id="app">
+            <!-- Login/Register Screen -->
+            <div id="auth-screen" class="min-h-screen bg-brand-teal flex items-center justify-center p-4">
+                <div class="card max-w-md w-full">
+                    <div class="text-center mb-8">
+                        <h1 class="text-4xl font-bold text-brand-teal mb-2">Generational Investing</h1>
+                        <p class="text-brand-gold text-lg">Portfolio Management</p>
+                    </div>
+                    
+                    <div id="login-form">
+                        <h2 class="text-2xl font-bold text-brand-teal mb-6">Login</h2>
+                        <form id="loginForm">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Email</label>
+                                <input type="email" name="email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-brand-teal" required>
+                            </div>
+                            <div class="mb-6">
+                                <label class="block text-gray-700 mb-2">Password</label>
+                                <input type="password" name="password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-brand-teal" required>
+                            </div>
+                            <button type="submit" class="btn-primary w-full">Login</button>
+                        </form>
+                        <p class="text-center mt-4 text-gray-600">
+                            Don't have an account? <a href="#" onclick="showRegister()" class="text-brand-teal font-semibold">Register</a>
+                        </p>
+                        <p class="text-center mt-2 text-sm text-gray-500">
+                            Demo: demo@generationalinvesting.ca / test123
+                        </p>
+                    </div>
+                    
+                    <div id="register-form" class="hidden">
+                        <h2 class="text-2xl font-bold text-brand-teal mb-6">Register</h2>
+                        <form id="registerForm">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Name</label>
+                                <input type="text" name="name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-brand-teal" required>
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Email</label>
+                                <input type="email" name="email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-brand-teal" required>
+                            </div>
+                            <div class="mb-6">
+                                <label class="block text-gray-700 mb-2">Password</label>
+                                <input type="password" name="password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-brand-teal" required>
+                            </div>
+                            <button type="submit" class="btn-primary w-full">Register</button>
+                        </form>
+                        <p class="text-center mt-4 text-gray-600">
+                            Already have an account? <a href="#" onclick="showLogin()" class="text-brand-teal font-semibold">Login</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Application -->
+            <div id="main-app" class="hidden">
+                <!-- Navigation -->
+                <nav class="bg-brand-teal text-white p-4 shadow-lg">
+                    <div class="container mx-auto flex justify-between items-center">
+                        <div>
+                            <h1 class="text-2xl font-bold">Generational Investing</h1>
+                            <p class="text-brand-gold text-sm">Portfolio Management</p>
+                        </div>
+                        <div class="flex gap-4 items-center">
+                            <a href="#" onclick="showSection('dashboard')" class="nav-link active" data-section="dashboard">
+                                <i class="fas fa-chart-line mr-2"></i>Dashboard
+                            </a>
+                            <a href="#" onclick="showSection('companies')" class="nav-link" data-section="companies">
+                                <i class="fas fa-building mr-2"></i>Companies
+                            </a>
+                            <a href="#" onclick="showSection('accounts')" class="nav-link" data-section="accounts">
+                                <i class="fas fa-wallet mr-2"></i>Accounts
+                            </a>
+                            <a href="#" onclick="showSection('stocks')" class="nav-link" data-section="stocks">
+                                <i class="fas fa-chart-bar mr-2"></i>Stock Trades
+                            </a>
+                            <a href="#" onclick="showSection('options')" class="nav-link" data-section="options">
+                                <i class="fas fa-layer-group mr-2"></i>Options
+                            </a>
+                            <a href="#" onclick="showSection('reports')" class="nav-link" data-section="reports">
+                                <i class="fas fa-file-alt mr-2"></i>Reports
+                            </a>
+                            <a href="#" onclick="logout()" class="nav-link">
+                                <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                            </a>
+                        </div>
+                    </div>
+                </nav>
+                
+                <!-- Content Area -->
+                <div class="container mx-auto p-6">
+                    <!-- Dashboard Section -->
+                    <div id="dashboard-section" class="section">
+                        <h2 class="text-3xl font-bold text-brand-teal mb-6">Dashboard</h2>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                            <div class="card">
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Portfolio (CAD)</h3>
+                                <p class="text-3xl font-bold text-brand-teal" id="total-cad">$0.00</p>
+                            </div>
+                            <div class="card">
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Portfolio (USD)</h3>
+                                <p class="text-3xl font-bold text-brand-gold" id="total-usd">$0.00</p>
+                            </div>
+                            <div class="card">
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Cash (USD)</h3>
+                                <p class="text-3xl font-bold text-gray-700" id="total-cash">$0.00</p>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-brand-teal mb-4">Open Stock Positions</h3>
+                                <div id="open-stocks-list" class="space-y-2"></div>
+                            </div>
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-brand-teal mb-4">Open Option Trades</h3>
+                                <div id="open-options-list" class="space-y-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Companies Section -->
+                    <div id="companies-section" class="section hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-3xl font-bold text-brand-teal">Company Roster</h2>
+                            <button onclick="showCompanyForm()" class="btn-primary">
+                                <i class="fas fa-plus mr-2"></i>Add Company
+                            </button>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead>
+                                        <tr class="bg-gray-100">
+                                            <th class="px-4 py-3 text-left">Ticker</th>
+                                            <th class="px-4 py-3 text-left">Company</th>
+                                            <th class="px-4 py-3 text-left">Exchange</th>
+                                            <th class="px-4 py-3 text-left">Sector</th>
+                                            <th class="px-4 py-3 text-center">Wonderful</th>
+                                            <th class="px-4 py-3 text-center">Research Score</th>
+                                            <th class="px-4 py-3 text-center">Anti-Fragile</th>
+                                            <th class="px-4 py-3 text-center">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="companies-table">
+                                        <!-- Dynamic content -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Accounts Section -->
+                    <div id="accounts-section" class="section hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-3xl font-bold text-brand-teal">Account Balances</h2>
+                            <button onclick="showAccountForm()" class="btn-primary">
+                                <i class="fas fa-plus mr-2"></i>Update Balances
+                            </button>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="accounts-grid">
+                            <!-- Dynamic content -->
+                        </div>
+                    </div>
+                    
+                    <!-- Stock Trades Section -->
+                    <div id="stocks-section" class="section hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-3xl font-bold text-brand-teal">Stock Trades</h2>
+                            <button onclick="showStockForm()" class="btn-primary">
+                                <i class="fas fa-plus mr-2"></i>Add Trade
+                            </button>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead>
+                                        <tr class="bg-gray-100">
+                                            <th class="px-4 py-3 text-left">Date</th>
+                                            <th class="px-4 py-3 text-left">Ticker</th>
+                                            <th class="px-4 py-3 text-left">Type</th>
+                                            <th class="px-4 py-3 text-right">Quantity</th>
+                                            <th class="px-4 py-3 text-right">Price</th>
+                                            <th class="px-4 py-3 text-left">Account</th>
+                                            <th class="px-4 py-3 text-center">Status</th>
+                                            <th class="px-4 py-3 text-center">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="stocks-table">
+                                        <!-- Dynamic content -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Options Section -->
+                    <div id="options-section" class="section hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-3xl font-bold text-brand-teal">Option Trades</h2>
+                            <button onclick="showOptionForm()" class="btn-primary">
+                                <i class="fas fa-plus mr-2"></i>Add Option
+                            </button>
+                        </div>
+                        
+                        <div class="card">
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead>
+                                        <tr class="bg-gray-100">
+                                            <th class="px-4 py-3 text-left">Date</th>
+                                            <th class="px-4 py-3 text-left">Ticker</th>
+                                            <th class="px-4 py-3 text-left">Strategy</th>
+                                            <th class="px-4 py-3 text-right">Strike</th>
+                                            <th class="px-4 py-3 text-right">Premium</th>
+                                            <th class="px-4 py-3 text-left">Expiration</th>
+                                            <th class="px-4 py-3 text-center">Status</th>
+                                            <th class="px-4 py-3 text-center">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="options-table">
+                                        <!-- Dynamic content -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Reports Section -->
+                    <div id="reports-section" class="section hidden">
+                        <h2 class="text-3xl font-bold text-brand-teal mb-6">P/L Reports</h2>
+                        
+                        <div class="card mb-6">
+                            <div class="flex gap-4 items-end">
+                                <div>
+                                    <label class="block text-gray-700 mb-2">Year</label>
+                                    <select id="report-year" class="px-4 py-2 border border-gray-300 rounded-lg">
+                                        <option value="">All Years</option>
+                                        <option value="2026">2026</option>
+                                        <option value="2025">2025</option>
+                                        <option value="2024">2024</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 mb-2">Month</label>
+                                    <select id="report-month" class="px-4 py-2 border border-gray-300 rounded-lg">
+                                        <option value="">All Months</option>
+                                        <option value="1">January</option>
+                                        <option value="2">February</option>
+                                        <option value="3">March</option>
+                                        <option value="4">April</option>
+                                        <option value="5">May</option>
+                                        <option value="6">June</option>
+                                        <option value="7">July</option>
+                                        <option value="8">August</option>
+                                        <option value="9">September</option>
+                                        <option value="10">October</option>
+                                        <option value="11">November</option>
+                                        <option value="12">December</option>
+                                    </select>
+                                </div>
+                                <button onclick="loadReport()" class="btn-primary">Generate Report</button>
+                                <div class="flex gap-2 ml-auto">
+                                    <button onclick="exportData('stocks')" class="btn-secondary">
+                                        <i class="fas fa-download mr-2"></i>Export Stocks
+                                    </button>
+                                    <button onclick="exportData('options')" class="btn-secondary">
+                                        <i class="fas fa-download mr-2"></i>Export Options
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="report-results" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Dynamic content -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+        <script src="/static/app.js"></script>
+    </body>
+    </html>
+  `)
 })
 
 export default app
