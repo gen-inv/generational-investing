@@ -164,13 +164,14 @@ async function loadAccountsList() {
 
 async function loadDashboard() {
     try {
-        // Load account totals
-        const totalsRes = await api.get('/api/accounts/total')
+        // Load account totals with currency conversion
+        const totalsRes = await api.get('/api/dashboard/totals')
         const totals = totalsRes.data
         
         document.getElementById('total-cad').textContent = formatCurrency(totals.total_cad, 'CAD')
         document.getElementById('total-usd').textContent = formatCurrency(totals.total_usd, 'USD')
-        document.getElementById('total-cash').textContent = formatCurrency(totals.total_cash_usd, 'USD')
+        document.getElementById('total-cash-cad').textContent = formatCurrency(totals.total_cash_cad, 'CAD')
+        document.getElementById('total-cash-usd').textContent = formatCurrency(totals.total_cash_usd, 'USD')
         
         // Load open stock positions
         const stocksRes = await api.get('/api/stocks?open=true')
@@ -427,19 +428,18 @@ async function loadAccounts() {
                                 <div class="flex justify-between items-start">
                                     <div class="flex-1">
                                         <h4 class="text-lg font-semibold mb-2">${acc.account_name}</h4>
-                                        <div class="grid grid-cols-3 gap-4 text-sm">
+                                        <div class="grid grid-cols-2 gap-4 text-sm">
                                             <div>
-                                                <span class="text-gray-400">Balance CAD:</span>
-                                                <span class="ml-2 font-semibold">${formatCurrency(acc.balance_cad, 'CAD')}</span>
+                                                <span class="text-gray-400">Total Balance:</span>
+                                                <span class="ml-2 font-semibold">${acc.default_currency === 'CAD' ? formatCurrency(acc.balance_cad, 'CAD') : formatCurrency(acc.balance_usd, 'USD')}</span>
                                             </div>
                                             <div>
-                                                <span class="text-gray-400">Balance USD:</span>
-                                                <span class="ml-2 font-semibold">${formatCurrency(acc.balance_usd, 'USD')}</span>
+                                                <span class="text-gray-400">Cash Balance:</span>
+                                                <span class="ml-2 font-semibold">${acc.default_currency === 'CAD' ? formatCurrency(acc.cash_balance_cad, 'CAD') : formatCurrency(acc.cash_balance_usd, 'USD')}</span>
                                             </div>
-                                            <div>
-                                                <span class="text-gray-400">Cash USD:</span>
-                                                <span class="ml-2 font-semibold">${formatCurrency(acc.cash_balance_usd, 'USD')}</span>
-                                            </div>
+                                        </div>
+                                        <div class="text-xs text-gray-400 mt-2">
+                                            Currency: ${acc.default_currency}
                                         </div>
                                     </div>
                                     <div class="ml-4 flex space-x-2">
@@ -490,19 +490,24 @@ function showAccountForm() {
                 </div>
                 
                 <div class="mb-4">
-                    <label class="block text-gray-700 mb-2">Initial Balance (CAD)</label>
-                    <input type="number" step="0.01" name="balance_cad" value="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <label class="block text-gray-700 mb-2">Default Currency *</label>
+                    <select name="default_currency" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required onchange="updateBalanceFields(this.value)">
+                        <option value="">Select currency...</option>
+                        <option value="CAD">CAD (Canadian Dollar)</option>
+                        <option value="USD">USD (US Dollar)</option>
+                    </select>
+                    <small class="text-gray-400">The currency used to track this account's balance</small>
+                </div>
+                
+                <div class="mb-4" id="balance-field">
+                    <label class="block text-gray-700 mb-2">Initial Balance *</label>
+                    <input type="number" step="0.01" name="balance" value="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                 </div>
                 
                 <div class="mb-4">
-                    <label class="block text-gray-700 mb-2">Initial Balance (USD)</label>
-                    <input type="number" step="0.01" name="balance_usd" value="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                </div>
-                
-                <div class="mb-4">
-                    <label class="block text-gray-700 mb-2">Cash Balance (USD)</label>
-                    <input type="number" step="0.01" name="cash_balance_usd" value="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    <small class="text-gray-400">Available cash for trading</small>
+                    <label class="block text-gray-700 mb-2">Cash Balance *</label>
+                    <input type="number" step="0.01" name="cash_balance" value="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    <small class="text-gray-400">Available cash for trading (in default currency)</small>
                 </div>
                 
                 <div class="flex gap-4 mt-6">
@@ -518,12 +523,18 @@ function showAccountForm() {
     document.getElementById('accountForm').addEventListener('submit', async (e) => {
         e.preventDefault()
         const formData = new FormData(e.target)
+        const defaultCurrency = formData.get('default_currency')
+        const balance = parseFloat(formData.get('balance')) || 0
+        const cashBalance = parseFloat(formData.get('cash_balance')) || 0
+        
         const data = {
             account_name: formData.get('account_name'),
             account_type: formData.get('account_type'),
-            balance_cad: parseFloat(formData.get('balance_cad')) || 0,
-            balance_usd: parseFloat(formData.get('balance_usd')) || 0,
-            cash_balance_usd: parseFloat(formData.get('cash_balance_usd')) || 0
+            default_currency: defaultCurrency,
+            balance_cad: defaultCurrency === 'CAD' ? balance : 0,
+            balance_usd: defaultCurrency === 'USD' ? balance : 0,
+            cash_balance_cad: defaultCurrency === 'CAD' ? cashBalance : 0,
+            cash_balance_usd: defaultCurrency === 'USD' ? cashBalance : 0
         }
         
         try {
@@ -566,18 +577,22 @@ async function showEditAccountForm(accountId) {
                     </div>
                     
                     <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Balance (CAD)</label>
-                        <input type="number" step="0.01" name="balance_cad" value="${account.balance_cad}" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <label class="block text-gray-700 mb-2">Default Currency *</label>
+                        <select name="default_currency" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required disabled>
+                            <option value="CAD" ${account.default_currency === 'CAD' ? 'selected' : ''}>CAD (Canadian Dollar)</option>
+                            <option value="USD" ${account.default_currency === 'USD' ? 'selected' : ''}>USD (US Dollar)</option>
+                        </select>
+                        <small class="text-gray-400">Default currency cannot be changed after account creation</small>
                     </div>
                     
                     <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Balance (USD)</label>
-                        <input type="number" step="0.01" name="balance_usd" value="${account.balance_usd}" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <label class="block text-gray-700 mb-2">Total Balance (${account.default_currency})</label>
+                        <input type="number" step="0.01" name="balance" value="${account.default_currency === 'CAD' ? account.balance_cad : account.balance_usd}" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                     </div>
                     
                     <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Cash Balance (USD)</label>
-                        <input type="number" step="0.01" name="cash_balance_usd" value="${account.cash_balance_usd}" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <label class="block text-gray-700 mb-2">Cash Balance (${account.default_currency})</label>
+                        <input type="number" step="0.01" name="cash_balance" value="${account.default_currency === 'CAD' ? account.cash_balance_cad : account.cash_balance_usd}" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                     </div>
                     
                     <div class="flex gap-4 mt-6">
@@ -593,12 +608,16 @@ async function showEditAccountForm(accountId) {
         document.getElementById('editAccountForm').addEventListener('submit', async (e) => {
             e.preventDefault()
             const formData = new FormData(e.target)
+            const balance = parseFloat(formData.get('balance')) || 0
+            const cashBalance = parseFloat(formData.get('cash_balance')) || 0
+            
             const data = {
                 account_name: formData.get('account_name'),
                 account_type: formData.get('account_type'),
-                balance_cad: parseFloat(formData.get('balance_cad')),
-                balance_usd: parseFloat(formData.get('balance_usd')),
-                cash_balance_usd: parseFloat(formData.get('cash_balance_usd'))
+                balance_cad: account.default_currency === 'CAD' ? balance : 0,
+                balance_usd: account.default_currency === 'USD' ? balance : 0,
+                cash_balance_cad: account.default_currency === 'CAD' ? cashBalance : 0,
+                cash_balance_usd: account.default_currency === 'USD' ? cashBalance : 0
             }
             
             try {

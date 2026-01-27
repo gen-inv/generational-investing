@@ -238,7 +238,7 @@ app.get('/api/accounts', authMiddleware, async (c) => {
 
     const { results } = await DB.prepare(`
       SELECT id, account_name, account_type, balance_cad, balance_usd, 
-             cash_balance_usd, created_at, updated_at
+             cash_balance_cad, cash_balance_usd, default_currency, created_at, updated_at
       FROM accounts
       WHERE user_id = ?
       ORDER BY account_type, account_name
@@ -260,7 +260,7 @@ app.get('/api/accounts/:id', authMiddleware, async (c) => {
 
     const result = await DB.prepare(`
       SELECT id, account_name, account_type, balance_cad, balance_usd, 
-             cash_balance_usd, created_at, updated_at
+             cash_balance_cad, cash_balance_usd, default_currency, created_at, updated_at
       FROM accounts
       WHERE id = ? AND user_id = ?
     `).bind(accountId, userId).first();
@@ -286,7 +286,9 @@ app.post('/api/accounts', authMiddleware, async (c) => {
       account_type, 
       balance_cad = 0, 
       balance_usd = 0, 
-      cash_balance_usd = 0 
+      cash_balance_cad = 0,
+      cash_balance_usd = 0,
+      default_currency = 'CAD'
     } = await c.req.json();
 
     // Validation
@@ -300,19 +302,26 @@ app.post('/api/accounts', authMiddleware, async (c) => {
       return c.json({ error: 'Invalid account type' }, 400);
     }
 
+    // Validate default_currency
+    if (!['CAD', 'USD'].includes(default_currency)) {
+      return c.json({ error: 'Invalid currency. Must be CAD or USD' }, 400);
+    }
+
     const result = await DB.prepare(`
       INSERT INTO accounts (
         user_id, account_name, account_type, balance_cad, 
-        balance_usd, cash_balance_usd
+        balance_usd, cash_balance_cad, cash_balance_usd, default_currency
       )
-      VALUES (?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       userId, 
       account_name, 
       account_type, 
       balance_cad, 
       balance_usd, 
-      cash_balance_usd
+      cash_balance_cad,
+      cash_balance_usd,
+      default_currency
     ).run();
 
     return c.json({ 
@@ -321,7 +330,9 @@ app.post('/api/accounts', authMiddleware, async (c) => {
       account_type,
       balance_cad,
       balance_usd,
-      cash_balance_usd
+      cash_balance_cad,
+      cash_balance_usd,
+      default_currency
     }, 201);
   } catch (error: any) {
     console.error('Create account error:', error);
@@ -340,7 +351,9 @@ app.put('/api/accounts/:id', authMiddleware, async (c) => {
       account_type, 
       balance_cad, 
       balance_usd, 
-      cash_balance_usd 
+      cash_balance_cad,
+      cash_balance_usd,
+      default_currency
     } = await c.req.json();
 
     // Validate account_type if provided
@@ -349,6 +362,11 @@ app.put('/api/accounts/:id', authMiddleware, async (c) => {
       if (!validTypes.includes(account_type)) {
         return c.json({ error: 'Invalid account type' }, 400);
       }
+    }
+
+    // Validate default_currency if provided
+    if (default_currency !== undefined && !['CAD', 'USD'].includes(default_currency)) {
+      return c.json({ error: 'Invalid currency. Must be CAD or USD' }, 400);
     }
 
     // Check ownership
@@ -380,9 +398,17 @@ app.put('/api/accounts/:id', authMiddleware, async (c) => {
       updates.push('balance_usd = ?');
       values.push(balance_usd);
     }
+    if (cash_balance_cad !== undefined) {
+      updates.push('cash_balance_cad = ?');
+      values.push(cash_balance_cad);
+    }
     if (cash_balance_usd !== undefined) {
       updates.push('cash_balance_usd = ?');
       values.push(cash_balance_usd);
+    }
+    if (default_currency !== undefined) {
+      updates.push('default_currency = ?');
+      values.push(default_currency);
     }
     
     if (updates.length === 0) {
@@ -438,6 +464,255 @@ app.delete('/api/accounts/:id', authMiddleware, async (c) => {
   } catch (error: any) {
     console.error('Delete account error:', error);
     return c.json({ error: 'Failed to delete account' }, 500);
+  }
+})
+
+// Get exchange rate for a specific month/year
+app.get('/api/exchange-rate', authMiddleware, async (c) => {
+  try {
+    const { DB } = c.env;
+    const month = parseInt(c.req.query('month') || new Date().getMonth() + 1);
+    const year = parseInt(c.req.query('year') || new Date().getFullYear());
+
+    // Check if we have cached rate
+    const cached = await DB.prepare(`
+      SELECT usd_to_cad, cad_to_usd FROM exchange_rates 
+      WHERE month = ? AND year = ?
+    `).bind(month, year).first() as any;
+
+    if (cached) {
+      return c.json({ 
+        usd_to_cad: cached.usd_to_cad, 
+        cad_to_usd: cached.cad_to_usd,
+        month,
+        year,
+        cached: true
+      });
+    }
+
+    // Fetch from API (using exchangerate-api.com free tier)
+    // Format date as YYYY-MM-DD (first day of month)
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    
+    try {
+      const response = await fetch(`https://api.exchangerate-api.com/v4/history/USD/${dateStr}`);
+      const data = await response.json() as any;
+      
+      if (data && data.rates && data.rates.CAD) {
+        const usdToCad = data.rates.CAD;
+        const cadToUsd = 1 / usdToCad;
+        
+        // Cache the rate
+        await DB.prepare(`
+          INSERT INTO exchange_rates (month, year, usd_to_cad, cad_to_usd)
+          VALUES (?, ?, ?, ?)
+        `).bind(month, year, usdToCad, cadToUsd).run();
+        
+        return c.json({ 
+          usd_to_cad: usdToCad, 
+          cad_to_usd: cadToUsd,
+          month,
+          year,
+          cached: false
+        });
+      }
+    } catch (apiError) {
+      console.error('Exchange rate API error:', apiError);
+    }
+    
+    // Fallback to default rate if API fails
+    const defaultRate = 1.35; // USD to CAD
+    return c.json({ 
+      usd_to_cad: defaultRate, 
+      cad_to_usd: 1 / defaultRate,
+      month,
+      year,
+      cached: false,
+      fallback: true
+    });
+  } catch (error: any) {
+    console.error('Get exchange rate error:', error);
+    return c.json({ error: 'Failed to get exchange rate' }, 500);
+  }
+})
+
+// Save monthly account balance snapshot
+app.post('/api/accounts/:id/snapshot', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const accountId = parseInt(c.req.param('id'));
+    const { DB } = c.env;
+    const { month, year } = await c.req.json();
+
+    // Get current account details
+    const account = await DB.prepare(`
+      SELECT account_id, balance_cad, balance_usd, cash_balance_usd, default_currency
+      FROM accounts
+      WHERE id = ? AND user_id = ?
+    `).bind(accountId, userId).first() as any;
+
+    if (!account) {
+      return c.json({ error: 'Account not found' }, 404);
+    }
+
+    // Get exchange rates
+    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${month}&year=${year}`, {
+      headers: { 'Authorization': c.req.header('Authorization') || '' }
+    });
+    const rates = await rateResponse.json() as any;
+
+    // Determine balance and currency based on default_currency
+    const balance = account.default_currency === 'USD' ? account.balance_usd : account.balance_cad;
+    const cashBalance = account.default_currency === 'USD' ? account.cash_balance_usd : 
+                        (account.cash_balance_usd * rates.usd_to_cad);
+
+    // Save snapshot
+    await DB.prepare(`
+      INSERT OR REPLACE INTO account_balance_history (
+        user_id, account_id, balance, cash_balance, currency,
+        month, year, exchange_rate_to_usd, exchange_rate_to_cad
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      userId,
+      accountId,
+      balance,
+      cashBalance,
+      account.default_currency,
+      month,
+      year,
+      rates.cad_to_usd,
+      rates.usd_to_cad
+    ).run();
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error('Save snapshot error:', error);
+    return c.json({ error: 'Failed to save balance snapshot' }, 500);
+  }
+})
+
+// Get dashboard totals with currency conversion
+app.get('/api/dashboard/totals', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const { DB } = c.env;
+    const month = parseInt(c.req.query('month') || String(new Date().getMonth() + 1));
+    const year = parseInt(c.req.query('year') || String(new Date().getFullYear()));
+
+    // Get all accounts
+    const { results: accounts } = await DB.prepare(`
+      SELECT id, account_name, account_type, balance_cad, balance_usd, 
+             cash_balance_cad, cash_balance_usd, default_currency
+      FROM accounts
+      WHERE user_id = ?
+    `).bind(userId).all();
+
+    // Get exchange rate for the current month
+    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${month}&year=${year}`, {
+      headers: { 'Authorization': c.req.header('Authorization') || '' }
+    });
+    const rates = await rateResponse.json() as any;
+
+    // Calculate totals in both currencies
+    let totalCAD = 0;
+    let totalUSD = 0;
+    let totalCashCAD = 0;
+    let totalCashUSD = 0;
+
+    (accounts as any[]).forEach(account => {
+      if (account.default_currency === 'CAD') {
+        const balance = account.balance_cad || 0;
+        const cash = account.cash_balance_cad || 0;
+        
+        totalCAD += balance;
+        totalUSD += balance * rates.cad_to_usd;
+        totalCashCAD += cash;
+        totalCashUSD += cash * rates.cad_to_usd;
+      } else {
+        const balance = account.balance_usd || 0;
+        const cash = account.cash_balance_usd || 0;
+        
+        totalUSD += balance;
+        totalCAD += balance * rates.usd_to_cad;
+        totalCashUSD += cash;
+        totalCashCAD += cash * rates.usd_to_cad;
+      }
+    });
+
+    return c.json({
+      total_cad: totalCAD,
+      total_usd: totalUSD,
+      total_cash_cad: totalCashCAD,
+      total_cash_usd: totalCashUSD,
+      exchange_rate: {
+        usd_to_cad: rates.usd_to_cad,
+        cad_to_usd: rates.cad_to_usd,
+        month,
+        year
+      }
+    });
+  } catch (error: any) {
+    console.error('Get dashboard totals error:', error);
+    return c.json({ error: 'Failed to get dashboard totals' }, 500);
+  }
+})
+
+// Get dashboard with currency conversion
+app.get('/api/dashboard', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const { DB } = c.env;
+    const month = parseInt(c.req.query('month') || new Date().getMonth() + 1);
+    const year = parseInt(c.req.query('year') || new Date().getFullYear());
+
+    // Get all accounts
+    const { results: accounts } = await DB.prepare(`
+      SELECT id, account_name, account_type, balance_cad, balance_usd, 
+             cash_balance_usd, default_currency
+      FROM accounts
+      WHERE user_id = ?
+    `).bind(userId).all();
+
+    // Get exchange rate for the current month
+    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${month}&year=${year}`, {
+      headers: { 'Authorization': c.req.header('Authorization') || '' }
+    });
+    const rates = await rateResponse.json() as any;
+
+    // Calculate totals in both currencies
+    let totalCAD = 0;
+    let totalUSD = 0;
+
+    (accounts as any[]).forEach(account => {
+      if (account.default_currency === 'CAD') {
+        totalCAD += account.balance_cad || 0;
+        totalUSD += (account.balance_cad || 0) * rates.cad_to_usd;
+      } else {
+        totalUSD += account.balance_usd || 0;
+        totalCAD += (account.balance_usd || 0) * rates.usd_to_cad;
+      }
+    });
+
+    // Get recent trades count
+    const tradesCount = await DB.prepare(`
+      SELECT 
+        (SELECT COUNT(*) FROM stock_trades WHERE user_id = ?) as stock_count,
+        (SELECT COUNT(*) FROM option_trades WHERE user_id = ?) as option_count
+    `).bind(userId, userId).first() as any;
+
+    return c.json({
+      total_balance_cad: totalCAD,
+      total_balance_usd: totalUSD,
+      exchange_rate: rates,
+      accounts_count: accounts.length,
+      stock_trades_count: tradesCount?.stock_count || 0,
+      option_trades_count: tradesCount?.option_count || 0,
+      accounts: accounts
+    });
+  } catch (error: any) {
+    console.error('Get dashboard error:', error);
+    return c.json({ error: 'Failed to fetch dashboard' }, 500);
   }
 })
 
@@ -920,7 +1195,7 @@ app.get('/', (c) => {
                     <div id="dashboard-section" class="section">
                         <h2 class="text-3xl font-bold text-brand-teal mb-6">Dashboard</h2>
                         
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                             <div class="card">
                                 <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Portfolio (CAD)</h3>
                                 <p class="text-3xl font-bold text-brand-teal" id="total-cad">$0.00</p>
@@ -930,8 +1205,12 @@ app.get('/', (c) => {
                                 <p class="text-3xl font-bold text-brand-gold" id="total-usd">$0.00</p>
                             </div>
                             <div class="card">
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Cash (CAD)</h3>
+                                <p class="text-3xl font-bold text-gray-700" id="total-cash-cad">$0.00</p>
+                            </div>
+                            <div class="card">
                                 <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Cash (USD)</h3>
-                                <p class="text-3xl font-bold text-gray-700" id="total-cash">$0.00</p>
+                                <p class="text-3xl font-bold text-gray-700" id="total-cash-usd">$0.00</p>
                             </div>
                         </div>
                         
