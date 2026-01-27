@@ -115,14 +115,54 @@
 - `GET /api/reports/pl?year=2026&month=1` - Get P/L report
 - `GET /api/reports/export?type=stocks&year=2026` - Export CSV
 
-### ⏳ Features Not Yet Implemented
-1. **Earnings Date Fetching**
-   - Automatic fetching from financial APIs
-   - Would require integration with services like:
-     - Alpha Vantage API
-     - Financial Modeling Prep API
-     - Yahoo Finance API
-   - Implementation requires API key configuration
+### 🔄 Features Ready for Implementation (See COMPLETE_IMPLEMENTATION_SPEC.md)
+
+**Complete specification document with exact code is available in `/home/user/webapp/COMPLETE_IMPLEMENTATION_SPEC.md`**
+
+The following features are fully specified and ready to implement:
+
+1. **Individual Account Management** (Phase 1)
+   - Create named accounts linked to account types (e.g., "RRSP - Questrade")
+   - CRUD operations for accounts
+   - Account-specific balances (CAD/USD + Cash)
+   - Link trades to specific accounts instead of account types
+
+2. **Strategy-Specific Option Trades** (Phase 2)
+   - Dynamic forms showing relevant fields per strategy
+   - Proper strike terminology: short_strike, long_strike, spread_width
+   - Field validation for each strategy type
+   - Improved display of multi-leg strategies
+
+3. **Covered Calls in Stock Details** (Phase 3)
+   - Move covered calls from main options form to stock details page
+   - Only allow when holding stock positions
+   - Quantity validation (max contracts = shares / 100)
+   - Automatic cost basis adjustment
+
+4. **Earnings Date Auto-Fetch** (Phase 4)
+   - Button to fetch earnings date from Alpha Vantage API
+   - Free tier support (25 requests/day)
+   - Automatic next_earnings_date updates
+   - Rate limiting and error handling
+
+5. **Enhanced P/L Reporting** (Phase 5)
+   - P/L by strategy type with win rates
+   - P/L by month with YTD summary
+   - P/L by account comparison
+   - CSV export functionality
+   - Detailed performance metrics
+
+6. **Portfolio History Graph** (Phase 6)
+   - Interactive Chart.js visualization
+   - 1-Year and All-Time toggle views
+   - Branded teal/gold colors
+   - Hover tooltips with formatted values
+
+**Implementation Guide:**
+- See `IMPLEMENTATION_SUMMARY.md` for session-by-session roadmap
+- See `COMPLETE_IMPLEMENTATION_SPEC.md` for exact code to implement
+- Estimated total: 13-18 hours across 5 sessions
+- Each phase is independent and can be implemented separately
 
 ## Data Architecture
 
@@ -301,56 +341,60 @@ git push origin main
    npm run deploy:prod
    ```
 
-## Recommended Next Steps
+## Implementation Plan
 
-### High Priority
-1. **Production Deployment**
-   - Deploy to Cloudflare Pages
-   - Configure production D1 database
-   - Set up custom domain
+### Immediate Next Steps (v1.1 - Ready to Implement)
 
-2. **Security Enhancements**
-   - Implement proper bcrypt password hashing
-   - Add rate limiting
-   - Enable HTTPS-only in production
-   - Implement CSRF protection
+**All code ready in `COMPLETE_IMPLEMENTATION_SPEC.md` - Just copy & paste!**
 
-3. **Data Backup**
-   - Regular database exports
-   - Automated backup system
-   - Version control for data
+1. **Session 1: Account Management** (2-3 hours)
+   - Implement individual accounts (e.g., "RRSP - Questrade")
+   - Account CRUD operations
+   - Link trades to specific accounts
+   - Update forms to use account dropdowns
 
-### Medium Priority
-4. **Earnings Date API Integration**
-   - Integrate with financial data API
-   - Add automatic earnings date updates
-   - Schedule regular data refreshes
+2. **Session 2: Option Trades Refactor** (2-3 hours)
+   - Strategy-specific form fields
+   - Proper strike terminology (short/long strikes, spread width)
+   - Field validation per strategy
+   - Enhanced trade display
 
-5. **Enhanced Reporting**
-   - Charts and visualizations
-   - Year-over-year comparisons
-   - Performance metrics
-   - Tax loss harvesting reports
+3. **Session 3: Covered Calls** (1-2 hours)
+   - Move to stock details page
+   - Quantity validation
+   - Cost basis integration
+   - Remove from main options form
 
-6. **Mobile Optimization**
-   - Responsive design improvements
-   - Mobile-first navigation
-   - Touch-friendly interfaces
+4. **Session 4: Earnings & Reports** (2-3 hours)
+   - Alpha Vantage API integration
+   - Auto-fetch earnings dates
+   - Enhanced P/L reports
+   - CSV export
 
-### Low Priority
-7. **Advanced Features**
-   - Portfolio rebalancing calculator
-   - Dividend tracking calendar
-   - Alerts for earnings dates
-   - Email notifications
-   - Data import/export (CSV, JSON)
+5. **Session 5: Chart & Deploy** (2 hours)
+   - Portfolio history chart
+   - Full system testing
+   - Deploy to production
 
-8. **User Experience**
-   - Dark mode
-   - Keyboard shortcuts
-   - Bulk operations
-   - Undo functionality
-   - Search and filtering
+### Future Enhancements (Post v1.1)
+
+**High Priority**
+- Production deployment to Cloudflare Pages
+- Security enhancements (bcrypt, rate limiting, CSRF)
+- Data backup and export system
+- Real historical balance tracking
+
+**Medium Priority**
+- Mobile optimization
+- Advanced analytics (Sharpe ratio, max drawdown)
+- Tax reporting features
+- Email notifications
+
+**Low Priority**
+- Dark mode
+- Keyboard shortcuts
+- Portfolio rebalancing calculator
+- Dividend tracking calendar
 
 ## Technical Notes
 
@@ -381,13 +425,16 @@ git push origin main
 webapp/
 ├── src/
 │   ├── index.tsx          # Main Hono application
+│   ├── auth.ts            # Authentication helpers (MySQL version)
+│   ├── db.ts              # Database connection (MySQL version)
 │   └── renderer.tsx       # JSX renderer
 ├── public/
 │   └── static/
 │       ├── app.js         # Frontend JavaScript
 │       └── style.css      # Custom CSS
 ├── migrations/
-│   └── 0001_initial_schema.sql
+│   ├── 0001_initial_schema.sql        # Initial tables
+│   └── 0002_add_accounts_and_strikes.sql  # v1.1 updates (applied)
 ├── .wrangler/             # Local D1 database
 ├── dist/                  # Build output
 ├── ecosystem.config.cjs   # PM2 configuration
@@ -397,7 +444,12 @@ webapp/
 ├── vite.config.ts        # Vite build config
 ├── seed.sql              # Test data
 ├── .gitignore           # Git ignore rules
-└── README.md            # This file
+├── .env.example         # Environment variables template
+├── README.md            # This file
+├── COMPLETE_IMPLEMENTATION_SPEC.md  # ⭐ Full v1.1 specification
+├── IMPLEMENTATION_SUMMARY.md        # Quick roadmap
+├── DEPLOYMENT_OPTIONS.md           # Cloudflare vs FastComet guide
+└── FASTCOMET_DEPLOYMENT_GUIDE.md  # MySQL migration guide
 ```
 
 ## Support & Maintenance
@@ -425,7 +477,12 @@ npx wrangler d1 execute webapp-production --local --command="SELECT * FROM compa
 Proprietary - All rights reserved
 
 ## Last Updated
-January 16, 2026
+January 27, 2026
+
+## Project Status
+- ✅ v1.0 Complete - Core features implemented and tested
+- 📋 v1.1 Specification Ready - See COMPLETE_IMPLEMENTATION_SPEC.md
+- 🚀 Ready for multi-session implementation
 
 ---
 
