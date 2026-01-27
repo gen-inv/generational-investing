@@ -227,78 +227,218 @@ app.delete('/api/companies/:id', authMiddleware, async (c) => {
 })
 
 // ============================================================================
-// ACCOUNT BALANCES ROUTES
+// ACCOUNTS ENDPOINTS
 // ============================================================================
 
+// Get all accounts for current user
 app.get('/api/accounts', authMiddleware, async (c) => {
-  const userId = c.get('userId')
-  
-  // Get latest balances for each account type
-  const balances = await c.env.DB.prepare(`
-    SELECT * FROM account_balances 
-    WHERE user_id = ? 
-    AND (month, year) = (
-      SELECT month, year FROM account_balances 
-      WHERE user_id = ? 
-      ORDER BY year DESC, month DESC LIMIT 1
-    )
-    ORDER BY account_type
-  `).bind(userId, userId).all()
-  
-  return c.json(balances.results)
-})
+  try {
+    const userId = c.get('userId');
+    const { DB } = c.env;
 
-app.get('/api/accounts/history', authMiddleware, async (c) => {
-  const userId = c.get('userId')
-  
-  const history = await c.env.DB.prepare(`
-    SELECT * FROM account_balances 
-    WHERE user_id = ? 
-    ORDER BY year DESC, month DESC
-  `).bind(userId).all()
-  
-  return c.json(history.results)
-})
+    const { results } = await DB.prepare(`
+      SELECT id, account_name, account_type, balance_cad, balance_usd, 
+             cash_balance_usd, created_at, updated_at
+      FROM accounts
+      WHERE user_id = ?
+      ORDER BY account_type, account_name
+    `).bind(userId).all();
 
+    return c.json({ accounts: results });
+  } catch (error: any) {
+    console.error('Get accounts error:', error);
+    return c.json({ error: 'Failed to fetch accounts' }, 500);
+  }
+});
+
+// Get single account
+app.get('/api/accounts/:id', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const accountId = parseInt(c.req.param('id'));
+    const { DB } = c.env;
+
+    const result = await DB.prepare(`
+      SELECT id, account_name, account_type, balance_cad, balance_usd, 
+             cash_balance_usd, created_at, updated_at
+      FROM accounts
+      WHERE id = ? AND user_id = ?
+    `).bind(accountId, userId).first();
+
+    if (!result) {
+      return c.json({ error: 'Account not found' }, 404);
+    }
+
+    return c.json({ account: result });
+  } catch (error: any) {
+    console.error('Get account error:', error);
+    return c.json({ error: 'Failed to fetch account' }, 500);
+  }
+});
+
+// Create new account
 app.post('/api/accounts', authMiddleware, async (c) => {
-  const userId = c.get('userId')
-  const data = await c.req.json()
-  
-  const result = await c.env.DB.prepare(`
-    INSERT OR REPLACE INTO account_balances (
-      user_id, account_type, balance_cad, balance_usd, cash_balance_usd, month, year
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    userId,
-    data.account_type,
-    data.balance_cad,
-    data.balance_usd,
-    data.cash_balance_usd,
-    data.month,
-    data.year
-  ).run()
-  
-  return c.json({ success: true })
-})
+  try {
+    const userId = c.get('userId');
+    const { DB } = c.env;
+    const { 
+      account_name, 
+      account_type, 
+      balance_cad = 0, 
+      balance_usd = 0, 
+      cash_balance_usd = 0 
+    } = await c.req.json();
 
-app.get('/api/accounts/total', authMiddleware, async (c) => {
-  const userId = c.get('userId')
-  
-  const totals = await c.env.DB.prepare(`
-    SELECT 
-      SUM(balance_cad) as total_cad,
-      SUM(balance_usd) as total_usd,
-      SUM(cash_balance_usd) as total_cash_usd
-    FROM account_balances 
-    WHERE user_id = ? 
-    AND (month, year) = (
-      SELECT month, year FROM account_balances 
-      WHERE user_id = ? 
-      ORDER BY year DESC, month DESC LIMIT 1
-    )
-  `).bind(userId, userId).first()
-  
-  return c.json(totals)
+    // Validation
+    if (!account_name || !account_type) {
+      return c.json({ error: 'Account name and type are required' }, 400);
+    }
+
+    // Validate account_type
+    const validTypes = ['Cash', 'RESP', 'RRSP', 'LIRA'];
+    if (!validTypes.includes(account_type)) {
+      return c.json({ error: 'Invalid account type' }, 400);
+    }
+
+    const result = await DB.prepare(`
+      INSERT INTO accounts (
+        user_id, account_name, account_type, balance_cad, 
+        balance_usd, cash_balance_usd
+      )
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      userId, 
+      account_name, 
+      account_type, 
+      balance_cad, 
+      balance_usd, 
+      cash_balance_usd
+    ).run();
+
+    return c.json({ 
+      id: result.meta.last_row_id,
+      account_name,
+      account_type,
+      balance_cad,
+      balance_usd,
+      cash_balance_usd
+    }, 201);
+  } catch (error: any) {
+    console.error('Create account error:', error);
+    return c.json({ error: 'Failed to create account' }, 500);
+  }
+});
+
+// Update account
+app.put('/api/accounts/:id', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const accountId = parseInt(c.req.param('id'));
+    const { DB } = c.env;
+    const { 
+      account_name, 
+      account_type, 
+      balance_cad, 
+      balance_usd, 
+      cash_balance_usd 
+    } = await c.req.json();
+
+    // Validate account_type if provided
+    if (account_type !== undefined) {
+      const validTypes = ['Cash', 'RESP', 'RRSP', 'LIRA'];
+      if (!validTypes.includes(account_type)) {
+        return c.json({ error: 'Invalid account type' }, 400);
+      }
+    }
+
+    // Check ownership
+    const existing = await DB.prepare(`
+      SELECT * FROM accounts WHERE id = ? AND user_id = ?
+    `).bind(accountId, userId).first() as any;
+
+    if (!existing) {
+      return c.json({ error: 'Account not found' }, 404);
+    }
+
+    // Build update with only provided fields
+    const updates: string[] = [];
+    const values: any[] = [];
+    
+    if (account_name !== undefined) {
+      updates.push('account_name = ?');
+      values.push(account_name);
+    }
+    if (account_type !== undefined) {
+      updates.push('account_type = ?');
+      values.push(account_type);
+    }
+    if (balance_cad !== undefined) {
+      updates.push('balance_cad = ?');
+      values.push(balance_cad);
+    }
+    if (balance_usd !== undefined) {
+      updates.push('balance_usd = ?');
+      values.push(balance_usd);
+    }
+    if (cash_balance_usd !== undefined) {
+      updates.push('cash_balance_usd = ?');
+      values.push(cash_balance_usd);
+    }
+    
+    if (updates.length === 0) {
+      return c.json({ success: true }); // Nothing to update
+    }
+    
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(accountId, userId);
+
+    await DB.prepare(`
+      UPDATE accounts
+      SET ${updates.join(', ')}
+      WHERE id = ? AND user_id = ?
+    `).bind(...values).run();
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error('Update account error:', error);
+    return c.json({ error: 'Failed to update account' }, 500);
+  }
+});
+
+// Delete account
+app.delete('/api/accounts/:id', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const accountId = parseInt(c.req.param('id'));
+    const { DB } = c.env;
+
+    // Check if account has any trades
+    const tradesCheck = await DB.prepare(`
+      SELECT 
+        (SELECT COUNT(*) FROM stock_trades WHERE account_id = ?) as stock_count,
+        (SELECT COUNT(*) FROM option_trades WHERE account_id = ?) as option_count
+    `).bind(accountId, accountId).first() as any;
+
+    if (tradesCheck.stock_count > 0 || tradesCheck.option_count > 0) {
+      return c.json({ 
+        error: 'Cannot delete account with existing trades' 
+      }, 400);
+    }
+
+    // Check ownership and delete
+    const result = await DB.prepare(`
+      DELETE FROM accounts WHERE id = ? AND user_id = ?
+    `).bind(accountId, userId).run();
+
+    if (result.meta.changes === 0) {
+      return c.json({ error: 'Account not found' }, 404);
+    }
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error('Delete account error:', error);
+    return c.json({ error: 'Failed to delete account' }, 500);
+  }
 })
 
 // ============================================================================

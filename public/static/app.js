@@ -1,6 +1,7 @@
 // Global state
 let token = localStorage.getItem('token') || null
 let currentUser = null
+let accountsList = []
 
 // API Base URL
 const API_BASE = window.location.origin
@@ -18,9 +19,10 @@ api.interceptors.request.use(config => {
 })
 
 // Initialize app
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     if (token) {
         showMainApp()
+        await loadAccountsList()
         loadDashboard()
     }
 })
@@ -53,6 +55,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         currentUser = response.data.user
         localStorage.setItem('token', token)
         showMainApp()
+        await loadAccountsList()
         loadDashboard()
     } catch (error) {
         alert(error.response?.data?.error || 'Login failed')
@@ -74,6 +77,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
         currentUser = response.data.user
         localStorage.setItem('token', token)
         showMainApp()
+        await loadAccountsList()
         loadDashboard()
     } catch (error) {
         alert(error.response?.data?.error || 'Registration failed')
@@ -137,6 +141,20 @@ function showSection(sectionName) {
             break
         case 'reports':
             break
+    }
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+async function loadAccountsList() {
+    try {
+        const response = await api.get('/api/accounts')
+        accountsList = response.data.accounts || []
+    } catch (error) {
+        console.error('Failed to load accounts list:', error)
+        accountsList = []
     }
 }
 
@@ -375,90 +393,121 @@ async function deleteCompany(id) {
 async function loadAccounts() {
     try {
         const response = await api.get('/api/accounts')
-        const accounts = response.data
+        const accounts = response.data.accounts || []
         
-        const grid = document.getElementById('accounts-grid')
-        grid.innerHTML = ''
-        
-        if (accounts.length === 0) {
-            grid.innerHTML = '<p class="text-gray-500 col-span-2">No account data found</p>'
-            return
+        // Group accounts by type
+        const grouped = {
+            'Cash': [],
+            'RESP': [],
+            'RRSP': [],
+            'LIRA': []
         }
         
-        accounts.forEach(account => {
-            grid.innerHTML += `
-                <div class="card">
-                    <h3 class="text-xl font-bold text-brand-teal mb-4">${account.account_type}</h3>
-                    <div class="space-y-2">
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Balance (CAD):</span>
-                            <span class="font-semibold">${formatCurrency(account.balance_cad, 'CAD')}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Balance (USD):</span>
-                            <span class="font-semibold">${formatCurrency(account.balance_usd, 'USD')}</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Cash (USD):</span>
-                            <span class="font-semibold">${formatCurrency(account.cash_balance_usd, 'USD')}</span>
-                        </div>
-                        <div class="text-sm text-gray-500 mt-2">
-                            Updated: ${account.month}/${account.year}
-                        </div>
+        accounts.forEach(acc => {
+            if (grouped[acc.account_type]) {
+                grouped[acc.account_type].push(acc)
+            }
+        })
+        
+        const container = document.getElementById('accounts-grid')
+        container.innerHTML = ''
+        
+        Object.entries(grouped).forEach(([type, accts]) => {
+            const section = document.createElement('div')
+            section.className = 'mb-6'
+            
+            section.innerHTML = `
+                <h3 class="text-xl font-semibold mb-3 text-brand-gold">${type} Accounts</h3>
+                ${accts.length === 0 ? `
+                    <p class="text-gray-400 italic">No ${type} accounts yet</p>
+                ` : `
+                    <div class="grid gap-4">
+                        ${accts.map(acc => `
+                            <div class="card">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1">
+                                        <h4 class="text-lg font-semibold mb-2">${acc.account_name}</h4>
+                                        <div class="grid grid-cols-3 gap-4 text-sm">
+                                            <div>
+                                                <span class="text-gray-400">Balance CAD:</span>
+                                                <span class="ml-2 font-semibold">${formatCurrency(acc.balance_cad, 'CAD')}</span>
+                                            </div>
+                                            <div>
+                                                <span class="text-gray-400">Balance USD:</span>
+                                                <span class="ml-2 font-semibold">${formatCurrency(acc.balance_usd, 'USD')}</span>
+                                            </div>
+                                            <div>
+                                                <span class="text-gray-400">Cash USD:</span>
+                                                <span class="ml-2 font-semibold">${formatCurrency(acc.cash_balance_usd, 'USD')}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="ml-4 flex space-x-2">
+                                        <button onclick="showEditAccountForm(${acc.id})" class="text-blue-400 hover:text-blue-300" title="Edit">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button onclick="deleteAccount(${acc.id})" class="text-red-400 hover:text-red-300" title="Delete">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
                     </div>
-                </div>
+                `}
             `
+            container.appendChild(section)
         })
     } catch (error) {
-        console.error('Error loading accounts:', error)
+        console.error('Failed to load accounts:', error)
     }
 }
 
 function showAccountForm() {
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
-    
-    const now = new Date()
-    const currentMonth = now.getMonth() + 1
-    const currentYear = now.getFullYear()
+    modal.id = 'account-modal'
     
     modal.innerHTML = `
         <div class="bg-white rounded-lg p-6 max-w-2xl w-full">
-            <h3 class="text-2xl font-bold text-brand-teal mb-6">Update Account Balances</h3>
+            <h3 class="text-2xl font-bold text-brand-teal mb-6">Add New Account</h3>
             <form id="accountForm">
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-gray-700 mb-2">Account Type *</label>
-                        <select name="account_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="Cash">Cash</option>
-                            <option value="RESP">RESP</option>
-                            <option value="RRSP">RRSP</option>
-                            <option value="LIRA">LIRA</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Month/Year *</label>
-                        <div class="flex gap-2">
-                            <input type="number" name="month" min="1" max="12" value="${currentMonth}" class="w-1/2 px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <input type="number" name="year" min="2020" max="2030" value="${currentYear}" class="w-1/2 px-4 py-2 border border-gray-300 rounded-lg" required>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Balance (CAD) *</label>
-                        <input type="number" step="0.01" name="balance_cad" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Balance (USD) *</label>
-                        <input type="number" step="0.01" name="balance_usd" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div class="col-span-2">
-                        <label class="block text-gray-700 mb-2">Cash Balance (USD) *</label>
-                        <input type="number" step="0.01" name="cash_balance_usd" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Account Name *</label>
+                    <input type="text" name="account_name" placeholder="e.g., RRSP - Questrade" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    <small class="text-gray-400">Choose a descriptive name to identify this account</small>
                 </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Account Type *</label>
+                    <select name="account_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <option value="">Select account type...</option>
+                        <option value="Cash">Cash</option>
+                        <option value="RESP">RESP</option>
+                        <option value="RRSP">RRSP</option>
+                        <option value="LIRA">LIRA</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Initial Balance (CAD)</label>
+                    <input type="number" step="0.01" name="balance_cad" value="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Initial Balance (USD)</label>
+                    <input type="number" step="0.01" name="balance_usd" value="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 mb-2">Cash Balance (USD)</label>
+                    <input type="number" step="0.01" name="cash_balance_usd" value="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <small class="text-gray-400">Available cash for trading</small>
+                </div>
+                
                 <div class="flex gap-4 mt-6">
-                    <button type="submit" class="btn-primary flex-1">Save</button>
-                    <button type="button" onclick="this.closest('.fixed').remove()" class="btn-secondary flex-1">Cancel</button>
+                    <button type="submit" class="btn-primary flex-1">Save Account</button>
+                    <button type="button" onclick="document.getElementById('account-modal').remove()" class="btn-secondary flex-1">Cancel</button>
                 </div>
             </form>
         </div>
@@ -470,23 +519,117 @@ function showAccountForm() {
         e.preventDefault()
         const formData = new FormData(e.target)
         const data = {
+            account_name: formData.get('account_name'),
             account_type: formData.get('account_type'),
-            balance_cad: parseFloat(formData.get('balance_cad')),
-            balance_usd: parseFloat(formData.get('balance_usd')),
-            cash_balance_usd: parseFloat(formData.get('cash_balance_usd')),
-            month: parseInt(formData.get('month')),
-            year: parseInt(formData.get('year'))
+            balance_cad: parseFloat(formData.get('balance_cad')) || 0,
+            balance_usd: parseFloat(formData.get('balance_usd')) || 0,
+            cash_balance_usd: parseFloat(formData.get('cash_balance_usd')) || 0
         }
         
         try {
             await api.post('/api/accounts', data)
             modal.remove()
+            await loadAccountsList()
             loadAccounts()
-            loadDashboard()
         } catch (error) {
-            alert(error.response?.data?.error || 'Operation failed')
+            alert(error.response?.data?.error || 'Failed to create account')
         }
     })
+}
+
+async function showEditAccountForm(accountId) {
+    try {
+        const response = await api.get(`/api/accounts/${accountId}`)
+        const account = response.data.account
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'account-modal'
+        
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full">
+                <h3 class="text-2xl font-bold text-brand-teal mb-6">Edit Account</h3>
+                <form id="editAccountForm">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Account Name *</label>
+                        <input type="text" name="account_name" value="${account.account_name}" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Account Type *</label>
+                        <select name="account_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                            <option value="Cash" ${account.account_type === 'Cash' ? 'selected' : ''}>Cash</option>
+                            <option value="RESP" ${account.account_type === 'RESP' ? 'selected' : ''}>RESP</option>
+                            <option value="RRSP" ${account.account_type === 'RRSP' ? 'selected' : ''}>RRSP</option>
+                            <option value="LIRA" ${account.account_type === 'LIRA' ? 'selected' : ''}>LIRA</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Balance (CAD)</label>
+                        <input type="number" step="0.01" name="balance_cad" value="${account.balance_cad}" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Balance (USD)</label>
+                        <input type="number" step="0.01" name="balance_usd" value="${account.balance_usd}" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Cash Balance (USD)</label>
+                        <input type="number" step="0.01" name="cash_balance_usd" value="${account.cash_balance_usd}" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div class="flex gap-4 mt-6">
+                        <button type="submit" class="btn-primary flex-1">Update Account</button>
+                        <button type="button" onclick="document.getElementById('account-modal').remove()" class="btn-secondary flex-1">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        document.getElementById('editAccountForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target)
+            const data = {
+                account_name: formData.get('account_name'),
+                account_type: formData.get('account_type'),
+                balance_cad: parseFloat(formData.get('balance_cad')),
+                balance_usd: parseFloat(formData.get('balance_usd')),
+                cash_balance_usd: parseFloat(formData.get('cash_balance_usd'))
+            }
+            
+            try {
+                await api.put(`/api/accounts/${accountId}`, data)
+                modal.remove()
+                await loadAccountsList()
+                loadAccounts()
+            } catch (error) {
+                alert(error.response?.data?.error || 'Failed to update account')
+            }
+        })
+    } catch (error) {
+        console.error('Failed to load account:', error)
+        alert('Failed to load account')
+    }
+}
+
+async function deleteAccount(accountId) {
+    if (!confirm('Are you sure you want to delete this account? This cannot be undone.')) {
+        return
+    }
+    
+    try {
+        await api.delete(`/api/accounts/${accountId}`)
+        await loadAccountsList()
+        loadAccounts()
+    } catch (error) {
+        console.error('Failed to delete account:', error)
+        const errorMsg = error.response?.data?.error || 'Failed to delete account'
+        alert(errorMsg)
+    }
 }
 
 // ============================================================================
@@ -571,13 +714,18 @@ function showStockForm(stockId = null) {
                         <input type="number" step="0.01" name="price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2">Account Type *</label>
-                        <select name="account_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="Cash">Cash</option>
-                            <option value="RESP">RESP</option>
-                            <option value="RRSP">RRSP</option>
-                            <option value="LIRA">LIRA</option>
+                        <label class="block text-gray-700 mb-2">Account *</label>
+                        <select name="account_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                            <option value="">Select account...</option>
+                            ${accountsList.map(acc => `
+                                <option value="${acc.id}">${acc.account_name} (${acc.account_type})</option>
+                            `).join('')}
                         </select>
+                        <small class="text-gray-400">
+                            <a href="#" onclick="showSection('accounts'); return false;" class="text-brand-gold hover:underline">
+                                Manage accounts
+                            </a>
+                        </small>
                     </div>
                     <div>
                         <label class="block text-gray-700 mb-2">Trade Date *</label>
@@ -616,7 +764,7 @@ function showStockForm(stockId = null) {
             trade_type: formData.get('trade_type'),
             quantity: parseInt(formData.get('quantity')),
             price: parseFloat(formData.get('price')),
-            account_type: formData.get('account_type'),
+            account_id: parseInt(formData.get('account_id')),
             trade_date: formData.get('trade_date'),
             cost_basis_adjustment: parseFloat(formData.get('cost_basis_adjustment')),
             is_open: formData.get('is_open') === 'on',
@@ -645,7 +793,7 @@ function showStockForm(stockId = null) {
             form.trade_type.value = stock.trade_type
             form.quantity.value = stock.quantity
             form.price.value = stock.price
-            form.account_type.value = stock.account_type
+            form.account_id.value = stock.account_id
             form.trade_date.value = stock.trade_date
             form.cost_basis_adjustment.value = stock.cost_basis_adjustment || 0
             form.is_open.checked = stock.is_open === 1
@@ -764,13 +912,18 @@ function showOptionForm(optionId = null) {
                         <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2">Account Type *</label>
-                        <select name="account_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="Cash">Cash</option>
-                            <option value="RESP">RESP</option>
-                            <option value="RRSP">RRSP</option>
-                            <option value="LIRA">LIRA</option>
+                        <label class="block text-gray-700 mb-2">Account *</label>
+                        <select name="account_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                            <option value="">Select account...</option>
+                            ${accountsList.map(acc => `
+                                <option value="${acc.id}">${acc.account_name} (${acc.account_type})</option>
+                            `).join('')}
                         </select>
+                        <small class="text-gray-400">
+                            <a href="#" onclick="showSection('accounts'); return false;" class="text-brand-gold hover:underline">
+                                Manage accounts
+                            </a>
+                        </small>
                     </div>
                     <div>
                         <label class="block text-gray-700 mb-2">Trade Date *</label>
@@ -807,7 +960,7 @@ function showOptionForm(optionId = null) {
             premium: parseFloat(formData.get('premium')),
             quantity: parseInt(formData.get('quantity')),
             expiration_date: formData.get('expiration_date'),
-            account_type: formData.get('account_type'),
+            account_id: parseInt(formData.get('account_id')),
             trade_date: formData.get('trade_date'),
             is_open: formData.get('is_open') === 'on',
             notes: formData.get('notes') || null
@@ -837,7 +990,7 @@ function showOptionForm(optionId = null) {
             form.premium.value = option.premium
             form.quantity.value = option.quantity
             form.expiration_date.value = option.expiration_date
-            form.account_type.value = option.account_type
+            form.account_id.value = option.account_id
             form.trade_date.value = option.trade_date
             form.is_open.checked = option.is_open === 1
             form.notes.value = option.notes || ''
