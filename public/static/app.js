@@ -749,7 +749,7 @@ function showAccountForm() {
             console.log('Sending POST request...')
             console.log('Request URL:', `${api.defaults.baseURL}/api/accounts`)
             console.log('Request headers:', api.defaults.headers)
-            const response = await api.post('/api/accounts', data, { timeout: 10000 })
+            const response = await api.post('/api/accounts', data, { timeout: 30000 })
             console.log('Response received!')
             console.log('Account created successfully:', response.data)
             console.log('Closing modal...')
@@ -775,6 +775,15 @@ function showAccountForm() {
                 code: error.code,
                 response: error.response,
                 status: error.response?.status,
+                data: error.response?.data
+            })
+            
+            // Show error message
+            const errorMessage = error.response?.data?.error || error.message || 'Failed to create account'
+            alert(`Error: ${errorMessage}`)
+            
+            // Don't remove modal on error so user can fix and retry
+        }
                 data: error.response?.data
             })
             alert(error.response?.data?.error || error.message || 'Failed to create account')

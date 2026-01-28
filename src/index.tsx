@@ -551,17 +551,26 @@ app.post('/api/accounts', authMiddleware, async (c) => {
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    // Get exchange rates with fallback
+    // Get exchange rates from cache (don't make HTTP call to avoid timeout)
     let rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
     try {
-      const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${currentMonth}&year=${currentYear}`, {
-        headers: { 'Authorization': c.req.header('Authorization') || '' }
-      });
-      if (rateResponse.ok) {
-        rates = await rateResponse.json() as any;
+      const cachedRate = await DB.prepare(`
+        SELECT usd_to_cad, cad_to_usd 
+        FROM exchange_rates 
+        WHERE month = ? AND year = ?
+      `).bind(currentMonth, currentYear).first();
+      
+      if (cachedRate) {
+        rates = {
+          usd_to_cad: cachedRate.usd_to_cad as number,
+          cad_to_usd: cachedRate.cad_to_usd as number
+        };
+        console.log('Using cached exchange rate for account creation');
+      } else {
+        console.log('No cached rate found, using fallback 1.35');
       }
     } catch (e) {
-      console.error('Exchange rate fetch error during account creation:', e);
+      console.error('Error reading exchange rate from cache:', e);
       // Use fallback rates
     }
 
