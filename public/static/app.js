@@ -296,8 +296,11 @@ function showMainApp() {
     document.getElementById('auth-screen').classList.add('hidden')
     document.getElementById('main-app').classList.remove('hidden')
     
-    // Load user profile on app start
-    loadUserProfile()
+    // Load user profile on app start (non-blocking)
+    loadUserProfile().catch(err => {
+        console.error('Failed to load user profile:', err)
+        // Don't block login if profile load fails
+    })
 }
 
 // ============================================================================
