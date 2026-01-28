@@ -647,35 +647,100 @@ async function showUpdateBalanceForm(accountId) {
         const response = await api.get(`/api/accounts/${accountId}`)
         const account = response.data.account
         
-        const modal = document.createElement('div')
-        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
-        modal.id = 'balance-modal'
-        
         const currentBalance = account.default_currency === 'CAD' ? account.balance_cad : account.balance_usd
         const currentCash = account.default_currency === 'CAD' ? account.cash_balance_cad : account.cash_balance_usd
         const lastUpdated = new Date(account.updated_at).toLocaleString()
         
-        // Build warning message if already updated this month
-        const warningHtml = !updateCheck.canUpdate ? `
-            <div class="mb-4 p-4 bg-yellow-100 border border-yellow-400 rounded-lg">
-                <div class="flex items-start">
-                    <i class="fas fa-exclamation-triangle text-yellow-600 mt-1 mr-3"></i>
-                    <div>
-                        <p class="font-semibold text-yellow-800">Already Updated This Month</p>
-                        <p class="text-sm text-yellow-700 mt-1">
-                            Balance was updated on ${new Date(updateCheck.lastUpdate).toLocaleDateString()}.
-                            You can only update account balances once per month.
-                        </p>
+        // If already updated this month, show information-only modal
+        if (!updateCheck.canUpdate) {
+            const modal = document.createElement('div')
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+            modal.id = 'balance-modal'
+            
+            modal.innerHTML = `
+                <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                    <div class="flex items-center mb-6">
+                        <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mr-4">
+                            <i class="fas fa-check text-green-600 text-xl"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-bold text-brand-teal">Balance Updated</h3>
+                            <p class="text-sm text-gray-600">Monthly update complete</p>
+                        </div>
                     </div>
+                    
+                    <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div class="flex items-start">
+                            <i class="fas fa-info-circle text-blue-600 mt-1 mr-3"></i>
+                            <div>
+                                <p class="font-semibold text-blue-900 mb-1">Monthly Update Already Completed</p>
+                                <p class="text-sm text-blue-800">
+                                    This account's balance was updated on <strong>${new Date(updateCheck.lastUpdate).toLocaleDateString()}</strong>.
+                                    You can update account balances once per month to maintain accurate historical tracking.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-6 p-4 bg-gray-100 rounded-lg">
+                        <h4 class="font-semibold text-gray-700 mb-3">${account.account_name}</h4>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Account Type:</span>
+                                <span class="font-semibold text-gray-900">${account.account_type}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Currency:</span>
+                                <span class="font-semibold text-gray-900">${account.default_currency}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Update Period:</span>
+                                <span class="font-semibold text-gray-900">${updateCheck.month}/${updateCheck.year}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Last Updated:</span>
+                                <span class="font-semibold text-gray-900">${lastUpdated}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h5 class="font-semibold text-gray-700 mb-2">Current Balances</h5>
+                        <div class="space-y-2">
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Total Balance:</span>
+                                <span class="text-xl font-bold text-brand-teal">${formatCurrency(currentBalance, account.default_currency)}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-600">Cash Balance:</span>
+                                <span class="text-lg font-semibold text-gray-700">${formatCurrency(currentCash, account.default_currency)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="text-center text-sm text-gray-600 mb-4">
+                        <i class="fas fa-calendar-alt mr-2"></i>
+                        Next update available: <strong>${updateCheck.month === 12 ? '1' : updateCheck.month + 1}/${updateCheck.month === 12 ? updateCheck.year + 1 : updateCheck.year}</strong>
+                    </div>
+                    
+                    <button onclick="document.getElementById('balance-modal').remove()" class="btn-primary w-full">
+                        <i class="fas fa-check mr-2"></i>Got It
+                    </button>
                 </div>
-            </div>
-        ` : ''
+            `
+            
+            document.body.appendChild(modal)
+            return
+        }
+        
+        // If can update, show the update form
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'balance-modal'
         
         modal.innerHTML = `
             <div class="bg-white rounded-lg p-6 max-w-md w-full">
                 <h3 class="text-2xl font-bold text-brand-teal mb-6">Update Balance</h3>
-                
-                ${warningHtml}
                 
                 <div class="mb-4 p-4 bg-gray-100 rounded-lg">
                     <h4 class="font-semibold text-gray-700 mb-2">${account.account_name}</h4>
@@ -691,23 +756,20 @@ async function showUpdateBalanceForm(accountId) {
                     <div class="mb-4">
                         <label class="block text-gray-700 mb-2">Total Balance (${account.default_currency}) *</label>
                         <input type="number" step="0.01" name="balance" value="${currentBalance}" 
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg" required ${!updateCheck.canUpdate ? 'disabled' : ''}>
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                         <small class="text-gray-400">Current: ${formatCurrency(currentBalance, account.default_currency)}</small>
                     </div>
                     
                     <div class="mb-4">
                         <label class="block text-gray-700 mb-2">Cash Balance (${account.default_currency}) *</label>
                         <input type="number" step="0.01" name="cash_balance" value="${currentCash}" 
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg" required ${!updateCheck.canUpdate ? 'disabled' : ''}>
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                         <small class="text-gray-400">Current: ${formatCurrency(currentCash, account.default_currency)}</small>
                     </div>
                     
                     <div class="flex gap-4 mt-6">
-                        ${updateCheck.canUpdate ? 
-                            '<button type="submit" class="btn-primary flex-1">Update Balance</button>' :
-                            '<button type="button" disabled class="bg-gray-400 text-white px-6 py-2 rounded-lg flex-1 cursor-not-allowed">Cannot Update</button>'
-                        }
-                        <button type="button" onclick="document.getElementById('balance-modal').remove()" class="btn-secondary flex-1">Close</button>
+                        <button type="submit" class="btn-primary flex-1">Update Balance</button>
+                        <button type="button" onclick="document.getElementById('balance-modal').remove()" class="btn-secondary flex-1">Cancel</button>
                     </div>
                 </form>
             </div>
@@ -715,33 +777,31 @@ async function showUpdateBalanceForm(accountId) {
         
         document.body.appendChild(modal)
         
-        if (updateCheck.canUpdate) {
-            document.getElementById('updateBalanceForm').addEventListener('submit', async (e) => {
-                e.preventDefault()
-                const formData = new FormData(e.target)
-                const balance = parseFloat(formData.get('balance')) || 0
-                const cashBalance = parseFloat(formData.get('cash_balance')) || 0
+        document.getElementById('updateBalanceForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target)
+            const balance = parseFloat(formData.get('balance')) || 0
+            const cashBalance = parseFloat(formData.get('cash_balance')) || 0
+            
+            const data = {
+                balance: balance,
+                cash_balance: cashBalance
+            }
+            
+            try {
+                const result = await api.put(`/api/accounts/${accountId}/balance`, data)
+                modal.remove()
                 
-                const data = {
-                    balance: balance,
-                    cash_balance: cashBalance
-                }
+                // Show success message
+                alert(`Balance updated successfully!\nHistory saved for ${result.data.month}/${result.data.year}`)
                 
-                try {
-                    const result = await api.put(`/api/accounts/${accountId}/balance`, data)
-                    modal.remove()
-                    
-                    // Show success message
-                    alert(`Balance updated successfully!\nHistory saved for ${result.data.month}/${result.data.year}`)
-                    
-                    await loadAccountsList()
-                    loadAccounts()
-                    loadDashboard()
-                } catch (error) {
-                    alert(error.response?.data?.error || 'Failed to update balance')
-                }
-            })
-        }
+                await loadAccountsList()
+                loadAccounts()
+                loadDashboard()
+            } catch (error) {
+                alert(error.response?.data?.error || 'Failed to update balance')
+            }
+        })
     } catch (error) {
         console.error('Failed to load account:', error)
         alert('Failed to load account')
