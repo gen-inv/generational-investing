@@ -53,6 +53,53 @@ function verifyToken(token: string): any | null {
   }
 }
 
+// Helper function to fetch and cache exchange rates
+async function fetchAndCacheExchangeRate(DB: any, month: number, year: number) {
+  try {
+    // Format date as YYYY-MM-DD (first day of month)
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    
+    // Fetch from API
+    const response = await fetch(`https://api.exchangerate-api.com/v4/history/USD/${dateStr}`);
+    const data = await response.json() as any;
+    
+    if (data && data.rates && data.rates.CAD) {
+      const usdToCad = data.rates.CAD;
+      const cadToUsd = 1 / usdToCad;
+      
+      // Cache the rate (use INSERT OR IGNORE to avoid duplicate errors)
+      await DB.prepare(`
+        INSERT OR IGNORE INTO exchange_rates (month, year, usd_to_cad, cad_to_usd)
+        VALUES (?, ?, ?, ?)
+      `).bind(month, year, usdToCad, cadToUsd).run();
+      
+      console.log(`Exchange rate cached for ${month}/${year}: ${usdToCad} USD to CAD`);
+    } else {
+      // Use fallback rate
+      const defaultRate = 1.35;
+      await DB.prepare(`
+        INSERT OR IGNORE INTO exchange_rates (month, year, usd_to_cad, cad_to_usd)
+        VALUES (?, ?, ?, ?)
+      `).bind(month, year, defaultRate, 1 / defaultRate).run();
+      
+      console.log(`Fallback exchange rate cached for ${month}/${year}: ${defaultRate} USD to CAD`);
+    }
+  } catch (error) {
+    console.error('Error fetching and caching exchange rate:', error);
+    
+    // On error, cache fallback rate
+    try {
+      const defaultRate = 1.35;
+      await DB.prepare(`
+        INSERT OR IGNORE INTO exchange_rates (month, year, usd_to_cad, cad_to_usd)
+        VALUES (?, ?, ?, ?)
+      `).bind(month, year, defaultRate, 1 / defaultRate).run();
+    } catch (insertError) {
+      console.error('Error caching fallback rate:', insertError);
+    }
+  }
+}
+
 // Auth middleware
 async function authMiddleware(c: any, next: any) {
   const authHeader = c.req.header('Authorization')
@@ -78,6 +125,7 @@ async function authMiddleware(c: any, next: any) {
 app.post('/api/auth/register', async (c) => {
   try {
     const { email, password, name } = await c.req.json()
+    const { DB } = c.env;
     
     if (!email || !password || !name) {
       return c.json({ error: 'All fields are required' }, 400)
@@ -85,11 +133,32 @@ app.post('/api/auth/register', async (c) => {
     
     const passwordHash = await hashPassword(password)
     
-    const result = await c.env.DB.prepare(`
+    const result = await DB.prepare(`
       INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)
     `).bind(email, passwordHash, name).run()
     
     const token = await generateToken({ userId: result.meta.last_row_id, email })
+    
+    // Fetch and cache current month's exchange rate on registration
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    
+    console.log(`Checking exchange rate cache for ${currentMonth}/${currentYear}`);
+    
+    // Check if we already have this month's rate cached
+    const cached = await DB.prepare(`
+      SELECT id FROM exchange_rates 
+      WHERE month = ? AND year = ?
+    `).bind(currentMonth, currentYear).first();
+    
+    if (!cached) {
+      console.log('Exchange rate not cached, fetching now...');
+      // Fetch and cache synchronously (this happens once per month, so it's acceptable)
+      await fetchAndCacheExchangeRate(DB, currentMonth, currentYear);
+    } else {
+      console.log('Exchange rate already cached');
+    }
     
     return c.json({ 
       token, 
@@ -106,8 +175,9 @@ app.post('/api/auth/register', async (c) => {
 app.post('/api/auth/login', async (c) => {
   try {
     const { email, password } = await c.req.json()
+    const { DB } = c.env;
     
-    const user = await c.env.DB.prepare(`
+    const user = await DB.prepare(`
       SELECT id, email, password_hash, name FROM users WHERE email = ?
     `).bind(email).first()
     
@@ -122,6 +192,28 @@ app.post('/api/auth/login', async (c) => {
     }
     
     const token = await generateToken({ userId: user.id, email: user.email })
+    
+    // Fetch and cache current month's exchange rate on login
+    // This happens once per month, so it's acceptable to await
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    
+    console.log(`Checking exchange rate cache for ${currentMonth}/${currentYear}`);
+    
+    // Check if we already have this month's rate cached
+    const cached = await DB.prepare(`
+      SELECT id FROM exchange_rates 
+      WHERE month = ? AND year = ?
+    `).bind(currentMonth, currentYear).first();
+    
+    if (!cached) {
+      console.log('Exchange rate not cached, fetching now...');
+      // Fetch and cache synchronously (this happens once per month, so it's acceptable)
+      await fetchAndCacheExchangeRate(DB, currentMonth, currentYear);
+    } else {
+      console.log('Exchange rate already cached');
+    }
     
     return c.json({ 
       token, 
