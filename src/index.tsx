@@ -898,11 +898,16 @@ app.get('/api/dashboard/totals', authMiddleware, async (c) => {
       WHERE user_id = ?
     `).bind(userId).all();
 
-    // Get exchange rate for the current month
-    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${month}&year=${year}`, {
-      headers: { 'Authorization': c.req.header('Authorization') || '' }
-    });
-    const rates = await rateResponse.json() as any;
+    // Get exchange rate from cache (should already be cached from login)
+    let rates = await DB.prepare(`
+      SELECT usd_to_cad, cad_to_usd FROM exchange_rates 
+      WHERE month = ? AND year = ?
+    `).bind(month, year).first() as any;
+    
+    // If not cached, use fallback rate
+    if (!rates) {
+      rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
+    }
 
     // Calculate totals in both currencies
     let totalCAD = 0;
@@ -964,11 +969,16 @@ app.get('/api/dashboard', authMiddleware, async (c) => {
       WHERE user_id = ?
     `).bind(userId).all();
 
-    // Get exchange rate for the current month
-    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${month}&year=${year}`, {
-      headers: { 'Authorization': c.req.header('Authorization') || '' }
-    });
-    const rates = await rateResponse.json() as any;
+    // Get exchange rate from cache (should already be cached from login)
+    let rates = await DB.prepare(`
+      SELECT usd_to_cad, cad_to_usd FROM exchange_rates 
+      WHERE month = ? AND year = ?
+    `).bind(month, year).first() as any;
+    
+    // If not cached, use fallback rate
+    if (!rates) {
+      rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
+    }
 
     // Calculate totals in both currencies
     let totalCAD = 0;
