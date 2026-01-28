@@ -547,9 +547,22 @@ function showAccountForm() {
             console.log('Sending POST request...')
             const response = await api.post('/api/accounts', data)
             console.log('Account created successfully:', response.data)
-            modal.remove()
+            console.log('Closing modal...')
+            
+            // Remove modal
+            const modalElement = document.getElementById('account-modal')
+            if (modalElement) {
+                modalElement.remove()
+                console.log('Modal removed successfully')
+            } else {
+                console.log('Modal element not found!')
+            }
+            
+            // Refresh accounts list
+            console.log('Refreshing accounts list...')
             await loadAccountsList()
             loadAccounts()
+            console.log('Accounts refreshed')
         } catch (error) {
             console.error('Error creating account:', error)
             alert(error.response?.data?.error || 'Failed to create account')
