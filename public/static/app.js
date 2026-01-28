@@ -93,9 +93,211 @@ function logout() {
     showLogin()
 }
 
+// ============================================================================
+// USER PROFILE FUNCTIONS
+// ============================================================================
+
+async function loadUserProfile() {
+    try {
+        const response = await api.get('/api/user/profile')
+        currentUser = response.data
+        
+        // Update UI with user info
+        const nameDisplay = document.getElementById('user-name-display')
+        const emailDisplay = document.getElementById('user-email-display')
+        
+        if (nameDisplay) {
+            nameDisplay.textContent = currentUser.name || currentUser.email
+        }
+        if (emailDisplay) {
+            emailDisplay.textContent = currentUser.email
+        }
+    } catch (error) {
+        console.error('Failed to load user profile:', error)
+    }
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown')
+    dropdown.classList.toggle('hidden')
+    
+    // Close dropdown when clicking outside
+    if (!dropdown.classList.contains('hidden')) {
+        setTimeout(() => {
+            document.addEventListener('click', function closeDropdown(e) {
+                const container = document.getElementById('user-menu-container')
+                if (!container.contains(e.target)) {
+                    dropdown.classList.add('hidden')
+                    document.removeEventListener('click', closeDropdown)
+                }
+            })
+        }, 10)
+    }
+}
+
+function showProfileModal() {
+    // Close user dropdown
+    document.getElementById('user-dropdown').classList.add('hidden')
+    
+    const modal = document.createElement('div')
+    modal.id = 'profile-modal'
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-brand-teal">
+                    <i class="fas fa-user-edit mr-2"></i>Edit Profile
+                </h2>
+                <button onclick="document.getElementById('profile-modal').remove()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="profileForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Name</label>
+                    <input type="text" name="name" value="${currentUser.name}" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Email</label>
+                    <input type="email" name="email" value="${currentUser.email}" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent">
+                </div>
+                
+                <div class="flex gap-3 pt-4">
+                    <button type="submit" class="flex-1 bg-brand-teal text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors">
+                        <i class="fas fa-save mr-2"></i>Save Changes
+                    </button>
+                    <button type="button" onclick="document.getElementById('profile-modal').remove()"
+                        class="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    `
+    
+    document.body.appendChild(modal)
+    
+    // Handle form submission
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+        e.preventDefault()
+        const formData = new FormData(e.target)
+        const data = {
+            name: formData.get('name'),
+            email: formData.get('email')
+        }
+        
+        try {
+            const response = await api.put('/api/user/profile', data)
+            currentUser = response.data
+            
+            // Update UI
+            await loadUserProfile()
+            
+            // Show success message
+            alert('Profile updated successfully!')
+            
+            document.getElementById('profile-modal').remove()
+        } catch (error) {
+            alert(error.response?.data?.error || 'Failed to update profile')
+        }
+    })
+}
+
+function showPasswordModal() {
+    // Close user dropdown
+    document.getElementById('user-dropdown').classList.add('hidden')
+    
+    const modal = document.createElement('div')
+    modal.id = 'password-modal'
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-brand-teal">
+                    <i class="fas fa-key mr-2"></i>Change Password
+                </h2>
+                <button onclick="document.getElementById('password-modal').remove()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="passwordForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Current Password</label>
+                    <input type="password" name="current_password" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">New Password</label>
+                    <input type="password" name="new_password" required minlength="6"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent">
+                    <p class="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Confirm New Password</label>
+                    <input type="password" name="confirm_password" required minlength="6"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal focus:border-transparent">
+                </div>
+                
+                <div class="flex gap-3 pt-4">
+                    <button type="submit" class="flex-1 bg-brand-teal text-white px-4 py-2 rounded-lg hover:bg-opacity-90 transition-colors">
+                        <i class="fas fa-check mr-2"></i>Update Password
+                    </button>
+                    <button type="button" onclick="document.getElementById('password-modal').remove()"
+                        class="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400 transition-colors">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    `
+    
+    document.body.appendChild(modal)
+    
+    // Handle form submission
+    document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+        e.preventDefault()
+        const formData = new FormData(e.target)
+        const data = {
+            current_password: formData.get('current_password'),
+            new_password: formData.get('new_password'),
+            confirm_password: formData.get('confirm_password')
+        }
+        
+        // Validate passwords match
+        if (data.new_password !== data.confirm_password) {
+            alert('New passwords do not match')
+            return
+        }
+        
+        try {
+            await api.put('/api/user/password', {
+                current_password: data.current_password,
+                new_password: data.new_password
+            })
+            
+            // Show success message
+            alert('Password updated successfully!')
+            
+            document.getElementById('password-modal').remove()
+        } catch (error) {
+            alert(error.response?.data?.error || 'Failed to update password')
+        }
+    })
+}
+
 function showMainApp() {
     document.getElementById('auth-screen').classList.add('hidden')
     document.getElementById('main-app').classList.remove('hidden')
+    
+    // Load user profile on app start
+    loadUserProfile()
 }
 
 // ============================================================================
@@ -545,7 +747,10 @@ function showAccountForm() {
         
         try {
             console.log('Sending POST request...')
-            const response = await api.post('/api/accounts', data)
+            console.log('Request URL:', `${api.defaults.baseURL}/api/accounts`)
+            console.log('Request headers:', api.defaults.headers)
+            const response = await api.post('/api/accounts', data, { timeout: 10000 })
+            console.log('Response received!')
             console.log('Account created successfully:', response.data)
             console.log('Closing modal...')
             
@@ -565,7 +770,14 @@ function showAccountForm() {
             console.log('Accounts refreshed')
         } catch (error) {
             console.error('Error creating account:', error)
-            alert(error.response?.data?.error || 'Failed to create account')
+            console.error('Error details:', {
+                message: error.message,
+                code: error.code,
+                response: error.response,
+                status: error.response?.status,
+                data: error.response?.data
+            })
+            alert(error.response?.data?.error || error.message || 'Failed to create account')
         }
     })
 }

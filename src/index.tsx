@@ -225,6 +225,134 @@ app.post('/api/auth/login', async (c) => {
 })
 
 // ============================================================================
+// USER PROFILE ROUTES
+// ============================================================================
+
+// Get current user profile
+app.get('/api/user/profile', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env;
+    
+    const user = await DB.prepare(`
+      SELECT id, email, name, created_at, updated_at 
+      FROM users 
+      WHERE id = ?
+    `).bind(userId).first()
+    
+    if (!user) {
+      return c.json({ error: 'User not found' }, 404)
+    }
+    
+    return c.json(user)
+  } catch (error) {
+    console.error('Get profile error:', error)
+    return c.json({ error: 'Failed to get profile' }, 500)
+  }
+})
+
+// Update user profile
+app.put('/api/user/profile', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { name, email } = await c.req.json()
+    const { DB } = c.env;
+    
+    if (!name && !email) {
+      return c.json({ error: 'Name or email is required' }, 400)
+    }
+    
+    // If email is being updated, check if it's already taken by another user
+    if (email) {
+      const existingUser = await DB.prepare(`
+        SELECT id FROM users WHERE email = ? AND id != ?
+      `).bind(email, userId).first()
+      
+      if (existingUser) {
+        return c.json({ error: 'Email already in use' }, 400)
+      }
+    }
+    
+    // Build update query dynamically based on provided fields
+    let query = 'UPDATE users SET updated_at = CURRENT_TIMESTAMP'
+    const params: any[] = []
+    
+    if (name) {
+      query += ', name = ?'
+      params.push(name)
+    }
+    
+    if (email) {
+      query += ', email = ?'
+      params.push(email)
+    }
+    
+    query += ' WHERE id = ?'
+    params.push(userId)
+    
+    await DB.prepare(query).bind(...params).run()
+    
+    // Fetch updated user
+    const updatedUser = await DB.prepare(`
+      SELECT id, email, name, created_at, updated_at 
+      FROM users 
+      WHERE id = ?
+    `).bind(userId).first()
+    
+    return c.json(updatedUser)
+  } catch (error) {
+    console.error('Update profile error:', error)
+    return c.json({ error: 'Failed to update profile' }, 500)
+  }
+})
+
+// Change password
+app.put('/api/user/password', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { current_password, new_password } = await c.req.json()
+    const { DB } = c.env;
+    
+    if (!current_password || !new_password) {
+      return c.json({ error: 'Current and new password are required' }, 400)
+    }
+    
+    if (new_password.length < 6) {
+      return c.json({ error: 'New password must be at least 6 characters' }, 400)
+    }
+    
+    // Verify current password
+    const user = await DB.prepare(`
+      SELECT id, password_hash FROM users WHERE id = ?
+    `).bind(userId).first()
+    
+    if (!user) {
+      return c.json({ error: 'User not found' }, 404)
+    }
+    
+    const isValid = await verifyPassword(current_password, user.password_hash as string)
+    
+    if (!isValid) {
+      return c.json({ error: 'Current password is incorrect' }, 401)
+    }
+    
+    // Hash new password and update
+    const newPasswordHash = await hashPassword(new_password)
+    
+    await DB.prepare(`
+      UPDATE users 
+      SET password_hash = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ?
+    `).bind(newPasswordHash, userId).run()
+    
+    return c.json({ message: 'Password updated successfully' })
+  } catch (error) {
+    console.error('Change password error:', error)
+    return c.json({ error: 'Failed to change password' }, 500)
+  }
+})
+
+// ============================================================================
 // COMPANY ROUTES
 // ============================================================================
 
@@ -1488,9 +1616,33 @@ app.get('/', (c) => {
                             <a href="#" onclick="showSection('reports')" class="nav-link" data-section="reports">
                                 <i class="fas fa-file-alt mr-2"></i>Reports
                             </a>
-                            <a href="#" onclick="logout()" class="nav-link">
-                                <i class="fas fa-sign-out-alt mr-2"></i>Logout
-                            </a>
+                            
+                            <!-- User Profile Dropdown -->
+                            <div class="relative" id="user-menu-container">
+                                <button onclick="toggleUserMenu()" class="flex items-center gap-2 text-white hover:text-brand-gold transition-colors">
+                                    <i class="fas fa-user-circle text-2xl"></i>
+                                    <span id="user-name-display" class="text-sm"></span>
+                                    <i class="fas fa-chevron-down text-xs"></i>
+                                </button>
+                                
+                                <!-- Dropdown Menu -->
+                                <div id="user-dropdown" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50">
+                                    <div class="px-4 py-2 border-b border-gray-200">
+                                        <p class="text-sm font-semibold text-gray-900" id="user-email-display"></p>
+                                        <p class="text-xs text-gray-500">Account Settings</p>
+                                    </div>
+                                    <a href="#" onclick="showProfileModal(); return false;" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        <i class="fas fa-user-edit mr-2"></i>Edit Profile
+                                    </a>
+                                    <a href="#" onclick="showPasswordModal(); return false;" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        <i class="fas fa-key mr-2"></i>Change Password
+                                    </a>
+                                    <div class="border-t border-gray-200 my-1"></div>
+                                    <a href="#" onclick="logout(); return false;" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                                    </a>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </nav>
