@@ -467,6 +467,160 @@ app.delete('/api/accounts/:id', authMiddleware, async (c) => {
   }
 })
 
+// Check if account balance can be updated this month
+app.get('/api/accounts/:id/can-update', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const accountId = parseInt(c.req.param('id'));
+    const { DB } = c.env;
+
+    // Get current date info
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    // Check if account exists and belongs to user
+    const account = await DB.prepare(`
+      SELECT id FROM accounts WHERE id = ? AND user_id = ?
+    `).bind(accountId, userId).first();
+
+    if (!account) {
+      return c.json({ error: 'Account not found' }, 404);
+    }
+
+    // Check if balance was already updated this month
+    const existingHistory = await DB.prepare(`
+      SELECT id, created_at FROM account_balance_history
+      WHERE account_id = ? AND month = ? AND year = ?
+    `).bind(accountId, currentMonth, currentYear).first() as any;
+
+    if (existingHistory) {
+      return c.json({
+        canUpdate: false,
+        month: currentMonth,
+        year: currentYear,
+        lastUpdate: existingHistory.created_at,
+        message: 'Balance already updated this month'
+      });
+    }
+
+    return c.json({
+      canUpdate: true,
+      month: currentMonth,
+      year: currentYear,
+      message: 'Balance can be updated'
+    });
+  } catch (error: any) {
+    console.error('Check update permission error:', error);
+    return c.json({ error: 'Failed to check update permission' }, 500);
+  }
+})
+
+// Update account balance with monthly restriction and history tracking
+app.put('/api/accounts/:id/balance', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const accountId = parseInt(c.req.param('id'));
+    const { DB } = c.env;
+    const { balance, cash_balance } = await c.req.json();
+
+    // Get current date info
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const currentYear = now.getFullYear();
+
+    // Get account details
+    const account = await DB.prepare(`
+      SELECT id, user_id, default_currency, balance_cad, balance_usd, 
+             cash_balance_cad, cash_balance_usd
+      FROM accounts
+      WHERE id = ? AND user_id = ?
+    `).bind(accountId, userId).first() as any;
+
+    if (!account) {
+      return c.json({ error: 'Account not found' }, 404);
+    }
+
+    // Check if balance was already updated this month
+    const existingHistory = await DB.prepare(`
+      SELECT id FROM account_balance_history
+      WHERE account_id = ? AND month = ? AND year = ?
+    `).bind(accountId, currentMonth, currentYear).first();
+
+    if (existingHistory) {
+      return c.json({ 
+        error: 'Balance already updated this month',
+        canUpdate: false,
+        month: currentMonth,
+        year: currentYear
+      }, 400);
+    }
+
+    // Prepare update based on currency
+    let updateData: any = {};
+    let historyBalance = balance;
+    let historyCash = cash_balance;
+    let historyCurrency = account.default_currency;
+
+    if (account.default_currency === 'CAD') {
+      updateData.balance_cad = balance;
+      updateData.cash_balance_cad = cash_balance;
+    } else {
+      updateData.balance_usd = balance;
+      updateData.cash_balance_usd = cash_balance;
+    }
+
+    // Update account balances
+    await DB.prepare(`
+      UPDATE accounts
+      SET ${account.default_currency === 'CAD' ? 'balance_cad = ?, cash_balance_cad = ?' : 'balance_usd = ?, cash_balance_usd = ?'},
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      balance,
+      cash_balance,
+      accountId,
+      userId
+    ).run();
+
+    // Get exchange rates for history
+    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${currentMonth}&year=${currentYear}`, {
+      headers: { 'Authorization': c.req.header('Authorization') || '' }
+    });
+    const rates = await rateResponse.json() as any;
+
+    // Save to history
+    await DB.prepare(`
+      INSERT INTO account_balance_history (
+        user_id, account_id, balance, cash_balance, currency,
+        month, year, exchange_rate_to_usd, exchange_rate_to_cad
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      userId,
+      accountId,
+      historyBalance,
+      historyCash,
+      historyCurrency,
+      currentMonth,
+      currentYear,
+      rates.cad_to_usd || (1 / rates.usd_to_cad),
+      rates.usd_to_cad || 1.35
+    ).run();
+
+    return c.json({ 
+      success: true,
+      updated: true,
+      month: currentMonth,
+      year: currentYear,
+      historySaved: true
+    });
+  } catch (error: any) {
+    console.error('Update balance error:', error);
+    return c.json({ error: 'Failed to update balance' }, 500);
+  }
+})
+
 // Get exchange rate for a specific month/year
 app.get('/api/exchange-rate', authMiddleware, async (c) => {
   try {

@@ -640,6 +640,10 @@ async function showEditAccountForm(accountId) {
 
 async function showUpdateBalanceForm(accountId) {
     try {
+        // Check if balance can be updated this month
+        const checkResponse = await api.get(`/api/accounts/${accountId}/can-update`)
+        const updateCheck = checkResponse.data
+        
         const response = await api.get(`/api/accounts/${accountId}`)
         const account = response.data.account
         
@@ -651,9 +655,27 @@ async function showUpdateBalanceForm(accountId) {
         const currentCash = account.default_currency === 'CAD' ? account.cash_balance_cad : account.cash_balance_usd
         const lastUpdated = new Date(account.updated_at).toLocaleString()
         
+        // Build warning message if already updated this month
+        const warningHtml = !updateCheck.canUpdate ? `
+            <div class="mb-4 p-4 bg-yellow-100 border border-yellow-400 rounded-lg">
+                <div class="flex items-start">
+                    <i class="fas fa-exclamation-triangle text-yellow-600 mt-1 mr-3"></i>
+                    <div>
+                        <p class="font-semibold text-yellow-800">Already Updated This Month</p>
+                        <p class="text-sm text-yellow-700 mt-1">
+                            Balance was updated on ${new Date(updateCheck.lastUpdate).toLocaleDateString()}.
+                            You can only update account balances once per month.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        ` : ''
+        
         modal.innerHTML = `
             <div class="bg-white rounded-lg p-6 max-w-md w-full">
                 <h3 class="text-2xl font-bold text-brand-teal mb-6">Update Balance</h3>
+                
+                ${warningHtml}
                 
                 <div class="mb-4 p-4 bg-gray-100 rounded-lg">
                     <h4 class="font-semibold text-gray-700 mb-2">${account.account_name}</h4>
@@ -661,6 +683,7 @@ async function showUpdateBalanceForm(accountId) {
                         <p>Account Type: <span class="font-semibold">${account.account_type}</span></p>
                         <p>Currency: <span class="font-semibold">${account.default_currency}</span></p>
                         <p>Last Updated: <span class="font-semibold">${lastUpdated}</span></p>
+                        <p>Update Period: <span class="font-semibold">${updateCheck.month}/${updateCheck.year}</span></p>
                     </div>
                 </div>
                 
@@ -668,20 +691,23 @@ async function showUpdateBalanceForm(accountId) {
                     <div class="mb-4">
                         <label class="block text-gray-700 mb-2">Total Balance (${account.default_currency}) *</label>
                         <input type="number" step="0.01" name="balance" value="${currentBalance}" 
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg" required ${!updateCheck.canUpdate ? 'disabled' : ''}>
                         <small class="text-gray-400">Current: ${formatCurrency(currentBalance, account.default_currency)}</small>
                     </div>
                     
                     <div class="mb-4">
                         <label class="block text-gray-700 mb-2">Cash Balance (${account.default_currency}) *</label>
                         <input type="number" step="0.01" name="cash_balance" value="${currentCash}" 
-                               class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg" required ${!updateCheck.canUpdate ? 'disabled' : ''}>
                         <small class="text-gray-400">Current: ${formatCurrency(currentCash, account.default_currency)}</small>
                     </div>
                     
                     <div class="flex gap-4 mt-6">
-                        <button type="submit" class="btn-primary flex-1">Update Balance</button>
-                        <button type="button" onclick="document.getElementById('balance-modal').remove()" class="btn-secondary flex-1">Cancel</button>
+                        ${updateCheck.canUpdate ? 
+                            '<button type="submit" class="btn-primary flex-1">Update Balance</button>' :
+                            '<button type="button" disabled class="bg-gray-400 text-white px-6 py-2 rounded-lg flex-1 cursor-not-allowed">Cannot Update</button>'
+                        }
+                        <button type="button" onclick="document.getElementById('balance-modal').remove()" class="btn-secondary flex-1">Close</button>
                     </div>
                 </form>
             </div>
@@ -689,29 +715,33 @@ async function showUpdateBalanceForm(accountId) {
         
         document.body.appendChild(modal)
         
-        document.getElementById('updateBalanceForm').addEventListener('submit', async (e) => {
-            e.preventDefault()
-            const formData = new FormData(e.target)
-            const balance = parseFloat(formData.get('balance')) || 0
-            const cashBalance = parseFloat(formData.get('cash_balance')) || 0
-            
-            const data = {
-                balance_cad: account.default_currency === 'CAD' ? balance : account.balance_cad,
-                balance_usd: account.default_currency === 'USD' ? balance : account.balance_usd,
-                cash_balance_cad: account.default_currency === 'CAD' ? cashBalance : account.cash_balance_cad,
-                cash_balance_usd: account.default_currency === 'USD' ? cashBalance : account.cash_balance_usd
-            }
-            
-            try {
-                await api.put(`/api/accounts/${accountId}`, data)
-                modal.remove()
-                await loadAccountsList()
-                loadAccounts()
-                loadDashboard()
-            } catch (error) {
-                alert(error.response?.data?.error || 'Failed to update balance')
-            }
-        })
+        if (updateCheck.canUpdate) {
+            document.getElementById('updateBalanceForm').addEventListener('submit', async (e) => {
+                e.preventDefault()
+                const formData = new FormData(e.target)
+                const balance = parseFloat(formData.get('balance')) || 0
+                const cashBalance = parseFloat(formData.get('cash_balance')) || 0
+                
+                const data = {
+                    balance: balance,
+                    cash_balance: cashBalance
+                }
+                
+                try {
+                    const result = await api.put(`/api/accounts/${accountId}/balance`, data)
+                    modal.remove()
+                    
+                    // Show success message
+                    alert(`Balance updated successfully!\nHistory saved for ${result.data.month}/${result.data.year}`)
+                    
+                    await loadAccountsList()
+                    loadAccounts()
+                    loadDashboard()
+                } catch (error) {
+                    alert(error.response?.data?.error || 'Failed to update balance')
+                }
+            })
+        }
     } catch (error) {
         console.error('Failed to load account:', error)
         alert('Failed to load account')
