@@ -525,6 +525,7 @@ function showAccountForm() {
     
     document.getElementById('accountForm').addEventListener('submit', async (e) => {
         e.preventDefault()
+        console.log('Form submitted!')
         const formData = new FormData(e.target)
         const defaultCurrency = formData.get('default_currency')
         const balance = parseFloat(formData.get('balance')) || 0
@@ -540,12 +541,17 @@ function showAccountForm() {
             cash_balance_usd: defaultCurrency === 'USD' ? cashBalance : 0
         }
         
+        console.log('Account data to send:', data)
+        
         try {
-            await api.post('/api/accounts', data)
+            console.log('Sending POST request...')
+            const response = await api.post('/api/accounts', data)
+            console.log('Account created successfully:', response.data)
             modal.remove()
             await loadAccountsList()
             loadAccounts()
         } catch (error) {
+            console.error('Error creating account:', error)
             alert(error.response?.data?.error || 'Failed to create account')
         }
     })

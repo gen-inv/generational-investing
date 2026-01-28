@@ -331,11 +331,19 @@ app.post('/api/accounts', authMiddleware, async (c) => {
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    // Get exchange rates
-    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${currentMonth}&year=${currentYear}`, {
-      headers: { 'Authorization': c.req.header('Authorization') || '' }
-    });
-    const rates = await rateResponse.json() as any;
+    // Get exchange rates with fallback
+    let rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
+    try {
+      const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${currentMonth}&year=${currentYear}`, {
+        headers: { 'Authorization': c.req.header('Authorization') || '' }
+      });
+      if (rateResponse.ok) {
+        rates = await rateResponse.json() as any;
+      }
+    } catch (e) {
+      console.error('Exchange rate fetch error during account creation:', e);
+      // Use fallback rates
+    }
 
     // Determine balance and currency based on default_currency
     const historyBalance = default_currency === 'CAD' ? balance_cad : balance_usd;
