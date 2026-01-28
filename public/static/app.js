@@ -439,11 +439,14 @@ async function loadAccounts() {
                                             </div>
                                         </div>
                                         <div class="text-xs text-gray-400 mt-2">
-                                            Currency: ${acc.default_currency}
+                                            Currency: ${acc.default_currency} | Last updated: ${new Date(acc.updated_at).toLocaleDateString()}
                                         </div>
                                     </div>
                                     <div class="ml-4 flex space-x-2">
-                                        <button onclick="showEditAccountForm(${acc.id})" class="text-blue-400 hover:text-blue-300" title="Edit">
+                                        <button onclick="showUpdateBalanceForm(${acc.id})" class="text-green-400 hover:text-green-300" title="Update Balance">
+                                            <i class="fas fa-dollar-sign"></i>
+                                        </button>
+                                        <button onclick="showEditAccountForm(${acc.id})" class="text-blue-400 hover:text-blue-300" title="Edit Account">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <button onclick="deleteAccount(${acc.id})" class="text-red-400 hover:text-red-300" title="Delete">
@@ -627,6 +630,86 @@ async function showEditAccountForm(accountId) {
                 loadAccounts()
             } catch (error) {
                 alert(error.response?.data?.error || 'Failed to update account')
+            }
+        })
+    } catch (error) {
+        console.error('Failed to load account:', error)
+        alert('Failed to load account')
+    }
+}
+
+async function showUpdateBalanceForm(accountId) {
+    try {
+        const response = await api.get(`/api/accounts/${accountId}`)
+        const account = response.data.account
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'balance-modal'
+        
+        const currentBalance = account.default_currency === 'CAD' ? account.balance_cad : account.balance_usd
+        const currentCash = account.default_currency === 'CAD' ? account.cash_balance_cad : account.cash_balance_usd
+        const lastUpdated = new Date(account.updated_at).toLocaleString()
+        
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                <h3 class="text-2xl font-bold text-brand-teal mb-6">Update Balance</h3>
+                
+                <div class="mb-4 p-4 bg-gray-100 rounded-lg">
+                    <h4 class="font-semibold text-gray-700 mb-2">${account.account_name}</h4>
+                    <div class="text-sm text-gray-600">
+                        <p>Account Type: <span class="font-semibold">${account.account_type}</span></p>
+                        <p>Currency: <span class="font-semibold">${account.default_currency}</span></p>
+                        <p>Last Updated: <span class="font-semibold">${lastUpdated}</span></p>
+                    </div>
+                </div>
+                
+                <form id="updateBalanceForm">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Total Balance (${account.default_currency}) *</label>
+                        <input type="number" step="0.01" name="balance" value="${currentBalance}" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <small class="text-gray-400">Current: ${formatCurrency(currentBalance, account.default_currency)}</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Cash Balance (${account.default_currency}) *</label>
+                        <input type="number" step="0.01" name="cash_balance" value="${currentCash}" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <small class="text-gray-400">Current: ${formatCurrency(currentCash, account.default_currency)}</small>
+                    </div>
+                    
+                    <div class="flex gap-4 mt-6">
+                        <button type="submit" class="btn-primary flex-1">Update Balance</button>
+                        <button type="button" onclick="document.getElementById('balance-modal').remove()" class="btn-secondary flex-1">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        document.getElementById('updateBalanceForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target)
+            const balance = parseFloat(formData.get('balance')) || 0
+            const cashBalance = parseFloat(formData.get('cash_balance')) || 0
+            
+            const data = {
+                balance_cad: account.default_currency === 'CAD' ? balance : account.balance_cad,
+                balance_usd: account.default_currency === 'USD' ? balance : account.balance_usd,
+                cash_balance_cad: account.default_currency === 'CAD' ? cashBalance : account.cash_balance_cad,
+                cash_balance_usd: account.default_currency === 'USD' ? cashBalance : account.cash_balance_usd
+            }
+            
+            try {
+                await api.put(`/api/accounts/${accountId}`, data)
+                modal.remove()
+                await loadAccountsList()
+                loadAccounts()
+                loadDashboard()
+            } catch (error) {
+                alert(error.response?.data?.error || 'Failed to update balance')
             }
         })
     } catch (error) {
