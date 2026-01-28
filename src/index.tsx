@@ -324,8 +324,44 @@ app.post('/api/accounts', authMiddleware, async (c) => {
       default_currency
     ).run();
 
+    const accountId = result.meta.last_row_id;
+
+    // Save initial balance to history
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    // Get exchange rates
+    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${currentMonth}&year=${currentYear}`, {
+      headers: { 'Authorization': c.req.header('Authorization') || '' }
+    });
+    const rates = await rateResponse.json() as any;
+
+    // Determine balance and currency based on default_currency
+    const historyBalance = default_currency === 'CAD' ? balance_cad : balance_usd;
+    const historyCash = default_currency === 'CAD' ? cash_balance_cad : cash_balance_usd;
+
+    // Save initial snapshot to history
+    await DB.prepare(`
+      INSERT INTO account_balance_history (
+        user_id, account_id, balance, cash_balance, currency,
+        month, year, exchange_rate_to_usd, exchange_rate_to_cad
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      userId,
+      accountId,
+      historyBalance,
+      historyCash,
+      default_currency,
+      currentMonth,
+      currentYear,
+      rates.cad_to_usd || (1 / rates.usd_to_cad),
+      rates.usd_to_cad || 1.35
+    ).run();
+
     return c.json({ 
-      id: result.meta.last_row_id,
+      id: accountId,
       account_name,
       account_type,
       balance_cad,
