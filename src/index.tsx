@@ -297,7 +297,7 @@ app.post('/api/accounts', authMiddleware, async (c) => {
     }
 
     // Validate account_type
-    const validTypes = ['Cash', 'RESP', 'RRSP', 'LIRA'];
+    const validTypes = ['Cash', 'TFSA', 'RRSP', 'LIRA'];
     if (!validTypes.includes(account_type)) {
       return c.json({ error: 'Invalid account type' }, 400);
     }
@@ -358,7 +358,7 @@ app.put('/api/accounts/:id', authMiddleware, async (c) => {
 
     // Validate account_type if provided
     if (account_type !== undefined) {
-      const validTypes = ['Cash', 'RESP', 'RRSP', 'LIRA'];
+      const validTypes = ['Cash', 'TFSA', 'RRSP', 'LIRA'];
       if (!validTypes.includes(account_type)) {
         return c.json({ error: 'Invalid account type' }, 400);
       }

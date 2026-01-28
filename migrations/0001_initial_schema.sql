@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS companies (
 CREATE TABLE IF NOT EXISTS account_balances (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
-  account_type TEXT NOT NULL, -- Cash, RESP, RRSP, LIRA
+  account_type TEXT NOT NULL, -- Cash, TFSA, RRSP, LIRA
   balance_cad REAL DEFAULT 0,
   balance_usd REAL DEFAULT 0,
   cash_balance_usd REAL DEFAULT 0,
