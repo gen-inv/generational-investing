@@ -442,23 +442,29 @@ app.post('/api/accounts', authMiddleware, async (c) => {
     const historyCash = default_currency === 'CAD' ? cash_balance_cad : cash_balance_usd;
 
     // Save initial snapshot to history
-    await DB.prepare(`
-      INSERT INTO account_balance_history (
-        user_id, account_id, balance, cash_balance, currency,
-        month, year, exchange_rate_to_usd, exchange_rate_to_cad
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      userId,
-      accountId,
-      historyBalance,
-      historyCash,
-      default_currency,
-      currentMonth,
-      currentYear,
-      rates.cad_to_usd || (1 / rates.usd_to_cad),
-      rates.usd_to_cad || 1.35
-    ).run();
+    try {
+      await DB.prepare(`
+        INSERT INTO account_balance_history (
+          user_id, account_id, balance, cash_balance, currency,
+          month, year, exchange_rate_to_usd, exchange_rate_to_cad
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        userId,
+        accountId,
+        historyBalance,
+        historyCash,
+        default_currency,
+        currentMonth,
+        currentYear,
+        rates.cad_to_usd || (1 / rates.usd_to_cad),
+        rates.usd_to_cad || 1.35
+      ).run();
+      console.log(`Initial balance history saved for account ${accountId}`);
+    } catch (historyError) {
+      console.error('Failed to save initial balance history:', historyError);
+      // Don't fail account creation if history save fails
+    }
 
     return c.json({ 
       id: accountId,
