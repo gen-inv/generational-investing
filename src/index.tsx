@@ -1263,7 +1263,7 @@ app.get('/', (c) => {
                         <div class="flex justify-between items-center mb-6">
                             <h2 class="text-3xl font-bold text-brand-teal">Account Balances</h2>
                             <button onclick="showAccountForm()" class="btn-primary">
-                                <i class="fas fa-plus mr-2"></i>Update Balances
+                                <i class="fas fa-plus mr-2"></i>Add Account
                             </button>
                         </div>
                         

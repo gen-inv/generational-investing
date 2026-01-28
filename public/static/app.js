@@ -491,7 +491,7 @@ function showAccountForm() {
                 
                 <div class="mb-4">
                     <label class="block text-gray-700 mb-2">Default Currency *</label>
-                    <select name="default_currency" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required onchange="updateBalanceFields(this.value)">
+                    <select name="default_currency" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                         <option value="">Select currency...</option>
                         <option value="CAD">CAD (Canadian Dollar)</option>
                         <option value="USD">USD (US Dollar)</option>
