@@ -3,6 +3,9 @@
 -- Add default_currency to accounts table
 ALTER TABLE accounts ADD COLUMN default_currency TEXT DEFAULT 'CAD';
 
+-- Add cash_balance_cad to accounts table
+ALTER TABLE accounts ADD COLUMN cash_balance_cad REAL DEFAULT 0;
+
 -- Create account_balance_history table for monthly snapshots
 CREATE TABLE IF NOT EXISTS account_balance_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
