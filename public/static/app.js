@@ -787,10 +787,6 @@ function showAccountForm() {
             
             // Don't remove modal on error so user can fix and retry
         }
-                data: error.response?.data
-            })
-            alert(error.response?.data?.error || error.message || 'Failed to create account')
-        }
     })
 }
 
