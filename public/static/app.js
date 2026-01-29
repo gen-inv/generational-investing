@@ -1115,27 +1115,28 @@ async function loadStocks() {
 // New Stock Trade Form Functions
 
 async function showStockForm(stockId = null) {
-    const isEdit = stockId !== null
-    const title = isEdit ? 'Edit Stock Trade' : 'Add Stock Trade'
-    
-    // Load companies and accounts
-    const companiesResponse = await api.get('/api/companies')
-    const companies = companiesResponse.data
-    
-    const accountsResponse = await api.get('/api/accounts')
-    const accounts = accountsResponse.data
-    
-    if (companies.length === 0) {
-        alert('Please add companies first before creating stock trades.')
-        showSection('companies')
-        return
-    }
-    
-    if (accounts.length === 0) {
-        alert('Please create an account first before adding stock trades.')
-        showSection('accounts')
-        return
-    }
+    try {
+        const isEdit = stockId !== null
+        const title = isEdit ? 'Edit Stock Trade' : 'Add Stock Trade'
+        
+        // Load companies and accounts
+        const companiesResponse = await api.get('/api/companies')
+        const companies = companiesResponse.data
+        
+        const accountsResponse = await api.get('/api/accounts')
+        const accounts = accountsResponse.data
+        
+        if (companies.length === 0) {
+            alert('Please add companies first before creating stock trades.')
+            showSection('companies')
+            return
+        }
+        
+        if (accounts.length === 0) {
+            alert('Please create an account first before adding stock trades.')
+            showSection('accounts')
+            return
+        }
     
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
@@ -1263,6 +1264,10 @@ async function showStockForm(stockId = null) {
         // Set default date to today
         const today = new Date().toISOString().split('T')[0]
         document.querySelector('[name="trade_date"]').value = today
+    }
+    } catch (error) {
+        console.error('Error in showStockForm:', error)
+        alert('Error loading form: ' + (error.message || 'Please try again'))
     }
 }
 
