@@ -1069,41 +1069,39 @@ async function deleteAccount(accountId) {
 
 async function loadStocks() {
     try {
-        const response = await api.get('/api/stocks')
+        const response = await api.get('/api/stocks?open=true')
         const stocks = response.data
         
         const table = document.getElementById('stocks-table')
         table.innerHTML = ''
         
         if (stocks.length === 0) {
-            table.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No stock trades found</td></tr>'
+            table.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No open stock trades found</td></tr>'
             return
         }
         
         stocks.forEach(stock => {
+            const avgPrice = stock.avg_price || stock.price
+            const costBasis = stock.cost_basis || stock.price
+            const accountName = stock.account_name || 'N/A'
+            
             table.innerHTML += `
                 <tr class="border-b border-gray-200 hover:bg-gray-50">
-                    <td class="px-4 py-3">${stock.trade_date}</td>
+                    <td class="px-4 py-3">${accountName}</td>
                     <td class="px-4 py-3 font-semibold text-brand-teal">${stock.ticker}</td>
-                    <td class="px-4 py-3">
-                        <span class="px-2 py-1 rounded ${stock.trade_type === 'BUY' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                            ${stock.trade_type}
-                        </span>
-                    </td>
+                    <td class="px-4 py-3">${stock.trade_date}</td>
                     <td class="px-4 py-3 text-right">${stock.quantity}</td>
-                    <td class="px-4 py-3 text-right">$${parseFloat(stock.price).toFixed(2)}</td>
-                    <td class="px-4 py-3">${stock.account_type}</td>
+                    <td class="px-4 py-3 text-right">$${parseFloat(avgPrice).toFixed(2)}</td>
+                    <td class="px-4 py-3 text-right">$${parseFloat(costBasis).toFixed(2)}</td>
                     <td class="px-4 py-3 text-center">
-                        <span class="px-2 py-1 rounded ${stock.is_open ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
-                            ${stock.is_open ? 'Open' : 'Closed'}
-                        </span>
-                    </td>
-                    <td class="px-4 py-3 text-center">
-                        <button onclick="editStock(${stock.id})" class="text-brand-teal hover:text-brand-gold mr-2">
+                        <button onclick="showStockDetails(${stock.id})" class="text-brand-teal hover:text-brand-gold mr-2" title="Details">
+                            <i class="fas fa-info-circle"></i>
+                        </button>
+                        <button onclick="editStock(${stock.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button onclick="deleteStock(${stock.id})" class="text-red-600 hover:text-red-800">
-                            <i class="fas fa-trash"></i>
+                        <button onclick="closeStock(${stock.id})" class="text-yellow-600 hover:text-yellow-800" title="Close">
+                            <i class="fas fa-check-circle"></i>
                         </button>
                     </td>
                 </tr>
@@ -1114,72 +1112,91 @@ async function loadStocks() {
     }
 }
 
-function showStockForm(stockId = null) {
+// New Stock Trade Form Functions
+
+async function showStockForm(stockId = null) {
     const isEdit = stockId !== null
     const title = isEdit ? 'Edit Stock Trade' : 'Add Stock Trade'
+    
+    // Load companies and accounts
+    const companiesResponse = await api.get('/api/companies')
+    const companies = companiesResponse.data
+    
+    const accountsResponse = await api.get('/api/accounts')
+    const accounts = accountsResponse.data
+    
+    if (companies.length === 0) {
+        alert('Please add companies first before creating stock trades.')
+        showSection('companies')
+        return
+    }
+    
+    if (accounts.length === 0) {
+        alert('Please create an account first before adding stock trades.')
+        showSection('accounts')
+        return
+    }
     
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
     modal.innerHTML = `
-        <div class="bg-white rounded-lg p-6 max-w-2xl w-full">
+        <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h3 class="text-2xl font-bold text-brand-teal mb-6">${title}</h3>
             <form id="stockForm">
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-gray-700 mb-2">Ticker *</label>
-                        <input type="text" name="ticker" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <label class="block text-gray-700 mb-2 font-semibold">Company *</label>
+                        <select name="company_id" id="company_select" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                            <option value="">Select company...</option>
+                            ${companies.map(c => `
+                                <option value="${c.id}" data-ticker="${c.ticker}">${c.ticker} - ${c.company_name}</option>
+                            `).join('')}
+                        </select>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2">Trade Type *</label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Account *</label>
+                        <select name="account_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                            <option value="">Select account...</option>
+                            ${accounts.map(acc => `
+                                <option value="${acc.id}">${acc.account_name}</option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Trade Type *</label>
                         <select name="trade_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                             <option value="BUY">BUY</option>
                             <option value="SELL">SELL</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2">Quantity *</label>
-                        <input type="number" name="quantity" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Price *</label>
-                        <input type="number" step="0.01" name="price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Account *</label>
-                        <select name="account_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="">Select account...</option>
-                            ${accountsList.map(acc => `
-                                <option value="${acc.id}">${acc.account_name} (${acc.account_type})</option>
-                            `).join('')}
-                        </select>
-                        <small class="text-gray-400">
-                            <a href="#" onclick="showSection('accounts'); return false;" class="text-brand-gold hover:underline">
-                                Manage accounts
-                            </a>
-                        </small>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Trade Date *</label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Trade Date *</label>
                         <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2">Cost Basis Adjustment</label>
-                        <input type="number" step="0.01" name="cost_basis_adjustment" value="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <label class="block text-gray-700 mb-2 font-semibold">Shares *</label>
+                        <input type="number" name="quantity" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
-                        <label class="flex items-center pt-8">
-                            <input type="checkbox" name="is_open" checked class="mr-2">
-                            <span class="text-gray-700">Position Open</span>
-                        </label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Price per Share *</label>
+                        <input type="number" step="0.01" name="price" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Commission</label>
+                        <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                     </div>
                     <div class="col-span-2">
-                        <label class="block text-gray-700 mb-2">Notes</label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Notes</label>
                         <textarea name="notes" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
                     </div>
                 </div>
                 <div class="flex gap-4 mt-6">
-                    <button type="submit" class="btn-primary flex-1">Save</button>
-                    <button type="button" onclick="this.closest('.fixed').remove()" class="btn-secondary flex-1">Cancel</button>
+                    <button type="submit" class="bg-brand-teal text-white px-6 py-2 rounded-lg hover:bg-opacity-90 flex-1">
+                        <i class="fas fa-save mr-2"></i>Save Trade
+                    </button>
+                    <button type="button" onclick="this.closest('.fixed').remove()" class="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 flex-1">
+                        Cancel
+                    </button>
                 </div>
             </form>
         </div>
@@ -1187,18 +1204,28 @@ function showStockForm(stockId = null) {
     
     document.body.appendChild(modal)
     
+    // Auto-fill ticker when company is selected
+    document.getElementById('company_select').addEventListener('change', (e) => {
+        const selectedOption = e.target.options[e.target.selectedIndex]
+        const ticker = selectedOption.dataset.ticker
+        // You can use this if needed
+    })
+    
     document.getElementById('stockForm').addEventListener('submit', async (e) => {
         e.preventDefault()
         const formData = new FormData(e.target)
+        
+        const selectedCompany = companies.find(c => c.id === parseInt(formData.get('company_id')))
+        
         const data = {
-            ticker: formData.get('ticker'),
+            company_id: parseInt(formData.get('company_id')),
+            ticker: selectedCompany.ticker,
             trade_type: formData.get('trade_type'),
             quantity: parseInt(formData.get('quantity')),
             price: parseFloat(formData.get('price')),
             account_id: parseInt(formData.get('account_id')),
             trade_date: formData.get('trade_date'),
-            cost_basis_adjustment: parseFloat(formData.get('cost_basis_adjustment')),
-            is_open: formData.get('is_open') === 'on',
+            commission: parseFloat(formData.get('commission')) || 0,
             notes: formData.get('notes') || null
         }
         
@@ -1211,25 +1238,27 @@ function showStockForm(stockId = null) {
             modal.remove()
             loadStocks()
             loadDashboard()
+            alert(isEdit ? 'Stock trade updated successfully!' : 'Stock trade added successfully!')
         } catch (error) {
             alert(error.response?.data?.error || 'Operation failed')
         }
     })
     
+    // Load existing data for edit
     if (isEdit) {
-        api.get(`/api/stocks/${stockId}`).then(response => {
-            const stock = response.data
+        const response = await api.get(`/api/stocks`)
+        const stock = response.data.find(s => s.id === stockId)
+        if (stock) {
             const form = document.getElementById('stockForm')
-            form.ticker.value = stock.ticker
+            form.company_id.value = stock.company_id
             form.trade_type.value = stock.trade_type
             form.quantity.value = stock.quantity
             form.price.value = stock.price
             form.account_id.value = stock.account_id
             form.trade_date.value = stock.trade_date
-            form.cost_basis_adjustment.value = stock.cost_basis_adjustment || 0
-            form.is_open.checked = stock.is_open === 1
+            form.commission.value = stock.commission || 0
             form.notes.value = stock.notes || ''
-        })
+        }
     } else {
         // Set default date to today
         const today = new Date().toISOString().split('T')[0]
@@ -1237,22 +1266,124 @@ function showStockForm(stockId = null) {
     }
 }
 
-async function editStock(id) {
-    showStockForm(id)
-}
-
-async function deleteStock(id) {
-    if (!confirm('Are you sure you want to delete this stock trade?')) return
+async function closeStock(id) {
+    if (!confirm('Are you sure you want to close this position?')) return
     
     try {
-        await api.delete(`/api/stocks/${id}`)
+        await api.put(`/api/stocks/${id}/close`)
         loadStocks()
         loadDashboard()
+        alert('Position closed successfully!')
     } catch (error) {
-        alert('Delete failed')
+        alert(error.response?.data?.error || 'Failed to close position')
     }
 }
 
+async function showStockDetails(id) {
+    try {
+        const response = await api.get('/api/stocks')
+        const stock = response.data.find(s => s.id === id)
+        
+        if (!stock) {
+            alert('Stock not found')
+            return
+        }
+        
+        const avgPrice = stock.avg_price || stock.price
+        const costBasis = stock.cost_basis || stock.price
+        const totalValue = avgPrice * stock.quantity
+        const costBasisTotal = costBasis * stock.quantity
+        const adjustments = stock.total_adjustments || 0
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-bold text-brand-teal">
+                        <i class="fas fa-info-circle mr-2"></i>Stock Details
+                    </h3>
+                    <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="card">
+                            <h4 class="text-sm text-gray-600 mb-1">Account</h4>
+                            <p class="text-lg font-semibold">${stock.account_name || 'N/A'}</p>
+                        </div>
+                        <div class="card">
+                            <h4 class="text-sm text-gray-600 mb-1">Company</h4>
+                            <p class="text-lg font-semibold">${stock.company_name || stock.ticker}</p>
+                        </div>
+                        <div class="card">
+                            <h4 class="text-sm text-gray-600 mb-1">Ticker</h4>
+                            <p class="text-lg font-semibold text-brand-teal">${stock.ticker}</p>
+                        </div>
+                        <div class="card">
+                            <h4 class="text-sm text-gray-600 mb-1">Trade Date</h4>
+                            <p class="text-lg">${stock.trade_date}</p>
+                        </div>
+                        <div class="card">
+                            <h4 class="text-sm text-gray-600 mb-1">Shares</h4>
+                            <p class="text-lg font-semibold">${stock.quantity}</p>
+                        </div>
+                        <div class="card">
+                            <h4 class="text-sm text-gray-600 mb-1">Avg Price</h4>
+                            <p class="text-lg">$${avgPrice.toFixed(2)}</p>
+                        </div>
+                        <div class="card">
+                            <h4 class="text-sm text-gray-600 mb-1">Cost Basis/Share</h4>
+                            <p class="text-lg text-brand-gold font-semibold">$${costBasis.toFixed(2)}</p>
+                        </div>
+                        <div class="card">
+                            <h4 class="text-sm text-gray-600 mb-1">Commission</h4>
+                            <p class="text-lg">$${(stock.commission || 0).toFixed(2)}</p>
+                        </div>
+                        <div class="card">
+                            <h4 class="text-sm text-gray-600 mb-1">Total Value</h4>
+                            <p class="text-lg">$${totalValue.toFixed(2)}</p>
+                        </div>
+                        <div class="card">
+                            <h4 class="text-sm text-gray-600 mb-1">Total Cost Basis</h4>
+                            <p class="text-lg">$${costBasisTotal.toFixed(2)}</p>
+                        </div>
+                        <div class="card col-span-2">
+                            <h4 class="text-sm text-gray-600 mb-1">Cost Basis Adjustments</h4>
+                            <p class="text-lg">${adjustments > 0 ? '-' : ''}$${Math.abs(adjustments).toFixed(2)}</p>
+                            <p class="text-xs text-gray-500 mt-1">From dividends and covered calls</p>
+                        </div>
+                        ${stock.notes ? `
+                            <div class="card col-span-2">
+                                <h4 class="text-sm text-gray-600 mb-1">Notes</h4>
+                                <p class="text-sm">${stock.notes}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="flex gap-3 pt-4">
+                        <button onclick="editStock(${stock.id}); this.closest('.fixed').remove()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex-1">
+                            <i class="fas fa-edit mr-2"></i>Edit Trade
+                        </button>
+                        <button onclick="closeStock(${stock.id}); this.closest('.fixed').remove()" class="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 flex-1">
+                            <i class="fas fa-check-circle mr-2"></i>Close Position
+                        </button>
+                        <button onclick="this.closest('.fixed').remove()" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+    } catch (error) {
+        console.error('Error loading stock details:', error)
+        alert('Failed to load stock details')
+    }
+}
 // ============================================================================
 // OPTION TRADE FUNCTIONS
 // ============================================================================
@@ -1524,4 +1655,22 @@ function formatCurrency(value, currency = 'USD') {
     if (!value) return currency === 'USD' ? '$0.00' : 'C$0.00'
     const prefix = currency === 'USD' ? '$' : 'C$'
     return prefix + parseFloat(value).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+
+async function editStock(id) {
+    showStockForm(id)
+}
+
+async function deleteStock(id) {
+    if (!confirm('Are you sure you want to delete this stock trade?')) return
+    
+    try {
+        await api.delete(`/api/stocks/${id}`)
+        loadStocks()
+        loadDashboard()
+        alert('Stock trade deleted successfully!')
+    } catch (error) {
+        alert(error.response?.data?.error || 'Delete failed')
+    }
 }

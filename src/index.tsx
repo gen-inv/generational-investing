@@ -1166,75 +1166,220 @@ app.get('/api/dashboard', authMiddleware, async (c) => {
 app.get('/api/stocks', authMiddleware, async (c) => {
   const userId = c.get('userId')
   const isOpen = c.req.query('open')
+  const { DB } = c.env
   
-  let query = 'SELECT * FROM stock_trades WHERE user_id = ?'
+  let query = `
+    SELECT 
+      st.*,
+      a.account_name,
+      c.ticker as company_ticker,
+      c.company_name,
+      (SELECT COALESCE(SUM(amount), 0) 
+       FROM cost_basis_adjustments 
+       WHERE stock_trade_id = st.id AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL')) as total_adjustments
+    FROM stock_trades st
+    LEFT JOIN accounts a ON st.account_id = a.id
+    LEFT JOIN companies c ON st.company_id = c.id
+    WHERE st.user_id = ?
+  `
   let params = [userId]
   
   if (isOpen !== undefined) {
-    query += ' AND is_open = ?'
+    query += ' AND st.is_open = ?'
     params.push(isOpen === 'true' ? 1 : 0)
   }
   
-  query += ' ORDER BY trade_date DESC'
+  query += ' ORDER BY st.trade_date DESC'
   
-  const stmt = c.env.DB.prepare(query)
+  const stmt = DB.prepare(query)
   const stocks = await stmt.bind(...params).all()
   
-  return c.json(stocks.results)
+  // Calculate avg price and cost basis for each stock
+  const enhancedStocks = stocks.results.map((stock: any) => {
+    const avgPrice = stock.price
+    const costBasis = avgPrice - (stock.total_adjustments / stock.quantity || 0)
+    
+    return {
+      ...stock,
+      avg_price: avgPrice,
+      cost_basis: costBasis
+    }
+  })
+  
+  return c.json(enhancedStocks)
 })
 
 app.post('/api/stocks', authMiddleware, async (c) => {
-  const userId = c.get('userId')
-  const data = await c.req.json()
-  
-  const result = await c.env.DB.prepare(`
-    INSERT INTO stock_trades (
-      user_id, company_id, ticker, trade_type, quantity, price, 
-      account_type, trade_date, is_open, cost_basis_adjustment, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    userId,
-    data.company_id || null,
-    data.ticker,
-    data.trade_type,
-    data.quantity,
-    data.price,
-    data.account_type,
-    data.trade_date,
-    data.is_open !== undefined ? (data.is_open ? 1 : 0) : 1,
-    data.cost_basis_adjustment || 0,
-    data.notes || null
-  ).run()
-  
-  return c.json({ id: result.meta.last_row_id, ...data })
+  try {
+    const userId = c.get('userId')
+    const data = await c.req.json()
+    const { DB } = c.env
+    
+    // Validation
+    if (!data.company_id) {
+      return c.json({ error: 'Company is required' }, 400)
+    }
+    
+    if (!data.account_id) {
+      return c.json({ error: 'Account is required' }, 400)
+    }
+    
+    if (!data.ticker || !data.trade_type || !data.quantity || !data.price || !data.trade_date) {
+      return c.json({ error: 'Missing required fields' }, 400)
+    }
+    
+    // Verify company belongs to user
+    const company = await DB.prepare(`
+      SELECT id FROM companies WHERE id = ? AND user_id = ?
+    `).bind(data.company_id, userId).first()
+    
+    if (!company) {
+      return c.json({ error: 'Company not found' }, 404)
+    }
+    
+    // Verify account belongs to user
+    const account = await DB.prepare(`
+      SELECT id FROM accounts WHERE id = ? AND user_id = ?
+    `).bind(data.account_id, userId).first()
+    
+    if (!account) {
+      return c.json({ error: 'Account not found' }, 404)
+    }
+    
+    const result = await DB.prepare(`
+      INSERT INTO stock_trades (
+        user_id, company_id, ticker, trade_type, quantity, price, 
+        account_id, trade_date, commission, notes, is_open
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      userId,
+      data.company_id,
+      data.ticker,
+      data.trade_type,
+      data.quantity,
+      data.price,
+      data.account_id,
+      data.trade_date,
+      data.commission || 0,
+      data.notes || null,
+      1  // Always open when created
+    ).run()
+    
+    return c.json({ 
+      id: result.meta.last_row_id,
+      ...data,
+      is_open: true
+    }, 201)
+  } catch (error) {
+    console.error('Create stock trade error:', error)
+    return c.json({ error: 'Failed to create stock trade' }, 500)
+  }
 })
 
 app.put('/api/stocks/:id', authMiddleware, async (c) => {
-  const userId = c.get('userId')
-  const tradeId = c.req.param('id')
-  const data = await c.req.json()
-  
-  await c.env.DB.prepare(`
-    UPDATE stock_trades SET
-      ticker = ?, trade_type = ?, quantity = ?, price = ?,
-      account_type = ?, trade_date = ?, is_open = ?,
-      cost_basis_adjustment = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND user_id = ?
-  `).bind(
-    data.ticker,
-    data.trade_type,
-    data.quantity,
-    data.price,
-    data.account_type,
-    data.trade_date,
-    data.is_open ? 1 : 0,
-    data.cost_basis_adjustment || 0,
-    data.notes || null,
-    tradeId,
-    userId
-  ).run()
-  
-  return c.json({ success: true })
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const data = await c.req.json()
+    const { DB } = c.env
+    
+    // Verify trade belongs to user
+    const trade = await DB.prepare(`
+      SELECT id FROM stock_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+    
+    if (!trade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+    
+    // Verify company belongs to user
+    if (data.company_id) {
+      const company = await DB.prepare(`
+        SELECT id FROM companies WHERE id = ? AND user_id = ?
+      `).bind(data.company_id, userId).first()
+      
+      if (!company) {
+        return c.json({ error: 'Company not found' }, 404)
+      }
+    }
+    
+    // Verify account belongs to user
+    if (data.account_id) {
+      const account = await DB.prepare(`
+        SELECT id FROM accounts WHERE id = ? AND user_id = ?
+      `).bind(data.account_id, userId).first()
+      
+      if (!account) {
+        return c.json({ error: 'Account not found' }, 404)
+      }
+    }
+    
+    await DB.prepare(`
+      UPDATE stock_trades SET
+        company_id = ?,
+        ticker = ?,
+        trade_type = ?,
+        quantity = ?,
+        price = ?,
+        account_id = ?,
+        trade_date = ?,
+        commission = ?,
+        notes = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      data.company_id,
+      data.ticker,
+      data.trade_type,
+      data.quantity,
+      data.price,
+      data.account_id,
+      data.trade_date,
+      data.commission || 0,
+      data.notes || null,
+      tradeId,
+      userId
+    ).run()
+    
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('Update stock trade error:', error)
+    return c.json({ error: 'Failed to update stock trade' }, 500)
+  }
+})
+
+app.put('/api/stocks/:id/close', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Verify trade belongs to user and is open
+    const trade = await DB.prepare(`
+      SELECT id, is_open FROM stock_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+    
+    if (!trade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+    
+    if (trade.is_open === 0) {
+      return c.json({ error: 'Trade is already closed' }, 400)
+    }
+    
+    // Close the trade
+    await DB.prepare(`
+      UPDATE stock_trades SET
+        is_open = 0,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).run()
+    
+    return c.json({ success: true, message: 'Trade closed successfully' })
+  } catch (error) {
+    console.error('Close stock trade error:', error)
+    return c.json({ error: 'Failed to close stock trade' }, 500)
+  }
 })
 
 app.delete('/api/stocks/:id', authMiddleware, async (c) => {
@@ -1753,13 +1898,12 @@ app.get('/', (c) => {
                                 <table class="w-full">
                                     <thead>
                                         <tr class="bg-gray-100">
-                                            <th class="px-4 py-3 text-left">Date</th>
-                                            <th class="px-4 py-3 text-left">Ticker</th>
-                                            <th class="px-4 py-3 text-left">Type</th>
-                                            <th class="px-4 py-3 text-right">Quantity</th>
-                                            <th class="px-4 py-3 text-right">Price</th>
                                             <th class="px-4 py-3 text-left">Account</th>
-                                            <th class="px-4 py-3 text-center">Status</th>
+                                            <th class="px-4 py-3 text-left">Ticker</th>
+                                            <th class="px-4 py-3 text-left">Open Date</th>
+                                            <th class="px-4 py-3 text-right">Shares</th>
+                                            <th class="px-4 py-3 text-right">Avg Price</th>
+                                            <th class="px-4 py-3 text-right">Cost Basis</th>
                                             <th class="px-4 py-3 text-center">Actions</th>
                                         </tr>
                                     </thead>
