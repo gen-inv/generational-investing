@@ -1124,7 +1124,7 @@ async function showStockForm(stockId = null) {
         const companies = companiesResponse.data
         
         const accountsResponse = await api.get('/api/accounts')
-        const accounts = accountsResponse.data
+        const accounts = accountsResponse.data.accounts || accountsResponse.data
         
         if (companies.length === 0) {
             alert('Please add companies first before creating stock trades.')
