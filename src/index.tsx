@@ -1237,9 +1237,9 @@ app.post('/api/stocks', authMiddleware, async (c) => {
       return c.json({ error: 'Company not found' }, 404)
     }
     
-    // Verify account belongs to user
+    // Verify account belongs to user and get account_type
     const account = await DB.prepare(`
-      SELECT id FROM accounts WHERE id = ? AND user_id = ?
+      SELECT id, account_type FROM accounts WHERE id = ? AND user_id = ?
     `).bind(data.account_id, userId).first()
     
     if (!account) {
@@ -1249,8 +1249,8 @@ app.post('/api/stocks', authMiddleware, async (c) => {
     const result = await DB.prepare(`
       INSERT INTO stock_trades (
         user_id, company_id, ticker, trade_type, quantity, price, 
-        account_id, trade_date, commission, notes, is_open
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        account_id, account_type, trade_date, commission, notes, is_open
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       userId,
       data.company_id,
@@ -1259,6 +1259,7 @@ app.post('/api/stocks', authMiddleware, async (c) => {
       data.quantity,
       data.price,
       data.account_id,
+      account.account_type,  // Get from accounts table
       data.trade_date,
       data.commission || 0,
       data.notes || null,
