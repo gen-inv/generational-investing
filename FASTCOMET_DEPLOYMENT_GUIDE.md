@@ -1,6 +1,37 @@
 # 🚀 FastComet Deployment Guide for Generational Investing
 
-## Complete Step-by-Step Instructions
+## ⚠️ CRITICAL COMPATIBILITY WARNING
+
+**YOUR CURRENT APPLICATION CANNOT BE DEPLOYED TO FASTCOMET AS-IS!**
+
+This application is built for **Cloudflare Pages/Workers** using:
+- ✅ Cloudflare Workers runtime (edge functions)
+- ✅ Cloudflare D1 database (SQLite)
+- ✅ Hono framework (lightweight, edge-optimized)
+- ✅ No traditional Node.js server
+
+FastComet expects:
+- ❌ Traditional Node.js/Express server
+- ❌ MySQL database
+- ❌ cPanel/Passenger hosting
+
+**To deploy to FastComet, you would need to:**
+1. Rewrite the entire backend from Hono to Express
+2. Convert Cloudflare D1 (SQLite) queries to MySQL
+3. Add a traditional server.js entry point
+4. Remove all Cloudflare-specific code
+
+**Recommendation**: Deploy to Cloudflare Pages instead (see CLOUDFLARE_DEPLOYMENT_GUIDE.md)
+
+---
+
+## If You Still Want to Deploy to FastComet (Requires Major Rewrite)
+
+### Your Production Database Configuration
+
+**Database Name**: `robpager_gen_inv_db`  
+**MySQL User**: `robpager_main`  
+**Password**: (Set in cPanel and save securely)
 
 ### Phase 1: Create MySQL Database in cPanel
 
@@ -11,33 +42,34 @@
 2. **Create MySQL Database**
    - Navigate to **"MySQL® Databases"** in cPanel
    - Under **"Create New Database"**:
-     - Database Name: `generational_investing`
+     - Database Name: `gen_inv_db`
      - Click **"Create Database"**
-   - **IMPORTANT**: Note the full database name (usually `username_generational_investing`)
+   - **Full database name will be**: `robpager_gen_inv_db`
 
-3. **Create Database User**
-   - Scroll to **"MySQL Users"** section
-   - Under **"Add New User"**:
-     - Username: `gen_user`
-     - Password: Generate a strong password (SAVE THIS!)
-     - Click **"Create User"**
-   - **IMPORTANT**: Note the full username (usually `username_gen_user`)
+3. **Use Existing MySQL User**
+   - You already have user: `robpager_main`
+   - If you need to create a new user instead:
+     - Scroll to **"MySQL Users"** section
+     - Under **"Add New User"**:
+       - Username: Choose a name
+       - Password: Generate a strong password (SAVE THIS!)
+       - Click **"Create User"**
 
 4. **Add User to Database**
    - Scroll to **"Add User To Database"** section
-   - Select the user you just created
-   - Select the database you just created
+   - Select user: `robpager_main`
+   - Select database: `robpager_gen_inv_db`
    - Click **"Add"**
    - On privileges page, select **"ALL PRIVILEGES"**
    - Click **"Make Changes"**
 
-5. **Note Your Database Credentials**
+5. **Your Database Credentials**
    ```
-   DB_HOST: localhost (or IP provided by FastComet)
+   DB_HOST: localhost
    DB_PORT: 3306
-   DB_USER: username_gen_user
-   DB_PASSWORD: [password you created]
-   DB_NAME: username_generational_investing
+   DB_USER: robpager_main
+   DB_PASSWORD: [your existing MySQL password]
+   DB_NAME: robpager_gen_inv_db
    ```
 
 ### Phase 2: Import Database Schema
@@ -216,9 +248,9 @@ CREATE TABLE cost_basis_adjustments (
 # Database Configuration
 DB_HOST=localhost
 DB_PORT=3306
-DB_USER=your_cpanel_username_gen_user
-DB_PASSWORD=your_database_password_here
-DB_NAME=your_cpanel_username_generational_investing
+DB_USER=robpager_main
+DB_PASSWORD=your_mysql_password_here
+DB_NAME=robpager_gen_inv_db
 
 # JWT Secret (generate a random string)
 JWT_SECRET=your-random-secret-key-at-least-32-characters-long
@@ -228,8 +260,9 @@ PORT=3000
 NODE_ENV=production
 ```
 
-2. **IMPORTANT**: Replace the placeholders with your actual values
-3. **Save the file**
+2. **IMPORTANT**: Replace `your_mysql_password_here` with your actual MySQL password
+3. **IMPORTANT**: Generate a secure JWT_SECRET (at least 32 random characters)
+4. **Save the file**
 
 ### Phase 5: Setup Node.js Application in cPanel
 
@@ -249,15 +282,15 @@ NODE_ENV=production
 
 3. **Environment Variables**
    - After creating the app, you'll see environment variables section
-   - Add these variables (same as .env file):
-     - DB_HOST
-     - DB_PORT
-     - DB_USER
-     - DB_PASSWORD
-     - DB_NAME
-     - JWT_SECRET
-     - PORT
-     - NODE_ENV
+   - Add these variables with your actual values:
+     - `DB_HOST` = `localhost`
+     - `DB_PORT` = `3306`
+     - `DB_USER` = `robpager_main`
+     - `DB_PASSWORD` = `[your MySQL password]`
+     - `DB_NAME` = `robpager_gen_inv_db`
+     - `JWT_SECRET` = `[32+ character random string]`
+     - `PORT` = `3000`
+     - `NODE_ENV` = `production`
 
 4. **Click "Create"**
 
