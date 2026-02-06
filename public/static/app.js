@@ -18,6 +18,32 @@ api.interceptors.request.use(config => {
     return config
 })
 
+// Notification function for user feedback
+function showNotification(message, type = 'success') {
+    const notification = document.createElement('div')
+    notification.className = `fixed top-4 right-4 px-6 py-4 rounded-lg shadow-lg z-50 transform transition-all duration-300 ${
+        type === 'success' ? 'bg-green-500 text-white' : 
+        type === 'error' ? 'bg-red-500 text-white' : 
+        'bg-blue-500 text-white'
+    }`
+    notification.innerHTML = `
+        <div class="flex items-center gap-3">
+            <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
+            <span>${message}</span>
+        </div>
+    `
+    document.body.appendChild(notification)
+    
+    // Animate in
+    setTimeout(() => notification.style.transform = 'translateY(0)', 10)
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+        notification.style.transform = 'translateX(400px)'
+        setTimeout(() => notification.remove(), 300)
+    }, 3000)
+}
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
     if (token) {
@@ -431,25 +457,30 @@ async function loadDashboard() {
 async function loadCompanies() {
     try {
         const response = await api.get('/api/companies')
-        const companies = response.data
+        const companies = response.data.companies || response.data
         
         const table = document.getElementById('companies-table')
         table.innerHTML = ''
         
-        if (companies.length === 0) {
-            table.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No companies found</td></tr>'
+        if (!companies || companies.length === 0) {
+            table.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No companies found. Click "Add Company" to get started.</td></tr>'
             return
         }
         
         companies.forEach(company => {
+            // Check if company data is still loading (missing key fields)
+            const isLoading = !company.company_name || company.company_name === company.ticker
+            
             table.innerHTML += `
-                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                <tr class="border-b border-gray-200 hover:bg-gray-50 ${isLoading ? 'animate-pulse' : ''}">
                     <td class="px-4 py-3 font-semibold">
                         <button onclick="showCompanyView(${company.id})" class="text-brand-teal hover:text-brand-gold underline">
                             ${company.ticker}
                         </button>
                     </td>
-                    <td class="px-4 py-3">${company.company_name}</td>
+                    <td class="px-4 py-3">
+                        ${isLoading ? '<i class="fas fa-spinner fa-spin mr-2 text-gray-400"></i><span class="text-gray-400">Fetching data...</span>' : company.company_name}
+                    </td>
                     <td class="px-4 py-3">${company.exchange || '-'}</td>
                     <td class="px-4 py-3">${company.sector || '-'}</td>
                     <td class="px-4 py-3 text-center">
@@ -470,6 +501,7 @@ async function loadCompanies() {
         })
     } catch (error) {
         console.error('Error loading companies:', error)
+        showNotification('Failed to load companies', 'error')
     }
 }
 
@@ -610,13 +642,50 @@ function showCompanyForm(companyId = null) {
         try {
             if (isEdit) {
                 await api.put(`/api/companies/${companyId}`, data)
+                modal.remove()
+                loadCompanies()
             } else {
-                // For new companies, backend fetches Yahoo Finance data
-                await api.post('/api/companies', data)
+                // For new companies, show optimistic UI
+                modal.remove()
+                
+                // Add a temporary "loading" row immediately
+                const companiesTable = document.getElementById('companies-table')
+                const loadingRow = document.createElement('tr')
+                loadingRow.id = 'loading-company-row'
+                loadingRow.className = 'border-t hover:bg-gray-50 transition-colors animate-pulse'
+                loadingRow.innerHTML = `
+                    <td class="px-6 py-4 text-sm font-medium text-blue-600">
+                        ${data.ticker}
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500">
+                        <i class="fas fa-spinner fa-spin mr-2"></i>Fetching data...
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500">...</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">...</td>
+                    <td class="px-6 py-4 text-center"></td>
+                    <td class="px-6 py-4 text-center text-sm text-gray-500">-</td>
+                    <td class="px-6 py-4 text-center text-sm text-gray-500">-</td>
+                    <td class="px-6 py-4 text-sm">
+                        <span class="text-gray-400">Processing...</span>
+                    </td>
+                `
+                companiesTable.appendChild(loadingRow)
+                
+                // Fetch from backend
+                const response = await api.post('/api/companies', data)
+                
+                // Remove loading row and reload with actual data
+                loadingRow.remove()
+                loadCompanies()
+                
+                // Show success notification
+                showNotification(`${response.data.company_name || data.ticker} added successfully!`, 'success')
             }
-            modal.remove()
-            loadCompanies()
         } catch (error) {
+            // Remove loading row if it exists
+            const loadingRow = document.getElementById('loading-company-row')
+            if (loadingRow) loadingRow.remove()
+            
             alert(error.response?.data?.error || 'Operation failed')
             // Restore button state
             saveBtn.disabled = false

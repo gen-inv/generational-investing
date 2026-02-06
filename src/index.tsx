@@ -455,15 +455,18 @@ async function fetchCompanyData(ticker: string, env?: any) {
     }
   }
   
-  // Step 3: Try EOD Historical Data API as fallback
-  if (!sector || !industry) {
+  // Step 3: Try EOD Historical Data API as fallback (for sector/industry AND earnings)
+  const shouldTryEOD = (!sector || !industry || !nextEarningsDate)
+  if (shouldTryEOD) {
     try {
       const eodUrl = `https://eodhd.com/api/fundamentals/${ticker}.US?api_token=${eodApiKey}`
       const response = await fetch(eodUrl)
       
       if (response.ok) {
         const data = await response.json()
-        if (data.General) {
+        
+        // Get sector/industry if needed
+        if (data.General && (!sector || !industry)) {
           const general = data.General
           sector = general.Sector || sector
           industry = general.Industry || industry
@@ -471,21 +474,22 @@ async function fetchCompanyData(ticker: string, env?: any) {
           exchange = general.Exchange || exchange
           const keyType = eodApiKey === 'demo' ? 'demo' : 'paid'
           console.log(`✅ EOD Historical Data API (${keyType} - FALLBACK): Sector=${sector}, Industry=${industry}`)
-          
-          // EOD also has earnings data
-          if (data.Earnings && data.Earnings.History) {
-            const history = Object.values(data.Earnings.History) as any[]
-            if (history.length > 0) {
-              // Find the most recent future earnings date
-              const now = new Date()
-              const futureEarnings = history
-                .filter((e: any) => e.reportDate && new Date(e.reportDate) > now)
-                .sort((a: any, b: any) => new Date(a.reportDate).getTime() - new Date(b.reportDate).getTime())
-              
-              if (futureEarnings.length > 0) {
-                nextEarningsDate = futureEarnings[0].reportDate
-                console.log(`✅ EOD Earnings Date: ${nextEarningsDate}`)
-              }
+        }
+        
+        // Get earnings data if needed
+        if (!nextEarningsDate && data.Earnings && data.Earnings.History) {
+          const history = Object.values(data.Earnings.History) as any[]
+          if (history.length > 0) {
+            // Find the most recent future earnings date
+            const now = new Date()
+            const futureEarnings = history
+              .filter((e: any) => e.reportDate && new Date(e.reportDate) > now)
+              .sort((a: any, b: any) => new Date(a.reportDate).getTime() - new Date(b.reportDate).getTime())
+            
+            if (futureEarnings.length > 0) {
+              nextEarningsDate = futureEarnings[0].reportDate
+              const keyType = eodApiKey === 'demo' ? 'demo' : 'paid'
+              console.log(`✅ EOD Earnings Date (${keyType}): ${nextEarningsDate}`)
             }
           }
         }
