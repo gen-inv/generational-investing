@@ -596,3 +596,295 @@ describe('Performance Regression Tests', () => {
     })
   })
 })
+
+describe('Company Management Tests', () => {
+  let companyToken: string = ''
+  let testCompanyId: number = 0
+
+  beforeAll(async () => {
+    // Create a fresh user for company tests
+    const email = generateEmail()
+    const response = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Company Test User'
+      })
+    })
+    const data = await response.json()
+    companyToken = data.token
+  })
+
+  it('should create a company with auto-fetched data', async () => {
+    const response = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${companyToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'AAPL',
+        research_score: 85,
+        anti_fragile_score: 90
+      })
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(201)
+    expect(data.id).toBeDefined()
+    expect(data.ticker).toBe('AAPL')
+    expect(data.company_name).toBeDefined()
+    expect(data.research_score).toBe(85)
+    expect(data.anti_fragile_score).toBe(90)
+    
+    testCompanyId = data.id
+  })
+
+  it('should auto-fetch Yahoo Finance data on company creation', async () => {
+    const response = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${companyToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'MSFT',
+        research_score: 88
+      })
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(201)
+    expect(data.company_name).toBe('Microsoft Corporation')
+    expect(data.exchange).toBeDefined()
+    // Sector and industry may be populated depending on API availability
+  })
+
+  it('should list all companies for user', async () => {
+    const response = await fetch(`${BASE_URL}/api/companies`, {
+      headers: { 'Authorization': `Bearer ${companyToken}` }
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(200)
+    expect(data.companies).toBeDefined()
+    expect(Array.isArray(data.companies)).toBe(true)
+    expect(data.companies.length).toBeGreaterThan(0)
+  })
+
+  it('should get single company details', async () => {
+    const response = await fetch(`${BASE_URL}/api/companies/${testCompanyId}`, {
+      headers: { 'Authorization': `Bearer ${companyToken}` }
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(200)
+    expect(data.company.id).toBe(testCompanyId)
+    expect(data.company.ticker).toBe('AAPL')
+  })
+
+  it('should update company details', async () => {
+    const response = await fetch(`${BASE_URL}/api/companies/${testCompanyId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${companyToken}`
+      },
+      body: JSON.stringify({
+        research_score: 92,
+        is_wonderful: 1
+      })
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(200)
+    expect(data.success).toBe(true)
+  })
+
+  it('should delete a company', async () => {
+    // Create a company to delete
+    const createResponse = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${companyToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'TEMP',
+        research_score: 50
+      })
+    })
+    const createData = await createResponse.json()
+    const tempId = createData.id
+
+    // Delete it
+    const deleteResponse = await fetch(`${BASE_URL}/api/companies/${tempId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${companyToken}` }
+    })
+
+    expect(deleteResponse.status).toBe(200)
+    const deleteData = await deleteResponse.json()
+    expect(deleteData.success).toBe(true)
+  })
+})
+
+describe('Earnings Date Tests', () => {
+  let earningsToken: string = ''
+  let earningsCompanyId: number = 0
+
+  beforeAll(async () => {
+    // Create a fresh user for earnings tests
+    const email = generateEmail()
+    const response = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Earnings Test User'
+      })
+    })
+    const data = await response.json()
+    earningsToken = data.token
+
+    // Create a company with likely earnings data
+    const companyResponse = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${earningsToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'TSLA',
+        research_score: 80
+      })
+    })
+    const companyData = await companyResponse.json()
+    earningsCompanyId = companyData.id
+  })
+
+  it('should manually fetch earnings date for a company', async () => {
+    const response = await fetch(`${BASE_URL}/api/companies/${earningsCompanyId}/fetch-earnings`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${earningsToken}` }
+    })
+
+    const data = await response.json()
+    // Response should succeed (200) even if no earnings date found
+    expect(response.status).toBe(200)
+    expect(data.success).toBe(true)
+    // earnings_date may be null if not available
+  })
+
+  it('should handle missing company for earnings fetch', async () => {
+    const response = await fetch(`${BASE_URL}/api/companies/99999/fetch-earnings`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${earningsToken}` }
+    })
+
+    expect(response.status).toBe(404)
+    const data = await response.json()
+    expect(data.error).toBe('Company not found')
+  })
+
+  it('should store earnings date in company record', async () => {
+    // Fetch earnings
+    await fetch(`${BASE_URL}/api/companies/${earningsCompanyId}/fetch-earnings`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${earningsToken}` }
+    })
+
+    // Get company details to verify earnings date was stored
+    const response = await fetch(`${BASE_URL}/api/companies/${earningsCompanyId}`, {
+      headers: { 'Authorization': `Bearer ${earningsToken}` }
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(200)
+    expect(data.company).toBeDefined()
+    // next_earnings_date should be defined (may be null if not available)
+    expect(data.company.hasOwnProperty('next_earnings_date')).toBe(true)
+  })
+})
+
+describe('Data Source Integration Tests', () => {
+  let dataToken: string = ''
+
+  beforeAll(async () => {
+    const email = generateEmail()
+    const response = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Data Source Test'
+      })
+    })
+    const data = await response.json()
+    dataToken = data.token
+  })
+
+  it('should handle Yahoo Finance fallback', async () => {
+    const response = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${dataToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'NVDA',
+        research_score: 85
+      })
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(201)
+    expect(data.company_name).toBeDefined()
+    // Should at least have company name from Yahoo Finance
+    expect(data.company_name).not.toBe('NVDA')
+  })
+
+  it('should handle EOD Historical Data integration', async () => {
+    const response = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${dataToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'AMZN',
+        research_score: 87
+      })
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(201)
+    expect(data.company_name).toBeDefined()
+    // EOD should provide sector/industry for major stocks
+  })
+
+  it('should complete company creation quickly', async () => {
+    const startTime = Date.now()
+    const response = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${dataToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'GOOGL',
+        research_score: 86
+      })
+    })
+    const endTime = Date.now()
+    const duration = endTime - startTime
+
+    expect(response.status).toBe(201)
+    // Should complete in reasonable time even with API calls
+    expect(duration).toBeLessThan(5000)
+  })
+})

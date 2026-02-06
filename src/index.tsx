@@ -363,7 +363,7 @@ app.get('/api/companies', authMiddleware, async (c) => {
     SELECT * FROM companies WHERE user_id = ? ORDER BY ticker ASC
   `).bind(userId).all()
   
-  return c.json(companies.results)
+  return c.json({ companies: companies.results })
 })
 
 app.get('/api/companies/:id', authMiddleware, async (c) => {
@@ -378,7 +378,7 @@ app.get('/api/companies/:id', authMiddleware, async (c) => {
     return c.json({ error: 'Company not found' }, 404)
   }
   
-  return c.json(company)
+  return c.json({ company })
 })
 
 // Fetch company data from multiple sources with fallback
@@ -390,18 +390,12 @@ async function fetchCompanyData(ticker: string, env?: any) {
   let industry = null
   let nextEarningsDate = null
   
-  // Get API key from environment (use demo as fallback)
-  const twelveDataApiKey = env?.TWELVE_DATA_API_KEY || 'demo'
+  // Get API keys from environment
   const eodApiKey = env?.EOD_API_KEY || 'demo'
   const finnhubApiKey = env?.FINNHUB_API_KEY || null
   const fmpApiKey = env?.FMP_API_KEY || null
-  const rapidApiKey = env?.RAPIDAPI_KEY || null
   
-  if (twelveDataApiKey !== 'demo') {
-    console.log(`🔑 Using paid Twelve Data API key: ${twelveDataApiKey.substring(0, 10)}...`)
-  } else {
-    console.log(`🔑 Using demo Twelve Data API key`)
-  }
+  console.log(`🔍 Fetching data for ${ticker}...`)
   
   // Step 1: Try Yahoo Finance Chart API for basic info
   try {
@@ -426,31 +420,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
     console.log(`⚠️ Yahoo Chart API failed for ${ticker}`)
   }
   
-  // Step 2: Try Twelve Data API for sector/industry
-  if (!sector || !industry) {
-    try {
-      const twelveDataUrl = `https://api.twelvedata.com/profile?symbol=${ticker}&apikey=${twelveDataApiKey}`
-      const response = await fetch(twelveDataUrl)
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.name && !data.code) { // Check it's not an error response
-          sector = data.sector || sector
-          industry = data.industry || industry
-          companyName = data.name || companyName
-          exchange = data.exchange || exchange
-          const keyType = twelveDataApiKey === 'demo' ? 'demo' : 'paid'
-          console.log(`✅ Twelve Data API (${keyType}): Sector=${sector}, Industry=${industry}`)
-        } else if (data.code) {
-          console.log(`⚠️ Twelve Data API error: ${data.message || data.code}`)
-        }
-      }
-    } catch (e) {
-      console.log(`⚠️ Twelve Data API failed for ${ticker}`)
-    }
-  }
-  
-  // Step 3: Try EOD Historical Data API as fallback
+  // Step 2: Try EOD Historical Data API as PRIMARY source for sector/industry/earnings
   if (!sector || !industry) {
     try {
       const eodUrl = `https://eodhd.com/api/fundamentals/${ticker}.US?api_token=${eodApiKey}`
@@ -465,7 +435,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
           companyName = general.Name || companyName
           exchange = general.Exchange || exchange
           const keyType = eodApiKey === 'demo' ? 'demo' : 'paid'
-          console.log(`✅ EOD Historical Data API (${keyType}): Sector=${sector}, Industry=${industry}`)
+          console.log(`✅ EOD Historical Data API (${keyType} - PRIMARY): Sector=${sector}, Industry=${industry}`)
           
           // EOD also has earnings data
           if (data.Earnings && data.Earnings.History) {
@@ -490,7 +460,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
     }
   }
   
-  // Step 4a: Try Finnhub as additional backup
+  // Step 3: Try Finnhub as fallback
   if ((!sector || !industry) && finnhubApiKey) {
     try {
       const finnhubUrl = `https://finnhub.io/api/v1/stock/profile2?symbol=${ticker}&token=${finnhubApiKey}`
@@ -498,12 +468,12 @@ async function fetchCompanyData(ticker: string, env?: any) {
       
       if (response.ok) {
         const data = await response.json()
-        if (data.finnhubIndustry) { // Finnhub uses different field names
-          sector = sector || (data.finnhubIndustry.split(' - ')[0] || null) // Extract sector from industry string
+        if (data.finnhubIndustry) {
+          sector = sector || (data.finnhubIndustry.split(' - ')[0] || null)
           industry = data.finnhubIndustry || industry
           companyName = data.name || companyName
           exchange = data.exchange || exchange
-          console.log(`✅ Finnhub API: Sector=${sector}, Industry=${industry}`)
+          console.log(`✅ Finnhub API (FALLBACK): Sector=${sector}, Industry=${industry}`)
         }
       }
     } catch (e) {
@@ -511,7 +481,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
     }
   }
   
-  // Step 4b: Try Financial Modeling Prep as additional backup
+  // Step 4: Try Financial Modeling Prep as final fallback
   if ((!sector || !industry) && fmpApiKey) {
     try {
       const fmpUrl = `https://financialmodelingprep.com/api/v3/profile/${ticker}?apikey=${fmpApiKey}`
@@ -525,39 +495,11 @@ async function fetchCompanyData(ticker: string, env?: any) {
           industry = profile.industry || industry
           companyName = profile.companyName || companyName
           exchange = profile.exchangeShortName || exchange
-          console.log(`✅ Financial Modeling Prep API: Sector=${sector}, Industry=${industry}`)
+          console.log(`✅ Financial Modeling Prep API (FALLBACK): Sector=${sector}, Industry=${industry}`)
         }
       }
     } catch (e) {
       console.log(`⚠️ Financial Modeling Prep API failed for ${ticker}`)
-    }
-  }
-  
-  // Step 4c: Try FinanceBird (RapidAPI) as additional backup
-  if ((!sector || !industry) && rapidApiKey && rapidApiKey !== 'your_rapidapi_key_here') {
-    try {
-      const financeBirdUrl = `https://financebird.p.rapidapi.com/company/profile?ticker=${ticker}`
-      const response = await fetch(financeBirdUrl, {
-        headers: {
-          'X-RapidAPI-Key': rapidApiKey,
-          'X-RapidAPI-Host': 'financebird.p.rapidapi.com'
-        }
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data && !data.message) { // Check it's not an error response
-          sector = data.sector || sector
-          industry = data.industry || industry
-          companyName = data.companyName || companyName
-          exchange = data.exchange || exchange
-          console.log(`✅ FinanceBird API (RapidAPI): Sector=${sector}, Industry=${industry}`)
-        } else if (data.message) {
-          console.log(`⚠️ FinanceBird API error: ${data.message}`)
-        }
-      }
-    } catch (e) {
-      console.log(`⚠️ FinanceBird API failed for ${ticker}`)
     }
   }
   
@@ -645,7 +587,7 @@ app.post('/api/companies', authMiddleware, async (c) => {
     ...yahooData,
     research_score: data.research_score || null,
     anti_fragile_score: data.anti_fragile_score || null
-  })
+  }, 201)
 })
 
 app.put('/api/companies/:id', authMiddleware, async (c) => {
@@ -653,26 +595,56 @@ app.put('/api/companies/:id', authMiddleware, async (c) => {
   const companyId = c.req.param('id')
   const data = await c.req.json()
   
-  await c.env.DB.prepare(`
-    UPDATE companies SET
-      ticker = ?, company_name = ?, market_cap = ?, exchange = ?,
-      sector = ?, industry = ?, is_wonderful = ?, research_score = ?,
-      anti_fragile_score = ?, next_earnings_date = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND user_id = ?
-  `).bind(
-    data.ticker,
-    data.company_name,
-    data.market_cap || null,
-    data.exchange || null,
-    data.sector || null,
-    data.industry || null,
-    data.is_wonderful ? 1 : 0,
-    data.research_score || null,
-    data.anti_fragile_score || null,
-    data.next_earnings_date || null,
-    companyId,
-    userId
-  ).run()
+  // Build dynamic UPDATE query only for provided fields
+  const updates: string[] = []
+  const values: any[] = []
+  
+  if (data.ticker !== undefined) {
+    updates.push('ticker = ?')
+    values.push(data.ticker)
+  }
+  if (data.company_name !== undefined) {
+    updates.push('company_name = ?')
+    values.push(data.company_name)
+  }
+  if (data.market_cap !== undefined) {
+    updates.push('market_cap = ?')
+    values.push(data.market_cap)
+  }
+  if (data.exchange !== undefined) {
+    updates.push('exchange = ?')
+    values.push(data.exchange)
+  }
+  if (data.sector !== undefined) {
+    updates.push('sector = ?')
+    values.push(data.sector)
+  }
+  if (data.industry !== undefined) {
+    updates.push('industry = ?')
+    values.push(data.industry)
+  }
+  if (data.is_wonderful !== undefined) {
+    updates.push('is_wonderful = ?')
+    values.push(data.is_wonderful ? 1 : 0)
+  }
+  if (data.research_score !== undefined) {
+    updates.push('research_score = ?')
+    values.push(data.research_score)
+  }
+  if (data.anti_fragile_score !== undefined) {
+    updates.push('anti_fragile_score = ?')
+    values.push(data.anti_fragile_score)
+  }
+  if (data.next_earnings_date !== undefined) {
+    updates.push('next_earnings_date = ?')
+    values.push(data.next_earnings_date)
+  }
+  
+  updates.push('updated_at = CURRENT_TIMESTAMP')
+  values.push(companyId, userId)
+  
+  const query = `UPDATE companies SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`
+  await c.env.DB.prepare(query).bind(...values).run()
   
   return c.json({ success: true })
 })
