@@ -473,6 +473,85 @@ function showCompanyForm(companyId = null) {
     const isEdit = companyId !== null
     const title = isEdit ? 'Edit Company' : 'Add Company'
     
+    // Simplified form for adding (ticker + scores only)
+    // Full form for editing
+    const formFields = isEdit ? `
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="block text-gray-700 mb-2">Ticker *</label>
+                <input type="text" name="ticker" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Company Name *</label>
+                <input type="text" name="company_name" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Market Cap</label>
+                <input type="number" name="market_cap" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Exchange</label>
+                <input type="text" name="exchange" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Sector</label>
+                <input type="text" name="sector" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Industry</label>
+                <input type="text" name="industry" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Next Earnings Date</label>
+                <input type="date" name="next_earnings_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div></div>
+            <div>
+                <label class="block text-gray-700 mb-2">Research Score (0-100)</label>
+                <input type="number" name="research_score" min="0" max="100" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Anti-Fragile Score (0-100)</label>
+                <input type="number" name="anti_fragile_score" min="0" max="100" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div class="col-span-2">
+                <label class="flex items-center">
+                    <input type="checkbox" name="is_wonderful" class="mr-2">
+                    <span class="text-gray-700">Wonderful Company</span>
+                </label>
+            </div>
+        </div>
+    ` : `
+        <div class="space-y-4">
+            <div>
+                <label class="block text-gray-700 mb-2">Ticker Symbol *</label>
+                <input type="text" name="ticker" placeholder="e.g., AAPL, MSFT, GOOGL" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg uppercase" required>
+                <p class="text-sm text-gray-500 mt-1">Company data will be fetched automatically from Yahoo Finance</p>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-gray-700 mb-2">Research Score (0-100)</label>
+                    <input type="number" name="research_score" min="0" max="100" 
+                           placeholder="95" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <p class="text-sm text-gray-500 mt-1">Your research quality rating</p>
+                </div>
+                <div>
+                    <label class="block text-gray-700 mb-2">Anti-Fragile Score (0-100)</label>
+                    <input type="number" name="anti_fragile_score" min="0" max="100" 
+                           placeholder="88" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <p class="text-sm text-gray-500 mt-1">Company resilience rating</p>
+                </div>
+            </div>
+            <div>
+                <label class="flex items-center">
+                    <input type="checkbox" name="is_wonderful" class="mr-2">
+                    <span class="text-gray-700">Mark as Wonderful Company</span>
+                </label>
+            </div>
+        </div>
+    `
+    
     // Create modal
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
@@ -480,48 +559,12 @@ function showCompanyForm(companyId = null) {
         <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h3 class="text-2xl font-bold text-brand-teal mb-6">${title}</h3>
             <form id="companyForm">
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-gray-700 mb-2">Ticker *</label>
-                        <input type="text" name="ticker" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Company Name *</label>
-                        <input type="text" name="company_name" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Market Cap</label>
-                        <input type="number" name="market_cap" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Exchange</label>
-                        <input type="text" name="exchange" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Sector</label>
-                        <input type="text" name="sector" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Industry</label>
-                        <input type="text" name="industry" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Research Score</label>
-                        <input type="number" name="research_score" min="0" max="100" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Anti-Fragile Score</label>
-                        <input type="number" name="anti_fragile_score" min="0" max="100" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    <div class="col-span-2">
-                        <label class="flex items-center">
-                            <input type="checkbox" name="is_wonderful" class="mr-2">
-                            <span class="text-gray-700">Wonderful Company</span>
-                        </label>
-                    </div>
-                </div>
+                ${formFields}
                 <div class="flex gap-4 mt-6">
-                    <button type="submit" class="btn-primary flex-1">Save</button>
+                    <button type="submit" class="btn-primary flex-1" id="saveBtn">
+                        <span class="btn-text">Save</span>
+                        <span class="btn-loading hidden">Fetching data...</span>
+                    </button>
                     <button type="button" onclick="this.closest('.fixed').remove()" class="btn-secondary flex-1">Cancel</button>
                 </div>
             </form>
@@ -534,28 +577,47 @@ function showCompanyForm(companyId = null) {
     document.getElementById('companyForm').addEventListener('submit', async (e) => {
         e.preventDefault()
         const formData = new FormData(e.target)
+        const saveBtn = document.getElementById('saveBtn')
+        const btnText = saveBtn.querySelector('.btn-text')
+        const btnLoading = saveBtn.querySelector('.btn-loading')
+        
+        // Show loading state
+        saveBtn.disabled = true
+        btnText.classList.add('hidden')
+        btnLoading.classList.remove('hidden')
+        
         const data = {
-            ticker: formData.get('ticker'),
-            company_name: formData.get('company_name'),
-            market_cap: formData.get('market_cap') || null,
-            exchange: formData.get('exchange') || null,
-            sector: formData.get('sector') || null,
-            industry: formData.get('industry') || null,
+            ticker: formData.get('ticker')?.toUpperCase(),
             research_score: formData.get('research_score') || null,
             anti_fragile_score: formData.get('anti_fragile_score') || null,
             is_wonderful: formData.get('is_wonderful') === 'on'
+        }
+        
+        // For editing, include all fields
+        if (isEdit) {
+            data.company_name = formData.get('company_name')
+            data.market_cap = formData.get('market_cap') || null
+            data.exchange = formData.get('exchange') || null
+            data.sector = formData.get('sector') || null
+            data.industry = formData.get('industry') || null
+            data.next_earnings_date = formData.get('next_earnings_date') || null
         }
         
         try {
             if (isEdit) {
                 await api.put(`/api/companies/${companyId}`, data)
             } else {
+                // For new companies, backend fetches Yahoo Finance data
                 await api.post('/api/companies', data)
             }
             modal.remove()
             loadCompanies()
         } catch (error) {
             alert(error.response?.data?.error || 'Operation failed')
+            // Restore button state
+            saveBtn.disabled = false
+            btnText.classList.remove('hidden')
+            btnLoading.classList.add('hidden')
         }
     })
     
@@ -570,6 +632,7 @@ function showCompanyForm(companyId = null) {
             form.exchange.value = company.exchange || ''
             form.sector.value = company.sector || ''
             form.industry.value = company.industry || ''
+            form.next_earnings_date.value = company.next_earnings_date || ''
             form.research_score.value = company.research_score || ''
             form.anti_fragile_score.value = company.anti_fragile_score || ''
             form.is_wonderful.checked = company.is_wonderful === 1

@@ -381,29 +381,123 @@ app.get('/api/companies/:id', authMiddleware, async (c) => {
   return c.json(company)
 })
 
+// Fetch company data from Yahoo Finance API
+async function fetchYahooFinanceData(ticker: string) {
+  try {
+    // Use Yahoo Finance API (v8) - more reliable than scraping
+    const quoteUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`
+    const response = await fetch(quoteUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    })
+    
+    if (!response.ok) {
+      console.error(`Yahoo Finance API returned ${response.status} for ${ticker}`)
+      throw new Error(`Invalid ticker or API error`)
+    }
+    
+    const data = await response.json()
+    
+    if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
+      throw new Error('No data returned from Yahoo Finance')
+    }
+    
+    const result = data.chart.result[0]
+    const meta = result.meta
+    
+    // Extract company information
+    const companyName = meta.longName || meta.shortName || ticker
+    const marketCap = meta.marketCap || null
+    const exchange = meta.exchangeName || meta.exchange || null
+    
+    // Get additional company info from quote summary
+    let sector = null
+    let industry = null
+    
+    try {
+      const summaryUrl = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=assetProfile,defaultKeyStatistics`
+      const summaryResponse = await fetch(summaryUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      })
+      
+      if (summaryResponse.ok) {
+        const summaryData = await summaryResponse.json()
+        if (summaryData.quoteSummary && summaryData.quoteSummary.result) {
+          const profile = summaryData.quoteSummary.result[0]?.assetProfile
+          if (profile) {
+            sector = profile.sector || null
+            industry = profile.industry || null
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore errors fetching additional data
+      console.log(`Could not fetch additional data for ${ticker}`)
+    }
+    
+    return {
+      company_name: companyName,
+      market_cap: marketCap,
+      sector: sector,
+      industry: industry,
+      exchange: exchange,
+      next_earnings_date: null // Would need separate API call for earnings
+    }
+  } catch (error) {
+    console.error(`Error fetching Yahoo Finance data for ${ticker}:`, error)
+    // Return minimal data if fetch fails
+    return {
+      company_name: ticker,
+      market_cap: null,
+      sector: null,
+      industry: null,
+      exchange: null,
+      next_earnings_date: null
+    }
+  }
+}
+
 app.post('/api/companies', authMiddleware, async (c) => {
   const userId = c.get('userId')
   const data = await c.req.json()
   
+  // Validate required fields
+  if (!data.ticker) {
+    return c.json({ error: 'Ticker is required' }, 400)
+  }
+  
+  // Fetch company data from Yahoo Finance
+  const yahooData = await fetchYahooFinanceData(data.ticker.toUpperCase())
+  
   const result = await c.env.DB.prepare(`
     INSERT INTO companies (
       user_id, ticker, company_name, market_cap, exchange, 
-      sector, industry, is_wonderful, research_score, anti_fragile_score
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sector, industry, is_wonderful, research_score, anti_fragile_score, next_earnings_date
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     userId, 
-    data.ticker, 
-    data.company_name, 
-    data.market_cap || null,
-    data.exchange || null,
-    data.sector || null,
-    data.industry || null,
+    data.ticker.toUpperCase(), 
+    yahooData.company_name,
+    yahooData.market_cap,
+    yahooData.exchange,
+    yahooData.sector,
+    yahooData.industry,
     data.is_wonderful ? 1 : 0,
     data.research_score || null,
-    data.anti_fragile_score || null
+    data.anti_fragile_score || null,
+    yahooData.next_earnings_date
   ).run()
   
-  return c.json({ id: result.meta.last_row_id, ...data })
+  return c.json({ 
+    id: result.meta.last_row_id, 
+    ticker: data.ticker.toUpperCase(),
+    ...yahooData,
+    research_score: data.research_score || null,
+    anti_fragile_score: data.anti_fragile_score || null
+  })
 })
 
 app.put('/api/companies/:id', authMiddleware, async (c) => {
