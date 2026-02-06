@@ -444,7 +444,11 @@ async function loadCompanies() {
         companies.forEach(company => {
             table.innerHTML += `
                 <tr class="border-b border-gray-200 hover:bg-gray-50">
-                    <td class="px-4 py-3 font-semibold text-brand-teal">${company.ticker}</td>
+                    <td class="px-4 py-3 font-semibold">
+                        <button onclick="showCompanyView(${company.id})" class="text-brand-teal hover:text-brand-gold underline">
+                            ${company.ticker}
+                        </button>
+                    </td>
                     <td class="px-4 py-3">${company.company_name}</td>
                     <td class="px-4 py-3">${company.exchange || '-'}</td>
                     <td class="px-4 py-3">${company.sector || '-'}</td>
@@ -652,6 +656,127 @@ async function deleteCompany(id) {
         loadCompanies()
     } catch (error) {
         alert('Delete failed')
+    }
+}
+
+// Show detailed company view with earnings date fetch option
+async function showCompanyView(companyId) {
+    try {
+        const response = await api.get(`/api/companies/${companyId}`)
+        const company = response.data
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-start mb-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-brand-teal">${company.ticker}</h2>
+                        <p class="text-gray-600">${company.company_name}</p>
+                    </div>
+                    <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">Exchange</p>
+                        <p class="font-semibold">${company.exchange || '-'}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">Market Cap</p>
+                        <p class="font-semibold">${company.market_cap ? '$' + (company.market_cap / 1e9).toFixed(2) + 'B' : '-'}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">Sector</p>
+                        <p class="font-semibold">${company.sector || '-'}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">Industry</p>
+                        <p class="font-semibold">${company.industry || '-'}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">Research Score</p>
+                        <p class="font-semibold">${company.research_score || '-'}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">Anti-Fragile Score</p>
+                        <p class="font-semibold">${company.anti_fragile_score || '-'}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">Wonderful Company</p>
+                        <p class="font-semibold">${company.is_wonderful ? '⭐ Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 mb-1">Next Earnings Date</p>
+                        <p class="font-semibold" id="earningsDate">${company.next_earnings_date || '-'}</p>
+                    </div>
+                </div>
+                
+                <div class="border-t pt-4 flex gap-2">
+                    <button onclick="fetchEarningsDate(${companyId})" class="btn-primary flex items-center gap-2">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span class="btn-text">Fetch Earnings Date</span>
+                        <span class="btn-loading hidden">Fetching...</span>
+                    </button>
+                    <button onclick="editCompany(${companyId}); this.closest('.fixed').remove()" class="btn-secondary flex items-center gap-2">
+                        <i class="fas fa-edit"></i>
+                        Edit Company
+                    </button>
+                    <button onclick="this.closest('.fixed').remove()" class="btn-secondary flex-1">Close</button>
+                </div>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+    } catch (error) {
+        console.error('Error loading company details:', error)
+        alert('Failed to load company details')
+    }
+}
+
+// Fetch earnings date from Yahoo Finance
+async function fetchEarningsDate(companyId) {
+    const earningsDateElement = document.getElementById('earningsDate')
+    const fetchBtn = event.target.closest('button')
+    const btnText = fetchBtn.querySelector('.btn-text')
+    const btnLoading = fetchBtn.querySelector('.btn-loading')
+    
+    // Show loading state
+    fetchBtn.disabled = true
+    btnText.classList.add('hidden')
+    btnLoading.classList.remove('hidden')
+    
+    try {
+        const response = await api.post(`/api/companies/${companyId}/fetch-earnings`)
+        
+        if (response.data.next_earnings_date) {
+            earningsDateElement.textContent = response.data.next_earnings_date
+            earningsDateElement.classList.add('text-brand-teal', 'font-bold')
+        } else {
+            earningsDateElement.textContent = 'Not available'
+        }
+        
+        // Show success message
+        const message = response.data.message || 'Earnings date updated'
+        const messageDiv = document.createElement('div')
+        messageDiv.className = 'mt-2 p-2 bg-green-100 text-green-700 rounded'
+        messageDiv.textContent = message
+        fetchBtn.parentElement.appendChild(messageDiv)
+        
+        setTimeout(() => messageDiv.remove(), 3000)
+        
+        // Reload companies to reflect updated data
+        loadCompanies()
+    } catch (error) {
+        console.error('Error fetching earnings date:', error)
+        alert(error.response?.data?.error || 'Failed to fetch earnings date')
+    } finally {
+        // Restore button state
+        fetchBtn.disabled = false
+        btnText.classList.remove('hidden')
+        btnLoading.classList.add('hidden')
     }
 }
 
