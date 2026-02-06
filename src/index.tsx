@@ -382,13 +382,23 @@ app.get('/api/companies/:id', authMiddleware, async (c) => {
 })
 
 // Fetch company data from multiple sources with fallback
-async function fetchCompanyData(ticker: string) {
+async function fetchCompanyData(ticker: string, env?: any) {
   let companyName = ticker
   let marketCap = null
   let exchange = null
   let sector = null
   let industry = null
   let nextEarningsDate = null
+  
+  // Get API key from environment (use demo as fallback)
+  const twelveDataApiKey = env?.TWELVE_DATA_API_KEY || 'demo'
+  const eodApiKey = env?.EOD_API_KEY || 'demo'
+  
+  if (twelveDataApiKey !== 'demo') {
+    console.log(`🔑 Using paid Twelve Data API key: ${twelveDataApiKey.substring(0, 10)}...`)
+  } else {
+    console.log(`🔑 Using demo Twelve Data API key`)
+  }
   
   // Step 1: Try Yahoo Finance Chart API for basic info
   try {
@@ -413,10 +423,10 @@ async function fetchCompanyData(ticker: string) {
     console.log(`⚠️ Yahoo Chart API failed for ${ticker}`)
   }
   
-  // Step 2: Try Twelve Data API for sector/industry (free tier)
+  // Step 2: Try Twelve Data API for sector/industry
   if (!sector || !industry) {
     try {
-      const twelveDataUrl = `https://api.twelvedata.com/profile?symbol=${ticker}&apikey=demo`
+      const twelveDataUrl = `https://api.twelvedata.com/profile?symbol=${ticker}&apikey=${twelveDataApiKey}`
       const response = await fetch(twelveDataUrl)
       
       if (response.ok) {
@@ -426,7 +436,10 @@ async function fetchCompanyData(ticker: string) {
           industry = data.industry || industry
           companyName = data.name || companyName
           exchange = data.exchange || exchange
-          console.log(`✅ Twelve Data API: Sector=${sector}, Industry=${industry}`)
+          const keyType = twelveDataApiKey === 'demo' ? 'demo' : 'paid'
+          console.log(`✅ Twelve Data API (${keyType}): Sector=${sector}, Industry=${industry}`)
+        } else if (data.code) {
+          console.log(`⚠️ Twelve Data API error: ${data.message || data.code}`)
         }
       }
     } catch (e) {
@@ -434,10 +447,10 @@ async function fetchCompanyData(ticker: string) {
     }
   }
   
-  // Step 3: Try EOD Historical Data API as fallback (free tier)
+  // Step 3: Try EOD Historical Data API as fallback
   if (!sector || !industry) {
     try {
-      const eodUrl = `https://eodhd.com/api/fundamentals/${ticker}.US?api_token=demo`
+      const eodUrl = `https://eodhd.com/api/fundamentals/${ticker}.US?api_token=${eodApiKey}`
       const response = await fetch(eodUrl)
       
       if (response.ok) {
@@ -448,7 +461,8 @@ async function fetchCompanyData(ticker: string) {
           industry = general.Industry || industry
           companyName = general.Name || companyName
           exchange = general.Exchange || exchange
-          console.log(`✅ EOD Historical Data API: Sector=${sector}, Industry=${industry}`)
+          const keyType = eodApiKey === 'demo' ? 'demo' : 'paid'
+          console.log(`✅ EOD Historical Data API (${keyType}): Sector=${sector}, Industry=${industry}`)
           
           // EOD also has earnings data
           if (data.Earnings && data.Earnings.History) {
@@ -516,8 +530,8 @@ async function fetchCompanyData(ticker: string) {
 }
 
 // Legacy function name for compatibility
-async function fetchYahooFinanceData(ticker: string) {
-  return fetchCompanyData(ticker)
+async function fetchYahooFinanceData(ticker: string, env?: any) {
+  return fetchCompanyData(ticker, env)
 }
 
 app.post('/api/companies', authMiddleware, async (c) => {
@@ -529,8 +543,8 @@ app.post('/api/companies', authMiddleware, async (c) => {
     return c.json({ error: 'Ticker is required' }, 400)
   }
   
-  // Fetch company data from Yahoo Finance
-  const yahooData = await fetchYahooFinanceData(data.ticker.toUpperCase())
+  // Fetch company data from multiple sources
+  const yahooData = await fetchYahooFinanceData(data.ticker.toUpperCase(), c.env)
   
   const result = await c.env.DB.prepare(`
     INSERT INTO companies (
@@ -610,6 +624,10 @@ app.post('/api/companies/:id/fetch-earnings', authMiddleware, async (c) => {
     let nextEarningsDate = null
     const sources: string[] = []
     
+    // Get API keys from environment
+    const twelveDataApiKey = c.env.TWELVE_DATA_API_KEY || 'demo'
+    const eodApiKey = c.env.EOD_API_KEY || 'demo'
+    
     // Source 1: Yahoo Finance Calendar Events
     try {
       const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=calendarEvents`
@@ -642,7 +660,7 @@ app.post('/api/companies/:id/fetch-earnings', authMiddleware, async (c) => {
     // Source 2: EOD Historical Data (if Yahoo failed)
     if (!nextEarningsDate) {
       try {
-        const eodUrl = `https://eodhd.com/api/fundamentals/${ticker}.US?api_token=demo`
+        const eodUrl = `https://eodhd.com/api/fundamentals/${ticker}.US?api_token=${eodApiKey}`
         const response = await fetch(eodUrl)
         
         if (response.ok) {
@@ -672,7 +690,7 @@ app.post('/api/companies/:id/fetch-earnings', authMiddleware, async (c) => {
     // Source 3: Twelve Data (if both Yahoo and EOD failed)
     if (!nextEarningsDate) {
       try {
-        const twelveDataUrl = `https://api.twelvedata.com/earnings_calendar?symbol=${ticker}&apikey=demo`
+        const twelveDataUrl = `https://api.twelvedata.com/earnings_calendar?symbol=${ticker}&apikey=${twelveDataApiKey}`
         const response = await fetch(twelveDataUrl)
         
         if (response.ok) {
