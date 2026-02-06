@@ -381,104 +381,143 @@ app.get('/api/companies/:id', authMiddleware, async (c) => {
   return c.json(company)
 })
 
-// Fetch company data from Yahoo Finance API
-async function fetchYahooFinanceData(ticker: string) {
+// Fetch company data from multiple sources with fallback
+async function fetchCompanyData(ticker: string) {
+  let companyName = ticker
+  let marketCap = null
+  let exchange = null
+  let sector = null
+  let industry = null
+  let nextEarningsDate = null
+  
+  // Step 1: Try Yahoo Finance Chart API for basic info
   try {
-    // Use Yahoo Finance API (v8) - more reliable than scraping
-    const quoteUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`
+    const quoteUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`
     const response = await fetch(quoteUrl, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     })
     
-    if (!response.ok) {
-      console.error(`Yahoo Finance API returned ${response.status} for ${ticker}`)
-      throw new Error(`Invalid ticker or API error`)
+    if (response.ok) {
+      const data = await response.json()
+      if (data.chart && data.chart.result && data.chart.result.length > 0) {
+        const meta = data.chart.result[0].meta
+        companyName = meta.longName || meta.shortName || ticker
+        marketCap = meta.marketCap || null
+        exchange = meta.exchangeName || meta.exchange || null
+        console.log(`✅ Yahoo Chart API: ${companyName}`)
+      }
     }
-    
-    const data = await response.json()
-    
-    if (!data.chart || !data.chart.result || data.chart.result.length === 0) {
-      throw new Error('No data returned from Yahoo Finance')
-    }
-    
-    const result = data.chart.result[0]
-    const meta = result.meta
-    
-    // Extract company information
-    const companyName = meta.longName || meta.shortName || ticker
-    const marketCap = meta.marketCap || null
-    const exchange = meta.exchangeName || meta.exchange || null
-    
-    // Get additional company info from quote summary (including earnings date)
-    let sector = null
-    let industry = null
-    let nextEarningsDate = null
-    
+  } catch (e) {
+    console.log(`⚠️ Yahoo Chart API failed for ${ticker}`)
+  }
+  
+  // Step 2: Try Twelve Data API for sector/industry (free tier)
+  if (!sector || !industry) {
     try {
-      const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=assetProfile,defaultKeyStatistics,calendarEvents`
-      const summaryResponse = await fetch(summaryUrl, {
+      const twelveDataUrl = `https://api.twelvedata.com/profile?symbol=${ticker}&apikey=demo`
+      const response = await fetch(twelveDataUrl)
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.name && !data.code) { // Check it's not an error response
+          sector = data.sector || sector
+          industry = data.industry || industry
+          companyName = data.name || companyName
+          exchange = data.exchange || exchange
+          console.log(`✅ Twelve Data API: Sector=${sector}, Industry=${industry}`)
+        }
+      }
+    } catch (e) {
+      console.log(`⚠️ Twelve Data API failed for ${ticker}`)
+    }
+  }
+  
+  // Step 3: Try EOD Historical Data API as fallback (free tier)
+  if (!sector || !industry) {
+    try {
+      const eodUrl = `https://eodhd.com/api/fundamentals/${ticker}.US?api_token=demo`
+      const response = await fetch(eodUrl)
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.General) {
+          const general = data.General
+          sector = general.Sector || sector
+          industry = general.Industry || industry
+          companyName = general.Name || companyName
+          exchange = general.Exchange || exchange
+          console.log(`✅ EOD Historical Data API: Sector=${sector}, Industry=${industry}`)
+          
+          // EOD also has earnings data
+          if (data.Earnings && data.Earnings.History) {
+            const history = Object.values(data.Earnings.History) as any[]
+            if (history.length > 0) {
+              // Find the most recent future earnings date
+              const now = new Date()
+              const futureEarnings = history
+                .filter((e: any) => e.reportDate && new Date(e.reportDate) > now)
+                .sort((a: any, b: any) => new Date(a.reportDate).getTime() - new Date(b.reportDate).getTime())
+              
+              if (futureEarnings.length > 0) {
+                nextEarningsDate = futureEarnings[0].reportDate
+                console.log(`✅ EOD Earnings Date: ${nextEarningsDate}`)
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log(`⚠️ EOD Historical Data API failed for ${ticker}`)
+    }
+  }
+  
+  // Step 4: Try Yahoo Finance Quote Summary for earnings (if not already found)
+  if (!nextEarningsDate) {
+    try {
+      const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=calendarEvents`
+      const response = await fetch(summaryUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Accept': 'application/json'
         }
       })
       
-      if (summaryResponse.ok) {
-        const summaryData = await summaryResponse.json()
-        if (summaryData.quoteSummary && summaryData.quoteSummary.result) {
-          const profile = summaryData.quoteSummary.result[0]?.assetProfile
-          if (profile) {
-            sector = profile.sector || null
-            industry = profile.industry || null
-          }
-          
-          // Extract earnings date from calendarEvents
-          const calendar = summaryData.quoteSummary.result[0]?.calendarEvents
-          if (calendar && calendar.earnings) {
-            // Yahoo provides earnings dates as Unix timestamps
-            const earningsTimestamp = calendar.earnings.earningsDate?.[0]?.raw
+      if (response.ok) {
+        const data = await response.json()
+        if (data.quoteSummary && data.quoteSummary.result) {
+          const calendar = data.quoteSummary.result[0]?.calendarEvents
+          if (calendar && calendar.earnings && calendar.earnings.earningsDate) {
+            const earningsTimestamp = calendar.earnings.earningsDate[0]?.raw
             if (earningsTimestamp) {
-              // Convert Unix timestamp to YYYY-MM-DD format
               const earningsDate = new Date(earningsTimestamp * 1000)
               nextEarningsDate = earningsDate.toISOString().split('T')[0]
-              console.log(`✅ Fetched earnings date for ${ticker}: ${nextEarningsDate}`)
-            } else {
-              console.log(`ℹ️ No earnings date timestamp found for ${ticker}`)
+              console.log(`✅ Yahoo Earnings Date: ${nextEarningsDate}`)
             }
-          } else {
-            console.log(`ℹ️ No calendar/earnings data found for ${ticker}`)
           }
         }
-      } else {
-        console.log(`⚠️ Could not fetch quoteSummary for ${ticker} (status: ${summaryResponse.status})`)
       }
-    } catch (e: any) {
-      // Ignore errors fetching additional data
-      console.log(`ℹ️ Could not fetch additional data for ${ticker}:`, e.message || e)
-    }
-    
-    return {
-      company_name: companyName,
-      market_cap: marketCap,
-      sector: sector,
-      industry: industry,
-      exchange: exchange,
-      next_earnings_date: nextEarningsDate
-    }
-  } catch (error) {
-    console.error(`Error fetching Yahoo Finance data for ${ticker}:`, error)
-    // Return minimal data if fetch fails
-    return {
-      company_name: ticker,
-      market_cap: null,
-      sector: null,
-      industry: null,
-      exchange: null,
-      next_earnings_date: null
+    } catch (e) {
+      console.log(`⚠️ Yahoo Quote Summary failed for ${ticker}`)
     }
   }
+  
+  console.log(`📊 Final data for ${ticker}: name=${companyName}, sector=${sector}, industry=${industry}, earnings=${nextEarningsDate}`)
+  
+  return {
+    company_name: companyName,
+    market_cap: marketCap,
+    sector: sector,
+    industry: industry,
+    exchange: exchange,
+    next_earnings_date: nextEarningsDate
+  }
+}
+
+// Legacy function name for compatibility
+async function fetchYahooFinanceData(ticker: string) {
+  return fetchCompanyData(ticker)
 }
 
 app.post('/api/companies', authMiddleware, async (c) => {
@@ -566,72 +605,118 @@ app.post('/api/companies/:id/fetch-earnings', authMiddleware, async (c) => {
       return c.json({ error: 'Company not found' }, 404)
     }
     
-    // Fetch earnings date from Yahoo Finance
+    // Fetch earnings date from multiple sources
+    const ticker = company.ticker
+    let nextEarningsDate = null
+    const sources: string[] = []
+    
+    // Source 1: Yahoo Finance Calendar Events
     try {
-      const ticker = company.ticker
       const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=calendarEvents`
-      const summaryResponse = await fetch(summaryUrl, {
+      const response = await fetch(summaryUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Accept': 'application/json'
         }
       })
       
-      if (!summaryResponse.ok) {
-        console.error(`Yahoo Finance API returned ${summaryResponse.status} for ${ticker}`)
-        const errorText = await summaryResponse.text()
-        console.error(`Response: ${errorText.substring(0, 200)}`)
-        return c.json({ 
-          error: 'Yahoo Finance earnings data is currently unavailable. This may be due to API restrictions. Please try again later or update the date manually.',
-          details: `Status: ${summaryResponse.status}`
-        }, 503)
-      }
-      
-      const summaryData = await summaryResponse.json()
-      let nextEarningsDate = null
-      
-      if (summaryData.quoteSummary && summaryData.quoteSummary.result) {
-        const calendar = summaryData.quoteSummary.result[0]?.calendarEvents
-        if (calendar && calendar.earnings) {
-          // Yahoo provides earnings dates as Unix timestamps
-          const earningsTimestamp = calendar.earnings.earningsDate?.[0]?.raw
-          if (earningsTimestamp) {
-            // Convert Unix timestamp to YYYY-MM-DD format
-            const earningsDate = new Date(earningsTimestamp * 1000)
-            nextEarningsDate = earningsDate.toISOString().split('T')[0]
-            console.log(`✅ Fetched earnings date for ${ticker}: ${nextEarningsDate}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.quoteSummary && data.quoteSummary.result) {
+          const calendar = data.quoteSummary.result[0]?.calendarEvents
+          if (calendar && calendar.earnings && calendar.earnings.earningsDate) {
+            const earningsTimestamp = calendar.earnings.earningsDate[0]?.raw
+            if (earningsTimestamp) {
+              const earningsDate = new Date(earningsTimestamp * 1000)
+              nextEarningsDate = earningsDate.toISOString().split('T')[0]
+              sources.push('Yahoo Finance')
+              console.log(`✅ Yahoo Finance earnings: ${nextEarningsDate}`)
+            }
           }
         }
       }
-      
-      // Check if Yahoo returned an error in the response
-      if (summaryData.finance && summaryData.finance.error) {
-        console.error(`Yahoo Finance error for ${ticker}:`, summaryData.finance.error)
-        return c.json({ 
-          error: `Yahoo Finance API error: ${summaryData.finance.error.description}. Please update the earnings date manually.`
-        }, 503)
+    } catch (e) {
+      console.log(`⚠️ Yahoo Finance failed for ${ticker}`)
+    }
+    
+    // Source 2: EOD Historical Data (if Yahoo failed)
+    if (!nextEarningsDate) {
+      try {
+        const eodUrl = `https://eodhd.com/api/fundamentals/${ticker}.US?api_token=demo`
+        const response = await fetch(eodUrl)
+        
+        if (response.ok) {
+          const data = await response.json()
+          if (data.Earnings && data.Earnings.History) {
+            const history = Object.values(data.Earnings.History) as any[]
+            if (history.length > 0) {
+              // Find the most recent future earnings date
+              const now = new Date()
+              const futureEarnings = history
+                .filter((e: any) => e.reportDate && new Date(e.reportDate) > now)
+                .sort((a: any, b: any) => new Date(a.reportDate).getTime() - new Date(b.reportDate).getTime())
+              
+              if (futureEarnings.length > 0) {
+                nextEarningsDate = futureEarnings[0].reportDate
+                sources.push('EOD Historical Data')
+                console.log(`✅ EOD earnings: ${nextEarningsDate}`)
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`⚠️ EOD Historical Data failed for ${ticker}`)
       }
-      
-      // Update the company record (even if null, to clear old data)
-      await DB.prepare(`
-        UPDATE companies 
-        SET next_earnings_date = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND user_id = ?
-      `).bind(nextEarningsDate, companyId, userId).run()
-      
+    }
+    
+    // Source 3: Twelve Data (if both Yahoo and EOD failed)
+    if (!nextEarningsDate) {
+      try {
+        const twelveDataUrl = `https://api.twelvedata.com/earnings_calendar?symbol=${ticker}&apikey=demo`
+        const response = await fetch(twelveDataUrl)
+        
+        if (response.ok) {
+          const data = await response.json()
+          if (data.earnings && data.earnings.length > 0) {
+            // Get the next future earnings date
+            const now = new Date()
+            const futureEarnings = data.earnings
+              .filter((e: any) => new Date(e.date) > now)
+              .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+            
+            if (futureEarnings.length > 0) {
+              nextEarningsDate = futureEarnings[0].date
+              sources.push('Twelve Data')
+              console.log(`✅ Twelve Data earnings: ${nextEarningsDate}`)
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`⚠️ Twelve Data failed for ${ticker}`)
+      }
+    }
+    
+    // Update the company record
+    await DB.prepare(`
+      UPDATE companies 
+      SET next_earnings_date = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(nextEarningsDate, companyId, userId).run()
+    
+    // Return result
+    if (nextEarningsDate) {
       return c.json({ 
         success: true, 
         next_earnings_date: nextEarningsDate,
-        message: nextEarningsDate 
-          ? `✅ Earnings date updated: ${nextEarningsDate}`
-          : 'ℹ️ No earnings date available. Yahoo Finance may not have this information yet, or the company may not have scheduled earnings.'
+        source: sources[0],
+        message: `✅ Earnings date updated: ${nextEarningsDate} (from ${sources[0]})`
       })
-    } catch (error: any) {
-      console.error('Error fetching earnings date:', error)
+    } else {
       return c.json({ 
-        error: 'Failed to fetch earnings date. Please update manually.',
-        details: error.message
-      }, 500)
+        success: true, 
+        next_earnings_date: null,
+        message: 'ℹ️ No earnings date available from any source. The company may not have scheduled earnings yet, or it may not be publicly traded on major exchanges.'
+      })
     }
   } catch (error) {
     console.error('Error in fetch-earnings endpoint:', error)
