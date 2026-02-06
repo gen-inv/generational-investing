@@ -391,9 +391,14 @@ async function fetchCompanyData(ticker: string, env?: any) {
   let nextEarningsDate = null
   
   // Get API keys from environment
+  const rapidApiKey = env?.RAPIDAPI_KEY || null
   const eodApiKey = env?.EOD_API_KEY || 'demo'
   const finnhubApiKey = env?.FINNHUB_API_KEY || null
   const fmpApiKey = env?.FMP_API_KEY || null
+  
+  if (rapidApiKey) {
+    console.log(`🔑 Using RapidAPI key for FinanceBird: ${rapidApiKey.substring(0, 10)}...`)
+  }
   
   console.log(`🔍 Fetching data for ${ticker}...`)
   
@@ -420,7 +425,37 @@ async function fetchCompanyData(ticker: string, env?: any) {
     console.log(`⚠️ Yahoo Chart API failed for ${ticker}`)
   }
   
-  // Step 2: Try EOD Historical Data API as PRIMARY source for sector/industry/earnings
+  // Step 2: Try FinanceBird (RapidAPI) as PRIMARY source for sector/industry
+  if ((!sector || !industry) && rapidApiKey) {
+    try {
+      const financeBirdUrl = `https://financebird.p.rapidapi.com/quote/${ticker}/profile`
+      const response = await fetch(financeBirdUrl, {
+        headers: {
+          'X-RapidAPI-Key': rapidApiKey,
+          'X-RapidAPI-Host': 'financebird.p.rapidapi.com'
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.quoteSummary && data.quoteSummary.result && data.quoteSummary.result.length > 0) {
+          const profile = data.quoteSummary.result[0].assetProfile
+          if (profile) {
+            sector = profile.sector || sector
+            industry = profile.industry || industry
+            companyName = profile.companyOfficers ? companyName : companyName // Keep Yahoo name
+            console.log(`✅ FinanceBird API (PRIMARY): Sector=${sector}, Industry=${industry}`)
+          }
+        } else if (data.message) {
+          console.log(`⚠️ FinanceBird API error: ${data.message}`)
+        }
+      }
+    } catch (e) {
+      console.log(`⚠️ FinanceBird API failed for ${ticker}`)
+    }
+  }
+  
+  // Step 3: Try EOD Historical Data API as fallback
   if (!sector || !industry) {
     try {
       const eodUrl = `https://eodhd.com/api/fundamentals/${ticker}.US?api_token=${eodApiKey}`
@@ -435,7 +470,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
           companyName = general.Name || companyName
           exchange = general.Exchange || exchange
           const keyType = eodApiKey === 'demo' ? 'demo' : 'paid'
-          console.log(`✅ EOD Historical Data API (${keyType} - PRIMARY): Sector=${sector}, Industry=${industry}`)
+          console.log(`✅ EOD Historical Data API (${keyType} - FALLBACK): Sector=${sector}, Industry=${industry}`)
           
           // EOD also has earnings data
           if (data.Earnings && data.Earnings.History) {
@@ -460,7 +495,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
     }
   }
   
-  // Step 3: Try Finnhub as fallback
+  // Step 4: Try Finnhub as additional fallback
   if ((!sector || !industry) && finnhubApiKey) {
     try {
       const finnhubUrl = `https://finnhub.io/api/v1/stock/profile2?symbol=${ticker}&token=${finnhubApiKey}`
@@ -473,7 +508,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
           industry = data.finnhubIndustry || industry
           companyName = data.name || companyName
           exchange = data.exchange || exchange
-          console.log(`✅ Finnhub API (FALLBACK): Sector=${sector}, Industry=${industry}`)
+          console.log(`✅ Finnhub API (BACKUP): Sector=${sector}, Industry=${industry}`)
         }
       }
     } catch (e) {
@@ -481,7 +516,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
     }
   }
   
-  // Step 4: Try Financial Modeling Prep as final fallback
+  // Step 5: Try Financial Modeling Prep as final fallback
   if ((!sector || !industry) && fmpApiKey) {
     try {
       const fmpUrl = `https://financialmodelingprep.com/api/v3/profile/${ticker}?apikey=${fmpApiKey}`
@@ -495,7 +530,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
           industry = profile.industry || industry
           companyName = profile.companyName || companyName
           exchange = profile.exchangeShortName || exchange
-          console.log(`✅ Financial Modeling Prep API (FALLBACK): Sector=${sector}, Industry=${industry}`)
+          console.log(`✅ Financial Modeling Prep API (BACKUP): Sector=${sector}, Industry=${industry}`)
         }
       }
     } catch (e) {
