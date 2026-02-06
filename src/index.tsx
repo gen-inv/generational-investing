@@ -393,6 +393,9 @@ async function fetchCompanyData(ticker: string, env?: any) {
   // Get API key from environment (use demo as fallback)
   const twelveDataApiKey = env?.TWELVE_DATA_API_KEY || 'demo'
   const eodApiKey = env?.EOD_API_KEY || 'demo'
+  const finnhubApiKey = env?.FINNHUB_API_KEY || null
+  const fmpApiKey = env?.FMP_API_KEY || null
+  const rapidApiKey = env?.RAPIDAPI_KEY || null
   
   if (twelveDataApiKey !== 'demo') {
     console.log(`🔑 Using paid Twelve Data API key: ${twelveDataApiKey.substring(0, 10)}...`)
@@ -487,7 +490,78 @@ async function fetchCompanyData(ticker: string, env?: any) {
     }
   }
   
-  // Step 4: Try Yahoo Finance Quote Summary for earnings (if not already found)
+  // Step 4a: Try Finnhub as additional backup
+  if ((!sector || !industry) && finnhubApiKey) {
+    try {
+      const finnhubUrl = `https://finnhub.io/api/v1/stock/profile2?symbol=${ticker}&token=${finnhubApiKey}`
+      const response = await fetch(finnhubUrl)
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.finnhubIndustry) { // Finnhub uses different field names
+          sector = sector || (data.finnhubIndustry.split(' - ')[0] || null) // Extract sector from industry string
+          industry = data.finnhubIndustry || industry
+          companyName = data.name || companyName
+          exchange = data.exchange || exchange
+          console.log(`✅ Finnhub API: Sector=${sector}, Industry=${industry}`)
+        }
+      }
+    } catch (e) {
+      console.log(`⚠️ Finnhub API failed for ${ticker}`)
+    }
+  }
+  
+  // Step 4b: Try Financial Modeling Prep as additional backup
+  if ((!sector || !industry) && fmpApiKey) {
+    try {
+      const fmpUrl = `https://financialmodelingprep.com/api/v3/profile/${ticker}?apikey=${fmpApiKey}`
+      const response = await fetch(fmpUrl)
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (Array.isArray(data) && data.length > 0) {
+          const profile = data[0]
+          sector = profile.sector || sector
+          industry = profile.industry || industry
+          companyName = profile.companyName || companyName
+          exchange = profile.exchangeShortName || exchange
+          console.log(`✅ Financial Modeling Prep API: Sector=${sector}, Industry=${industry}`)
+        }
+      }
+    } catch (e) {
+      console.log(`⚠️ Financial Modeling Prep API failed for ${ticker}`)
+    }
+  }
+  
+  // Step 4c: Try FinanceBird (RapidAPI) as additional backup
+  if ((!sector || !industry) && rapidApiKey && rapidApiKey !== 'your_rapidapi_key_here') {
+    try {
+      const financeBirdUrl = `https://financebird.p.rapidapi.com/company/profile?ticker=${ticker}`
+      const response = await fetch(financeBirdUrl, {
+        headers: {
+          'X-RapidAPI-Key': rapidApiKey,
+          'X-RapidAPI-Host': 'financebird.p.rapidapi.com'
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data && !data.message) { // Check it's not an error response
+          sector = data.sector || sector
+          industry = data.industry || industry
+          companyName = data.companyName || companyName
+          exchange = data.exchange || exchange
+          console.log(`✅ FinanceBird API (RapidAPI): Sector=${sector}, Industry=${industry}`)
+        } else if (data.message) {
+          console.log(`⚠️ FinanceBird API error: ${data.message}`)
+        }
+      }
+    } catch (e) {
+      console.log(`⚠️ FinanceBird API failed for ${ticker}`)
+    }
+  }
+  
+  // Step 5: Try Yahoo Finance Quote Summary for earnings (if not already found)
   if (!nextEarningsDate) {
     try {
       const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=calendarEvents`
