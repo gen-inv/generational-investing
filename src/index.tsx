@@ -2133,13 +2133,41 @@ app.get('/', (c) => {
                                 <table class="w-full">
                                     <thead>
                                         <tr class="bg-gray-100">
-                                            <th class="px-4 py-3 text-left">Ticker</th>
-                                            <th class="px-4 py-3 text-left">Company</th>
+                                            <th class="px-4 py-3 text-left cursor-pointer hover:bg-gray-200 select-none" onclick="sortCompanies('ticker')">
+                                                <div class="flex items-center gap-2">
+                                                    Ticker
+                                                    <span id="sort-ticker" class="text-xs">
+                                                        <i class="fas fa-sort-up text-brand-teal"></i>
+                                                    </span>
+                                                </div>
+                                            </th>
+                                            <th class="px-4 py-3 text-left cursor-pointer hover:bg-gray-200 select-none" onclick="sortCompanies('company_name')">
+                                                <div class="flex items-center gap-2">
+                                                    Company
+                                                    <span id="sort-company_name" class="text-xs text-gray-400">
+                                                        <i class="fas fa-sort"></i>
+                                                    </span>
+                                                </div>
+                                            </th>
                                             <th class="px-4 py-3 text-left">Exchange</th>
                                             <th class="px-4 py-3 text-left">Industry</th>
                                             <th class="px-4 py-3 text-center">Wonderful</th>
-                                            <th class="px-4 py-3 text-center">Research Score</th>
-                                            <th class="px-4 py-3 text-center">Anti-Fragile</th>
+                                            <th class="px-4 py-3 text-center cursor-pointer hover:bg-gray-200 select-none" onclick="sortCompanies('research_score')">
+                                                <div class="flex items-center justify-center gap-2">
+                                                    Research Score
+                                                    <span id="sort-research_score" class="text-xs text-gray-400">
+                                                        <i class="fas fa-sort"></i>
+                                                    </span>
+                                                </div>
+                                            </th>
+                                            <th class="px-4 py-3 text-center cursor-pointer hover:bg-gray-200 select-none" onclick="sortCompanies('anti_fragile_score')">
+                                                <div class="flex items-center justify-center gap-2">
+                                                    Anti-Fragile
+                                                    <span id="sort-anti_fragile_score" class="text-xs text-gray-400">
+                                                        <i class="fas fa-sort"></i>
+                                                    </span>
+                                                </div>
+                                            </th>
                                             <th class="px-4 py-3 text-center">Actions</th>
                                         </tr>
                                     </thead>

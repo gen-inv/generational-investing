@@ -454,10 +454,46 @@ async function loadDashboard() {
 // COMPANY FUNCTIONS
 // ============================================================================
 
+// Sorting state
+let companiesSortColumn = 'ticker'
+let companiesSortDirection = 'asc'
+
+function updateSortIndicators() {
+    // Reset all sort indicators
+    const sortableColumns = ['ticker', 'company_name', 'research_score', 'anti_fragile_score']
+    sortableColumns.forEach(col => {
+        const indicator = document.getElementById(`sort-${col}`)
+        if (indicator) {
+            indicator.innerHTML = '<i class="fas fa-sort"></i>'
+            indicator.className = 'text-xs text-gray-400'
+        }
+    })
+    
+    // Update active sort indicator
+    const activeIndicator = document.getElementById(`sort-${companiesSortColumn}`)
+    if (activeIndicator) {
+        const icon = companiesSortDirection === 'asc' ? 'fa-sort-up' : 'fa-sort-down'
+        activeIndicator.innerHTML = `<i class="fas ${icon}"></i>`
+        activeIndicator.className = 'text-xs text-brand-teal'
+    }
+}
+
+function sortCompanies(column) {
+    // Toggle direction if clicking same column, otherwise default to ascending
+    if (companiesSortColumn === column) {
+        companiesSortDirection = companiesSortDirection === 'asc' ? 'desc' : 'asc'
+    } else {
+        companiesSortColumn = column
+        companiesSortDirection = 'asc'
+    }
+    updateSortIndicators()
+    loadCompanies()
+}
+
 async function loadCompanies() {
     try {
         const response = await api.get('/api/companies')
-        const companies = response.data.companies || response.data
+        let companies = response.data.companies || response.data
         
         const table = document.getElementById('companies-table')
         table.innerHTML = ''
@@ -466,6 +502,39 @@ async function loadCompanies() {
             table.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No companies found. Click "Add Company" to get started.</td></tr>'
             return
         }
+        
+        // Sort companies
+        companies.sort((a, b) => {
+            let aVal, bVal
+            
+            switch(companiesSortColumn) {
+                case 'ticker':
+                    aVal = (a.ticker || '').toLowerCase()
+                    bVal = (b.ticker || '').toLowerCase()
+                    break
+                case 'company_name':
+                    aVal = (a.company_name || '').toLowerCase()
+                    bVal = (b.company_name || '').toLowerCase()
+                    break
+                case 'research_score':
+                    aVal = a.research_score || 0
+                    bVal = b.research_score || 0
+                    break
+                case 'anti_fragile_score':
+                    aVal = a.anti_fragile_score || 0
+                    bVal = b.anti_fragile_score || 0
+                    break
+                default:
+                    return 0
+            }
+            
+            if (aVal < bVal) return companiesSortDirection === 'asc' ? -1 : 1
+            if (aVal > bVal) return companiesSortDirection === 'asc' ? 1 : -1
+            return 0
+        })
+        
+        // Update sort indicators after loading
+        updateSortIndicators()
         
         companies.forEach(company => {
             // Check if company data is still loading (missing key fields)
