@@ -805,7 +805,7 @@ async function showCompanyView(companyId) {
     }
 }
 
-// Fetch earnings date from Yahoo Finance
+// Fetch earnings date from FinanceBird
 async function fetchEarningsDate(companyId) {
     const earningsDateElement = document.getElementById('earningsDate')
     const fetchBtn = event.target.closest('button')
@@ -821,7 +821,10 @@ async function fetchEarningsDate(companyId) {
         const response = await api.post(`/api/companies/${companyId}/fetch-earnings`)
         
         if (response.data.next_earnings_date) {
-            earningsDateElement.textContent = response.data.next_earnings_date
+            // Show earnings date with ESTIMATED badge if applicable
+            const estimatedBadge = response.data.is_estimated ? 
+                ' <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">ESTIMATED</span>' : ''
+            earningsDateElement.innerHTML = response.data.next_earnings_date + estimatedBadge
             earningsDateElement.classList.add('text-brand-teal', 'font-bold')
         } else {
             earningsDateElement.textContent = 'Not available'
@@ -830,7 +833,7 @@ async function fetchEarningsDate(companyId) {
         // Show success message
         const message = response.data.message || 'Earnings date updated'
         const messageDiv = document.createElement('div')
-        messageDiv.className = 'mt-2 p-2 bg-green-100 text-green-700 rounded'
+        messageDiv.className = 'mt-2 p-2 bg-green-100 text-green-700 rounded text-sm'
         messageDiv.textContent = message
         fetchBtn.parentElement.appendChild(messageDiv)
         
