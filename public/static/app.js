@@ -482,7 +482,7 @@ async function loadCompanies() {
                         ${isLoading ? '<i class="fas fa-spinner fa-spin mr-2 text-gray-400"></i><span class="text-gray-400">Fetching data...</span>' : company.company_name}
                     </td>
                     <td class="px-4 py-3">${company.exchange || '-'}</td>
-                    <td class="px-4 py-3">${company.sector || '-'}</td>
+                    <td class="px-4 py-3">${company.industry || '-'}</td>
                     <td class="px-4 py-3 text-center">
                         ${company.is_wonderful ? '<i class="fas fa-star text-brand-gold"></i>' : '-'}
                     </td>
