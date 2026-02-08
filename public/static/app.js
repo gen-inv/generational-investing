@@ -1455,7 +1455,7 @@ async function showStockForm(stockId = null) {
         
         // Load companies and accounts
         const companiesResponse = await api.get('/api/companies')
-        const companies = companiesResponse.data
+        const companies = companiesResponse.data.companies || companiesResponse.data
         
         const accountsResponse = await api.get('/api/accounts')
         const accounts = accountsResponse.data.accounts || accountsResponse.data
