@@ -392,9 +392,6 @@ async function fetchCompanyData(ticker: string, env?: any) {
   
   // Get API keys from environment
   const rapidApiKey = env?.RAPIDAPI_KEY || null
-  const eodApiKey = env?.EOD_API_KEY || 'demo'
-  const finnhubApiKey = env?.FINNHUB_API_KEY || null
-  const fmpApiKey = env?.FMP_API_KEY || null
   
   if (rapidApiKey) {
     console.log(`🔑 Using RapidAPI key for FinanceBird: ${rapidApiKey.substring(0, 10)}...`)
@@ -425,150 +422,58 @@ async function fetchCompanyData(ticker: string, env?: any) {
     console.log(`⚠️ Yahoo Chart API failed for ${ticker}`)
   }
   
-  // Step 2: Try FinanceBird (RapidAPI) as PRIMARY source for sector/industry
-  if ((!sector || !industry) && rapidApiKey) {
+  // Step 2: FinanceBird (RapidAPI) as PRIMARY source for ALL data (sector, industry, earnings)
+  if (rapidApiKey) {
     try {
-      const financeBirdUrl = `https://financebird.p.rapidapi.com/quote/${ticker}/profile`
-      const response = await fetch(financeBirdUrl, {
+      // Get profile for sector/industry
+      const profileUrl = `https://financebird.p.rapidapi.com/quote/${ticker}/profile`
+      const profileResp = await fetch(profileUrl, {
         headers: {
           'X-RapidAPI-Key': rapidApiKey,
           'X-RapidAPI-Host': 'financebird.p.rapidapi.com'
         }
       })
       
-      if (response.ok) {
-        const data = await response.json()
+      if (profileResp.ok) {
+        const data = await profileResp.json()
         if (data.quoteSummary && data.quoteSummary.result && data.quoteSummary.result.length > 0) {
           const profile = data.quoteSummary.result[0].assetProfile
           if (profile) {
             sector = profile.sector || sector
             industry = profile.industry || industry
-            companyName = profile.companyOfficers ? companyName : companyName // Keep Yahoo name
-            console.log(`✅ FinanceBird API (PRIMARY): Sector=${sector}, Industry=${industry}`)
+            console.log(`✅ FinanceBird Profile (PRIMARY): Sector=${sector}, Industry=${industry}`)
           }
-        } else if (data.message) {
-          console.log(`⚠️ FinanceBird API error: ${data.message}`)
+        }
+      }
+      
+      // Get summary for earnings date
+      const summaryUrl = `https://financebird.p.rapidapi.com/quote/${ticker}/summary`
+      const summaryResp = await fetch(summaryUrl, {
+        headers: {
+          'X-RapidAPI-Key': rapidApiKey,
+          'X-RapidAPI-Host': 'financebird.p.rapidapi.com'
+        }
+      })
+      
+      if (summaryResp.ok) {
+        const summary = await summaryResp.json()
+        const result = summary.quoteResponse?.result?.[0]
+        
+        if (result) {
+          // Get next earnings date (prefer End, fallback to Start, then Timestamp)
+          const earningsTs = result.earningsTimestampEnd?.raw || 
+                            result.earningsTimestampStart?.raw ||
+                            result.earningsTimestamp?.raw
+          
+          if (earningsTs) {
+            const date = new Date(earningsTs * 1000)
+            nextEarningsDate = date.toISOString().split('T')[0]
+            console.log(`✅ FinanceBird Earnings (PRIMARY): ${nextEarningsDate}`)
+          }
         }
       }
     } catch (e) {
       console.log(`⚠️ FinanceBird API failed for ${ticker}`)
-    }
-  }
-  
-  // Step 3: Try EOD Historical Data API as fallback (for sector/industry AND earnings)
-  const shouldTryEOD = (!sector || !industry || !nextEarningsDate)
-  if (shouldTryEOD) {
-    try {
-      const eodUrl = `https://eodhd.com/api/fundamentals/${ticker}.US?api_token=${eodApiKey}`
-      const response = await fetch(eodUrl)
-      
-      if (response.ok) {
-        const data = await response.json()
-        
-        // Get sector/industry if needed
-        if (data.General && (!sector || !industry)) {
-          const general = data.General
-          sector = general.Sector || sector
-          industry = general.Industry || industry
-          companyName = general.Name || companyName
-          exchange = general.Exchange || exchange
-          const keyType = eodApiKey === 'demo' ? 'demo' : 'paid'
-          console.log(`✅ EOD Historical Data API (${keyType} - FALLBACK): Sector=${sector}, Industry=${industry}`)
-        }
-        
-        // Get earnings data if needed
-        if (!nextEarningsDate && data.Earnings && data.Earnings.History) {
-          const history = Object.values(data.Earnings.History) as any[]
-          if (history.length > 0) {
-            // Find the most recent future earnings date
-            const now = new Date()
-            const futureEarnings = history
-              .filter((e: any) => e.reportDate && new Date(e.reportDate) > now)
-              .sort((a: any, b: any) => new Date(a.reportDate).getTime() - new Date(b.reportDate).getTime())
-            
-            if (futureEarnings.length > 0) {
-              nextEarningsDate = futureEarnings[0].reportDate
-              const keyType = eodApiKey === 'demo' ? 'demo' : 'paid'
-              console.log(`✅ EOD Earnings Date (${keyType}): ${nextEarningsDate}`)
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.log(`⚠️ EOD Historical Data API failed for ${ticker}`)
-    }
-  }
-  
-  // Step 4: Try Finnhub as additional fallback
-  if ((!sector || !industry) && finnhubApiKey) {
-    try {
-      const finnhubUrl = `https://finnhub.io/api/v1/stock/profile2?symbol=${ticker}&token=${finnhubApiKey}`
-      const response = await fetch(finnhubUrl)
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.finnhubIndustry) {
-          sector = sector || (data.finnhubIndustry.split(' - ')[0] || null)
-          industry = data.finnhubIndustry || industry
-          companyName = data.name || companyName
-          exchange = data.exchange || exchange
-          console.log(`✅ Finnhub API (BACKUP): Sector=${sector}, Industry=${industry}`)
-        }
-      }
-    } catch (e) {
-      console.log(`⚠️ Finnhub API failed for ${ticker}`)
-    }
-  }
-  
-  // Step 5: Try Financial Modeling Prep as final fallback
-  if ((!sector || !industry) && fmpApiKey) {
-    try {
-      const fmpUrl = `https://financialmodelingprep.com/api/v3/profile/${ticker}?apikey=${fmpApiKey}`
-      const response = await fetch(fmpUrl)
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (Array.isArray(data) && data.length > 0) {
-          const profile = data[0]
-          sector = profile.sector || sector
-          industry = profile.industry || industry
-          companyName = profile.companyName || companyName
-          exchange = profile.exchangeShortName || exchange
-          console.log(`✅ Financial Modeling Prep API (BACKUP): Sector=${sector}, Industry=${industry}`)
-        }
-      }
-    } catch (e) {
-      console.log(`⚠️ Financial Modeling Prep API failed for ${ticker}`)
-    }
-  }
-  
-  // Step 5: Try Yahoo Finance Quote Summary for earnings (if not already found)
-  if (!nextEarningsDate) {
-    try {
-      const summaryUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=calendarEvents`
-      const response = await fetch(summaryUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'application/json'
-        }
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.quoteSummary && data.quoteSummary.result) {
-          const calendar = data.quoteSummary.result[0]?.calendarEvents
-          if (calendar && calendar.earnings && calendar.earnings.earningsDate) {
-            const earningsTimestamp = calendar.earnings.earningsDate[0]?.raw
-            if (earningsTimestamp) {
-              const earningsDate = new Date(earningsTimestamp * 1000)
-              nextEarningsDate = earningsDate.toISOString().split('T')[0]
-              console.log(`✅ Yahoo Earnings Date: ${nextEarningsDate}`)
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.log(`⚠️ Yahoo Quote Summary failed for ${ticker}`)
     }
   }
   
