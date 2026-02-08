@@ -697,7 +697,7 @@ function showCompanyForm(companyId = null) {
     // Load existing data if editing
     if (isEdit) {
         api.get(`/api/companies/${companyId}`).then(response => {
-            const company = response.data
+            const company = response.data.company
             const form = document.getElementById('companyForm')
             form.ticker.value = company.ticker
             form.company_name.value = company.company_name
@@ -732,7 +732,7 @@ async function deleteCompany(id) {
 async function showCompanyView(companyId) {
     try {
         const response = await api.get(`/api/companies/${companyId}`)
-        const company = response.data
+        const company = response.data.company
         
         const modal = document.createElement('div')
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'
