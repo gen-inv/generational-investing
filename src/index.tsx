@@ -446,7 +446,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
         }
       }
       
-      // Get summary for earnings date
+      // Get summary for market cap and earnings date
       const summaryUrl = `https://financebird.p.rapidapi.com/quote/${ticker}/summary`
       const summaryResp = await fetch(summaryUrl, {
         headers: {
@@ -460,6 +460,12 @@ async function fetchCompanyData(ticker: string, env?: any) {
         const result = summary.quoteResponse?.result?.[0]
         
         if (result) {
+          // Get market cap (prefer FinanceBird over Yahoo for consistency)
+          if (result.marketCap?.raw) {
+            marketCap = result.marketCap.raw
+            console.log(`✅ FinanceBird Market Cap (PRIMARY): ${result.marketCap.fmt}`)
+          }
+          
           // Get next earnings date (prefer End, fallback to Start, then Timestamp)
           const earningsTs = result.earningsTimestampEnd?.raw || 
                             result.earningsTimestampStart?.raw ||
@@ -469,6 +475,13 @@ async function fetchCompanyData(ticker: string, env?: any) {
             const date = new Date(earningsTs * 1000)
             nextEarningsDate = date.toISOString().split('T')[0]
             console.log(`✅ FinanceBird Earnings (PRIMARY): ${nextEarningsDate}`)
+          } else if (result.earningsTimestamp?.raw) {
+            // If no future earnings date, estimate from last earnings + 3 months
+            const lastEarnings = new Date(result.earningsTimestamp.raw * 1000)
+            const estimated = new Date(lastEarnings)
+            estimated.setMonth(estimated.getMonth() + 3)
+            nextEarningsDate = estimated.toISOString().split('T')[0]
+            console.log(`⚠️ FinanceBird Earnings (ESTIMATED): ${nextEarningsDate} (last: ${lastEarnings.toISOString().split('T')[0]} + 3 months)`)
           }
         }
       }
@@ -477,7 +490,7 @@ async function fetchCompanyData(ticker: string, env?: any) {
     }
   }
   
-  console.log(`📊 Final data for ${ticker}: name=${companyName}, sector=${sector}, industry=${industry}, earnings=${nextEarningsDate}`)
+  console.log(`📊 Final data for ${ticker}: name=${companyName}, marketCap=${marketCap}, sector=${sector}, industry=${industry}, earnings=${nextEarningsDate}`)
   
   return {
     company_name: companyName,
