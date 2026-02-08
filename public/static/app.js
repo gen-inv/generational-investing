@@ -454,9 +454,9 @@ async function loadDashboard() {
 // COMPANY FUNCTIONS
 // ============================================================================
 
-// Sorting state
-let companiesSortColumn = 'ticker'
-let companiesSortDirection = 'asc'
+// Sorting state (load from localStorage if available)
+let companiesSortColumn = localStorage.getItem('companiesSortColumn') || 'ticker'
+let companiesSortDirection = localStorage.getItem('companiesSortDirection') || 'asc'
 
 function updateSortIndicators() {
     // Reset all sort indicators
@@ -486,6 +486,11 @@ function sortCompanies(column) {
         companiesSortColumn = column
         companiesSortDirection = 'asc'
     }
+    
+    // Save sort preference to localStorage
+    localStorage.setItem('companiesSortColumn', companiesSortColumn)
+    localStorage.setItem('companiesSortDirection', companiesSortDirection)
+    
     updateSortIndicators()
     loadCompanies()
 }
