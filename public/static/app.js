@@ -1863,7 +1863,7 @@ async function showStockDetails(id) {
                                                     <td class="px-4 py-2">${cc.trade_date}</td>
                                                     <td class="px-4 py-2 text-center font-semibold">$${cc.strike_price.toFixed(2)}</td>
                                                     <td class="px-4 py-2 ${expirationClass}">${cc.expiration_date}${expirationWarning}</td>
-                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${cc.premium.toFixed(2)}</td>
+                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${(cc.premium * cc.quantity * 100).toFixed(2)}</td>
                                                     <td class="px-4 py-2 text-center">${cc.quantity}</td>
                                                     <td class="px-4 py-2 text-center">
                                                         <span class="px-2 py-1 rounded text-xs ${cc.is_open ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
@@ -2097,9 +2097,9 @@ async function initiateCoveredCall(stockId) {
                     </div>
                     
                     <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Premium Per Contract *</label>
+                        <label class="block text-gray-700 mb-2">Premium Per Share *</label>
                         <input type="number" step="0.01" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                        <small class="text-gray-500">Premium received per contract</small>
+                        <small class="text-gray-500">Premium per share (1 contract = 100 shares)</small>
                     </div>
                     
                     <div class="mb-4">
@@ -2227,8 +2227,9 @@ async function viewCoveredCallDetails(ccId) {
                         <p class="font-semibold text-lg">$${cc.strike_price.toFixed(2)}</p>
                     </div>
                     <div class="bg-gray-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600 mb-1">Premium</p>
-                        <p class="font-semibold text-lg text-green-600">$${cc.premium.toFixed(2)}</p>
+                        <p class="text-sm text-gray-600 mb-1">Total Premium</p>
+                        <p class="font-semibold text-lg text-green-600">$${(cc.premium * cc.quantity * 100).toFixed(2)}</p>
+                        <p class="text-xs text-gray-500 mt-1">$${cc.premium.toFixed(2)}/share × ${cc.quantity} contracts</p>
                     </div>
                     <div class="bg-gray-50 p-4 rounded-lg">
                         <p class="text-sm text-gray-600 mb-1">Contracts</p>
@@ -2310,8 +2311,9 @@ async function editCoveredCall(ccId) {
                     </div>
                     
                     <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Premium Per Contract *</label>
+                        <label class="block text-gray-700 mb-2">Premium Per Share *</label>
                         <input type="number" step="0.01" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.premium}">
+                        <small class="text-gray-500">Premium per share (1 contract = 100 shares)</small>
                     </div>
                     
                     <div class="mb-4">
@@ -2399,9 +2401,9 @@ async function closeCoveredCall(ccId, stockId) {
                 
                 <div class="mb-4 p-4 bg-gray-100 rounded-lg">
                     <p class="text-sm text-gray-600">Strike: <span class="font-semibold">$${cc.strike_price.toFixed(2)}</span></p>
-                    <p class="text-sm text-gray-600">Premium Received: <span class="font-semibold text-green-600">$${cc.premium.toFixed(2)}</span> per contract</p>
+                    <p class="text-sm text-gray-600">Premium Received: <span class="font-semibold text-green-600">$${cc.premium.toFixed(2)}</span> per share</p>
                     <p class="text-sm text-gray-600">Contracts: <span class="font-semibold">${cc.quantity}</span></p>
-                    <p class="text-sm text-gray-600">Total Premium: <span class="font-semibold text-green-600">$${(cc.premium * cc.quantity).toFixed(2)}</span></p>
+                    <p class="text-sm text-gray-600">Total Premium: <span class="font-semibold text-green-600">$${(cc.premium * cc.quantity * 100).toFixed(2)}</span></p>
                     <p class="text-sm text-gray-600">Expiration: <span class="font-semibold">${cc.expiration_date}</span></p>
                 </div>
                 
@@ -2412,9 +2414,9 @@ async function closeCoveredCall(ccId, stockId) {
                     </div>
                     
                     <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Close Price Per Contract *</label>
+                        <label class="block text-gray-700 mb-2">Close Price Per Share *</label>
                         <input type="number" step="0.01" name="close_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required placeholder="0.00" value="0">
-                        <small class="text-gray-500">Cost to buy back the option (0 if expired or assigned)</small>
+                        <small class="text-gray-500">Cost per share to buy back (0 if expired or assigned)</small>
                     </div>
                     
                     <div class="mb-4">
@@ -2425,6 +2427,9 @@ async function closeCoveredCall(ccId, stockId) {
                     
                     <div class="mb-4 p-4 bg-blue-50 rounded-lg">
                         <p class="text-sm text-gray-700 mb-1">P/L Calculation:</p>
+                        <p class="text-xs text-gray-600">(Premium × Contracts × 100) - (Close Price × Contracts × 100) - Commission</p>
+                        <p class="text-xs text-gray-600 mt-2"><strong>Note:</strong> P/L will be applied to the stock's cost basis</p>
+                    </div>
                         <p class="text-xs text-gray-600">Premium Received - (Close Price × Contracts) - Commission</p>
                         <p class="text-xs text-gray-600 mt-2"><strong>Note:</strong> P/L will be applied to the stock's cost basis</p>
                     </div>
@@ -2448,9 +2453,10 @@ async function closeCoveredCall(ccId, stockId) {
             const closePrice = parseFloat(formData.get('close_price'))
             const commission = parseFloat(formData.get('commission'))
             
-            // Calculate P/L: Premium Received - (Close Price × Contracts) - Commission
-            const premiumReceived = cc.premium * cc.quantity
-            const closeCost = closePrice * cc.quantity
+            // Calculate P/L: Premium Received - (Close Price × Contracts × 100) - Commission
+            // Note: Premium is per share, 1 contract = 100 shares
+            const premiumReceived = cc.premium * cc.quantity * 100
+            const closeCost = closePrice * cc.quantity * 100
             const profitLoss = premiumReceived - closeCost - commission
             
             try {

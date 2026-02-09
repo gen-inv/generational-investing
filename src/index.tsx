@@ -1865,7 +1865,8 @@ app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
     ).run()
     
     // Also record as cost basis adjustment (premium received reduces cost basis)
-    const totalPremium = data.premium * data.quantity
+    // Premium is per share, so: Total = Premium × Contracts × 100 shares/contract
+    const totalPremium = data.premium * data.quantity * 100
     await DB.prepare(`
       INSERT INTO cost_basis_adjustments (
         user_id, stock_trade_id, adjustment_type, amount, adjustment_date, notes
@@ -1875,7 +1876,7 @@ app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
       tradeId,
       totalPremium,
       data.trade_date,
-      `Covered call: ${data.quantity} contracts @ $${data.strike_price} strike, exp ${data.expiration_date}`
+      `Covered call: ${data.quantity} contracts @ $${data.strike_price} strike, premium $${data.premium}/share ($${totalPremium} total), exp ${data.expiration_date}`
     ).run()
     
     return c.json({
