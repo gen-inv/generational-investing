@@ -1744,7 +1744,7 @@ async function showStockDetails(id) {
                     <!-- Main Content Area -->
                     <div class="flex-1 p-6 overflow-y-auto">
                         <!-- Position Summary (Compressed) -->
-                        <div class="mb-4 bg-gradient-to-r from-brand-teal to-teal-600 text-white rounded-lg p-4 shadow-md">
+                        <div class="mb-4 text-white rounded-lg p-4 shadow-md" style="background: linear-gradient(to right, #004F59, #00636F);">
                             <div class="flex items-center justify-between">
                                 <div>
                                     <h4 class="text-lg font-semibold mb-1">${stock.ticker} - ${stock.company_name || stock.ticker}</h4>
