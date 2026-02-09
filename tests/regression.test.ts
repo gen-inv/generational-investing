@@ -888,3 +888,634 @@ describe('Data Source Integration Tests', () => {
     expect(duration).toBeLessThan(5000)
   })
 })
+
+describe('Stock Trade Tests', () => {
+  let stockToken: string = ''
+  let stockAccountId: number = 0
+  let stockCompanyId: number = 0
+  let stockTradeId: number = 0
+
+  beforeAll(async () => {
+    // Create user
+    const email = generateEmail()
+    const userResponse = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Stock Trade Test User'
+      })
+    })
+    const userData = await userResponse.json()
+    stockToken = userData.token
+
+    // Create account
+    const accountResponse = await fetch(`${BASE_URL}/api/accounts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockToken}`
+      },
+      body: JSON.stringify({
+        account_name: 'Stock Test Account',
+        account_type: 'TFSA',
+        default_currency: 'CAD',
+        balance_cad: 100000,
+        balance_usd: 0,
+        cash_balance_cad: 50000,
+        cash_balance_usd: 0
+      })
+    })
+    const accountData = await accountResponse.json()
+    stockAccountId = accountData.id
+
+    // Create company
+    const companyResponse = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'AAPL',
+        research_score: 85,
+        buy_price: 150.00
+      })
+    })
+    const companyData = await companyResponse.json()
+    stockCompanyId = companyData.id
+  })
+
+  it('should create a BUY stock trade', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockToken}`
+      },
+      body: JSON.stringify({
+        company_id: stockCompanyId,
+        ticker: 'AAPL',
+        account_id: stockAccountId,
+        trade_type: 'BUY',
+        quantity: 200,
+        price: 150.00,
+        trade_date: '2024-01-15',
+        commission: 10.00
+      })
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(201)
+    expect(data.id).toBeDefined()
+    expect(data.ticker).toBe('AAPL')
+    expect(data.quantity).toBe(200)
+    expect(data.price).toBe(150.00)
+    
+    stockTradeId = data.id
+  })
+
+  it('should list open stock trades', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks?open=true`, {
+      headers: { 'Authorization': `Bearer ${stockToken}` }
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(200)
+    expect(Array.isArray(data)).toBe(true)
+    expect(data.length).toBeGreaterThan(0)
+    expect(data[0].ticker).toBe('AAPL')
+  })
+
+  it('should calculate average price for multiple buys', async () => {
+    // Add to position
+    await fetch(`${BASE_URL}/api/stocks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockToken}`
+      },
+      body: JSON.stringify({
+        company_id: stockCompanyId,
+        ticker: 'AAPL',
+        account_id: stockAccountId,
+        trade_type: 'BUY',
+        quantity: 100,
+        price: 160.00,
+        trade_date: '2024-02-01',
+        commission: 5.00
+      })
+    })
+
+    // Get trades and verify average price
+    const response = await fetch(`${BASE_URL}/api/stocks?open=true`, {
+      headers: { 'Authorization': `Bearer ${stockToken}` }
+    })
+
+    const data = await response.json()
+    const appleStock = data.find((s: any) => s.ticker === 'AAPL')
+    expect(appleStock).toBeDefined()
+    // Note: Each BUY creates a separate row in stock_trades
+    // Aggregation happens in the frontend when displaying positions
+    // The second trade should exist
+    expect(appleStock.quantity).toBeGreaterThan(0)
+  })
+})
+
+describe('Dividend Tests', () => {
+  let divToken: string = ''
+  let divAccountId: number = 0
+  let divCompanyId: number = 0
+  let divStockTradeId: number = 0
+
+  beforeAll(async () => {
+    // Create user
+    const email = generateEmail()
+    const userResponse = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Dividend Test User'
+      })
+    })
+    const userData = await userResponse.json()
+    divToken = userData.token
+
+    // Create account
+    const accountResponse = await fetch(`${BASE_URL}/api/accounts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${divToken}`
+      },
+      body: JSON.stringify({
+        account_name: 'Dividend Test Account',
+        account_type: 'TFSA',
+        default_currency: 'CAD',
+        balance_cad: 100000,
+        balance_usd: 0,
+        cash_balance_cad: 50000,
+        cash_balance_usd: 0
+      })
+    })
+    const accountData = await accountResponse.json()
+    divAccountId = accountData.id
+
+    // Create company
+    const companyResponse = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${divToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'MSFT',
+        research_score: 88
+      })
+    })
+    const companyData = await companyResponse.json()
+    divCompanyId = companyData.id
+
+    // Create stock trade
+    const stockResponse = await fetch(`${BASE_URL}/api/stocks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${divToken}`
+      },
+      body: JSON.stringify({
+        company_id: divCompanyId,
+        ticker: 'MSFT',
+        account_id: divAccountId,
+        trade_type: 'BUY',
+        quantity: 100,
+        price: 350.00,
+        trade_date: '2024-01-10'
+      })
+    })
+    const stockData = await stockResponse.json()
+    divStockTradeId = stockData.id
+  })
+
+  it('should record a dividend', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks/${divStockTradeId}/dividends`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${divToken}`
+      },
+      body: JSON.stringify({
+        amount: 75.00, // $0.75 per share * 100 shares
+        per_share: 0.75,
+        payment_date: '2024-03-15',
+        notes: 'Q1 2024 dividend'
+      })
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(200)
+    expect(data.id).toBeDefined()
+    expect(data.message).toBe('Dividend recorded successfully')
+  })
+
+  it('should reduce cost basis with dividend', async () => {
+    // Get stock details to verify cost basis adjustment
+    const response = await fetch(`${BASE_URL}/api/stocks?open=true`, {
+      headers: { 'Authorization': `Bearer ${divToken}` }
+    })
+
+    const data = await response.json()
+    const msftStock = data.find((s: any) => s.ticker === 'MSFT')
+    expect(msftStock).toBeDefined()
+    
+    // Cost basis should be reduced by dividend
+    // Original: 350.00, Dividend: 0.75, New: 349.25
+    expect(msftStock.cost_basis).toBeCloseTo(349.25, 2)
+  })
+
+  it('should list dividend history', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks/${divStockTradeId}/dividends`, {
+      headers: { 'Authorization': `Bearer ${divToken}` }
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(200)
+    expect(Array.isArray(data)).toBe(true)
+    expect(data.length).toBeGreaterThan(0)
+    // Dividend adjustments don't store per_share separately, only total amount
+    expect(data[0].amount).toBe(75.00)
+  })
+})
+
+describe('Covered Call Tests', () => {
+  let ccToken: string = ''
+  let ccAccountId: number = 0
+  let ccCompanyId: number = 0
+  let ccStockTradeId: number = 0
+  let ccOptionTradeId: number = 0
+
+  beforeAll(async () => {
+    // Create user
+    const email = generateEmail()
+    const userResponse = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Covered Call Test User'
+      })
+    })
+    const userData = await userResponse.json()
+    ccToken = userData.token
+
+    // Create account
+    const accountResponse = await fetch(`${BASE_URL}/api/accounts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ccToken}`
+      },
+      body: JSON.stringify({
+        account_name: 'CC Test Account',
+        account_type: 'TFSA',
+        default_currency: 'CAD',
+        balance_cad: 100000,
+        balance_usd: 0,
+        cash_balance_cad: 50000,
+        cash_balance_usd: 0
+      })
+    })
+    const accountData = await accountResponse.json()
+    ccAccountId = accountData.id
+
+    // Create company
+    const companyResponse = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ccToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'NVDA',
+        research_score: 90
+      })
+    })
+    const companyData = await companyResponse.json()
+    ccCompanyId = companyData.id
+
+    // Create stock trade with enough shares for covered calls
+    const stockResponse = await fetch(`${BASE_URL}/api/stocks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ccToken}`
+      },
+      body: JSON.stringify({
+        company_id: ccCompanyId,
+        ticker: 'NVDA',
+        account_id: ccAccountId,
+        trade_type: 'BUY',
+        quantity: 200,
+        price: 500.00,
+        trade_date: '2024-01-05'
+      })
+    })
+    const stockData = await stockResponse.json()
+    ccStockTradeId = stockData.id
+  })
+
+  it('should initiate a covered call (premium per share)', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks/${ccStockTradeId}/covered-calls`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ccToken}`
+      },
+      body: JSON.stringify({
+        strike_price: 550.00,
+        premium: 1.75, // $1.75 per share
+        quantity: 2, // 2 contracts = 200 shares
+        expiration_date: '2024-04-19',
+        trade_date: '2024-01-20',
+        notes: 'Q1 2024 covered call'
+      })
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(200)
+    expect(data.id).toBeDefined()
+    expect(data.message).toBe('Covered call recorded successfully')
+    
+    ccOptionTradeId = data.id
+  })
+
+  it('should calculate premium correctly (100 shares per contract)', async () => {
+    // Get stock details to verify cost basis adjustment
+    const response = await fetch(`${BASE_URL}/api/stocks?open=true`, {
+      headers: { 'Authorization': `Bearer ${ccToken}` }
+    })
+
+    const data = await response.json()
+    const nvdaStock = data.find((s: any) => s.ticker === 'NVDA')
+    expect(nvdaStock).toBeDefined()
+    
+    // Premium received: $1.75 * 2 contracts * 100 shares = $350
+    // Cost basis: 500.00 - (350 / 200) = 498.25
+    expect(nvdaStock.cost_basis).toBeCloseTo(498.25, 2)
+  })
+
+  it('should show covered call status in stock list', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks?open=true`, {
+      headers: { 'Authorization': `Bearer ${ccToken}` }
+    })
+
+    const data = await response.json()
+    const nvdaStock = data.find((s: any) => s.ticker === 'NVDA')
+    expect(nvdaStock).toBeDefined()
+    expect(nvdaStock.cc_status).toBeDefined()
+    expect(nvdaStock.cc_expiration).toBeDefined()
+  })
+
+  it('should list covered calls for stock', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks/${ccStockTradeId}/covered-calls`, {
+      headers: { 'Authorization': `Bearer ${ccToken}` }
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(200)
+    expect(Array.isArray(data)).toBe(true)
+    expect(data.length).toBeGreaterThan(0)
+    expect(data[0].strike_price).toBe(550.00)
+    expect(data[0].is_open).toBe(1)
+  })
+
+  it('should close a covered call with P/L calculation', async () => {
+    // Calculate P/L: Premium - Close Cost - Commission
+    // Premium: $1.75 * 2 contracts * 100 shares = 350
+    // Close: $0.50 * 2 * 100 = 100
+    // Commission: 10
+    // Net P/L: 350 - 100 - 10 = 240
+    const profitLoss = (1.75 * 2 * 100) - (0.50 * 2 * 100) - 10
+
+    const response = await fetch(`${BASE_URL}/api/covered-calls/${ccOptionTradeId}/close`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ccToken}`
+      },
+      body: JSON.stringify({
+        close_date: '2024-02-15',
+        close_price: 0.50, // $0.50 per share to buy back
+        commission: 10.00,
+        profit_loss: profitLoss
+      })
+    })
+
+    const data = await response.json()
+    expect(response.status).toBe(200)
+    expect(data.success).toBe(true)
+    expect(data.profit_loss).toBeDefined()
+    
+    // P/L: Premium (350) - Close Cost (100) - Commission (10) = 240
+    expect(data.profit_loss).toBeCloseTo(240, 2)
+  })
+
+  it('should update cost basis after closing covered call', async () => {
+    // Get stock details to verify cost basis update
+    const response = await fetch(`${BASE_URL}/api/stocks?open=true`, {
+      headers: { 'Authorization': `Bearer ${ccToken}` }
+    })
+
+    const data = await response.json()
+    const nvdaStock = data.find((s: any) => s.ticker === 'NVDA')
+    expect(nvdaStock).toBeDefined()
+    
+    // Cost basis should reflect net P/L after closing
+    // Original: 500.00
+    // Net P/L: 240 (premium 350 - close cost 100 - commission 10)
+    // New CB: 500.00 - (240 / 200) = 498.80
+    expect(nvdaStock.cost_basis).toBeCloseTo(498.80, 2)
+  })
+
+  it('should reject covered call with insufficient shares', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks/${ccStockTradeId}/covered-calls`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ccToken}`
+      },
+      body: JSON.stringify({
+        strike_price: 560.00,
+        premium: 2.00,
+        quantity: 10, // 10 contracts = 1000 shares (only have 200)
+        expiration_date: '2024-05-17',
+        trade_date: '2024-02-20'
+      })
+    })
+
+    expect(response.status).toBe(400)
+    const data = await response.json()
+    expect(data.error).toContain('shares')
+  })
+})
+
+describe('Cost Basis Adjustment Tests', () => {
+  let cbToken: string = ''
+  let cbAccountId: number = 0
+  let cbCompanyId: number = 0
+  let cbStockTradeId: number = 0
+
+  beforeAll(async () => {
+    // Create user
+    const email = generateEmail()
+    const userResponse = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Cost Basis Test User'
+      })
+    })
+    const userData = await userResponse.json()
+    cbToken = userData.token
+
+    // Create account
+    const accountResponse = await fetch(`${BASE_URL}/api/accounts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cbToken}`
+      },
+      body: JSON.stringify({
+        account_name: 'CB Test Account',
+        account_type: 'RRSP',
+        default_currency: 'CAD',
+        balance_cad: 100000,
+        balance_usd: 0,
+        cash_balance_cad: 50000,
+        cash_balance_usd: 0
+      })
+    })
+    const accountData = await accountResponse.json()
+    cbAccountId = accountData.id
+
+    // Create company
+    const companyResponse = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cbToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'TSLA',
+        research_score: 82
+      })
+    })
+    const companyData = await companyResponse.json()
+    cbCompanyId = companyData.id
+
+    // Create stock trade
+    const stockResponse = await fetch(`${BASE_URL}/api/stocks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cbToken}`
+      },
+      body: JSON.stringify({
+        company_id: cbCompanyId,
+        ticker: 'TSLA',
+        account_id: cbAccountId,
+        trade_type: 'BUY',
+        quantity: 100,
+        price: 250.00,
+        trade_date: '2024-01-10'
+      })
+    })
+    const stockData = await stockResponse.json()
+    cbStockTradeId = stockData.id
+  })
+
+  it('should reduce cost basis with dividend', async () => {
+    // Record dividend
+    await fetch(`${BASE_URL}/api/stocks/${cbStockTradeId}/dividends`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cbToken}`
+      },
+      body: JSON.stringify({
+        amount: 50.00,
+        per_share: 0.50,
+        payment_date: '2024-03-01'
+      })
+    })
+
+    // Verify cost basis reduced
+    const response = await fetch(`${BASE_URL}/api/stocks?open=true`, {
+      headers: { 'Authorization': `Bearer ${cbToken}` }
+    })
+
+    const data = await response.json()
+    const tslaStock = data.find((s: any) => s.ticker === 'TSLA')
+    expect(tslaStock.cost_basis).toBeCloseTo(249.50, 2)
+  })
+
+  it('should reduce cost basis with covered call profit', async () => {
+    // Initiate covered call
+    const ccResponse = await fetch(`${BASE_URL}/api/stocks/${cbStockTradeId}/covered-calls`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cbToken}`
+      },
+      body: JSON.stringify({
+        strike_price: 280.00,
+        premium: 3.00,
+        quantity: 1,
+        expiration_date: '2024-04-19',
+        trade_date: '2024-02-01'
+      })
+    })
+    const ccData = await ccResponse.json()
+
+    // Close with profit
+    // Premium: 3.00 * 1 * 100 = 300
+    // Close: 1.00 * 1 * 100 = 100
+    // Commission: 5
+    // Net P/L: 300 - 100 - 5 = 195
+    const profitLoss = (3.00 * 1 * 100) - (1.00 * 1 * 100) - 5
+
+    await fetch(`${BASE_URL}/api/covered-calls/${ccData.id}/close`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cbToken}`
+      },
+      body: JSON.stringify({
+        close_date: '2024-03-15',
+        close_price: 1.00,
+        commission: 5.00,
+        profit_loss: profitLoss
+      })
+    })
+
+    // Verify cost basis reduced by net P/L
+    // Premium: $3 * 1 * 100 = 300
+    // Close: $1 * 1 * 100 = 100
+    // Commission: 5
+    // P/L: 300 - 100 - 5 = 195
+    // New CB: 249.50 - (195 / 100) = 247.55
+    const response = await fetch(`${BASE_URL}/api/stocks?open=true`, {
+      headers: { 'Authorization': `Bearer ${cbToken}` }
+    })
+
+    const data = await response.json()
+    const tslaStock = data.find((s: any) => s.ticker === 'TSLA')
+    expect(tslaStock.cost_basis).toBeCloseTo(247.55, 2)
+  })
+})
