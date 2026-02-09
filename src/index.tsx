@@ -522,8 +522,8 @@ app.post('/api/companies', authMiddleware, async (c) => {
   const result = await c.env.DB.prepare(`
     INSERT INTO companies (
       user_id, ticker, company_name, market_cap, exchange, 
-      sector, industry, is_wonderful, research_score, anti_fragile_score, next_earnings_date
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      sector, industry, buy_price, is_wonderful, research_score, anti_fragile_score, next_earnings_date
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     userId, 
     data.ticker.toUpperCase(), 
@@ -532,6 +532,7 @@ app.post('/api/companies', authMiddleware, async (c) => {
     yahooData.exchange,
     yahooData.sector,
     yahooData.industry,
+    data.buy_price || null,
     data.is_wonderful ? 1 : 0,
     data.research_score || null,
     data.anti_fragile_score || null,
@@ -579,6 +580,10 @@ app.put('/api/companies/:id', authMiddleware, async (c) => {
   if (data.industry !== undefined) {
     updates.push('industry = ?')
     values.push(data.industry)
+  }
+  if (data.buy_price !== undefined) {
+    updates.push('buy_price = ?')
+    values.push(data.buy_price)
   }
   if (data.is_wonderful !== undefined) {
     updates.push('is_wonderful = ?')

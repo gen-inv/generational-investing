@@ -604,6 +604,14 @@ function showCompanyForm(companyId = null) {
                 <input type="text" name="exchange" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
             </div>
             <div>
+                <label class="block text-gray-700 mb-2">Target Buy Price</label>
+                <input type="number" step="0.01" name="buy_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Next Earnings Date</label>
+                <input type="date" name="next_earnings_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+            </div>
+            <div>
                 <label class="block text-gray-700 mb-2">Sector</label>
                 <input type="text" name="sector" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
             </div>
@@ -611,11 +619,6 @@ function showCompanyForm(companyId = null) {
                 <label class="block text-gray-700 mb-2">Industry</label>
                 <input type="text" name="industry" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
             </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Next Earnings Date</label>
-                <input type="date" name="next_earnings_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div></div>
             <div>
                 <label class="block text-gray-700 mb-2">Research Score (0-100)</label>
                 <input type="number" name="research_score" min="0" max="100" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
@@ -638,6 +641,12 @@ function showCompanyForm(companyId = null) {
                 <input type="text" name="ticker" placeholder="e.g., AAPL, MSFT, GOOGL" 
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg uppercase" required>
                 <p class="text-sm text-gray-500 mt-1">Company data will be fetched automatically from Yahoo Finance</p>
+            </div>
+            <div>
+                <label class="block text-gray-700 mb-2">Target Buy Price</label>
+                <input type="number" step="0.01" name="buy_price" 
+                       placeholder="150.00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                <p class="text-sm text-gray-500 mt-1">Your target price to buy this stock</p>
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
@@ -698,6 +707,7 @@ function showCompanyForm(companyId = null) {
         
         const data = {
             ticker: formData.get('ticker')?.toUpperCase(),
+            buy_price: formData.get('buy_price') || null,
             research_score: formData.get('research_score') || null,
             anti_fragile_score: formData.get('anti_fragile_score') || null,
             is_wonderful: formData.get('is_wonderful') === 'on'
@@ -1498,9 +1508,13 @@ async function showStockForm(stockId = null) {
                         <select name="company_id" id="company_select" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                             <option value="">Select company...</option>
                             ${companies.map(c => `
-                                <option value="${c.id}" data-ticker="${c.ticker}">${c.ticker} - ${c.company_name}</option>
+                                <option value="${c.id}" data-ticker="${c.ticker}" data-buy-price="${c.buy_price || ''}">${c.ticker} - ${c.company_name}</option>
                             `).join('')}
                         </select>
+                        <div id="buy-price-info" class="mt-2 text-sm hidden">
+                            <span class="text-gray-600">Target Buy Price: </span>
+                            <span class="font-semibold text-brand-gold"></span>
+                        </div>
                     </div>
                     <div>
                         <label class="block text-gray-700 mb-2 font-semibold">Account *</label>
@@ -1553,11 +1567,19 @@ async function showStockForm(stockId = null) {
     
     document.body.appendChild(modal)
     
-    // Auto-fill ticker when company is selected
+    // Auto-fill ticker and show buy price when company is selected
     document.getElementById('company_select').addEventListener('change', (e) => {
         const selectedOption = e.target.options[e.target.selectedIndex]
         const ticker = selectedOption.dataset.ticker
-        // You can use this if needed
+        const buyPrice = selectedOption.dataset.buyPrice
+        
+        const buyPriceInfo = document.getElementById('buy-price-info')
+        if (buyPrice && buyPrice !== '' && buyPrice !== 'null') {
+            buyPriceInfo.classList.remove('hidden')
+            buyPriceInfo.querySelector('.font-semibold').textContent = '$' + parseFloat(buyPrice).toFixed(2)
+        } else {
+            buyPriceInfo.classList.add('hidden')
+        }
     })
     
     document.getElementById('stockForm').addEventListener('submit', async (e) => {
@@ -1642,6 +1664,12 @@ async function showStockDetails(id) {
             return
         }
         
+        // Fetch company to get buy_price
+        const companiesResponse = await api.get('/api/companies')
+        const companies = companiesResponse.data.companies || companiesResponse.data
+        const company = companies.find(c => c.id === stock.company_id)
+        const buyPrice = company?.buy_price
+        
         // Fetch dividend history and covered call history for this position
         const dividendHistoryPromise = api.get(`/api/stocks/${id}/dividends`).catch(() => ({ data: [] }))
         const coveredCallHistoryPromise = api.get(`/api/stocks/${id}/covered-calls`).catch(() => ({ data: [] }))
@@ -1721,6 +1749,7 @@ async function showStockDetails(id) {
                                 <div>
                                     <h4 class="text-lg font-semibold mb-1">${stock.ticker} - ${stock.company_name || stock.ticker}</h4>
                                     <p class="text-sm opacity-90">${stock.account_name || 'N/A'} • Opened ${stock.trade_date}</p>
+                                    ${buyPrice ? `<p class="text-sm opacity-90 mt-1">🎯 Target Buy Price: <span class="font-semibold">$${parseFloat(buyPrice).toFixed(2)}</span></p>` : ''}
                                 </div>
                                 <div class="text-right">
                                     <p class="text-3xl font-bold">${stock.quantity}</p>
@@ -1734,7 +1763,7 @@ async function showStockDetails(id) {
                                 </div>
                                 <div>
                                     <p class="text-xs opacity-75">Cost Basis/Share</p>
-                                    <p class="text-lg font-bold text-brand-gold">$${costBasis.toFixed(2)}</p>
+                                    <p class="text-lg font-bold text-yellow-300">$${costBasis.toFixed(2)}</p>
                                 </div>
                                 <div>
                                     <p class="text-xs opacity-75">CB Adjustments</p>
