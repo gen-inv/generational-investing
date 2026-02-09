@@ -1778,48 +1778,6 @@ async function showStockDetails(id) {
                             ` : ''}
                         </div>
                         
-                        <!-- Dividend History -->
-                        <div class="mb-6">
-                            <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                                <i class="fas fa-dollar-sign text-brand-gold mr-2"></i>
-                                Dividend History
-                            </h4>
-                            ${dividends.length > 0 ? `
-                                <div class="overflow-x-auto">
-                                    <table class="w-full text-sm">
-                                        <thead class="bg-gray-100">
-                                            <tr>
-                                                <th class="px-4 py-2 text-left">Date</th>
-                                                <th class="px-4 py-2 text-right">Amount</th>
-                                                <th class="px-4 py-2 text-right">Per Share</th>
-                                                <th class="px-4 py-2 text-center">Shares</th>
-                                                <th class="px-4 py-2 text-left">Notes</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-gray-200">
-                                            ${dividends.map(div => `
-                                                <tr class="hover:bg-gray-50">
-                                                    <td class="px-4 py-2">${div.adjustment_date}</td>
-                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${div.amount.toFixed(2)}</td>
-                                                    <td class="px-4 py-2 text-right">$${(div.amount / stock.quantity).toFixed(4)}</td>
-                                                    <td class="px-4 py-2 text-center">${stock.quantity}</td>
-                                                    <td class="px-4 py-2 text-gray-600">${div.notes || '-'}</td>
-                                                </tr>
-                                            `).join('')}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            ` : `
-                                <div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-                                    <i class="fas fa-inbox text-3xl mb-2"></i>
-                                    <p>No dividend payments recorded yet</p>
-                                    <button onclick="recordDividend(${id})" class="mt-3 text-brand-teal hover:underline">
-                                        <i class="fas fa-plus mr-1"></i>Record Dividend
-                                    </button>
-                                </div>
-                            `}
-                        </div>
-                        
                         <!-- Covered Call History -->
                         <div class="mb-6">
                             <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
@@ -1898,6 +1856,48 @@ async function showStockDetails(id) {
                                     <p>No covered calls recorded yet</p>
                                     <button onclick="initiateCoveredCall(${id})" class="mt-3 text-brand-teal hover:underline">
                                         <i class="fas fa-plus mr-1"></i>Initiate Covered Call
+                                    </button>
+                                </div>
+                            `}
+                        </div>
+                        
+                        <!-- Dividend History -->
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <i class="fas fa-dollar-sign text-brand-gold mr-2"></i>
+                                Dividend History
+                            </h4>
+                            ${dividends.length > 0 ? `
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead class="bg-gray-100">
+                                            <tr>
+                                                <th class="px-4 py-2 text-left">Date</th>
+                                                <th class="px-4 py-2 text-right">Amount</th>
+                                                <th class="px-4 py-2 text-right">Per Share</th>
+                                                <th class="px-4 py-2 text-center">Shares</th>
+                                                <th class="px-4 py-2 text-left">Notes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-200">
+                                            ${dividends.map(div => `
+                                                <tr class="hover:bg-gray-50">
+                                                    <td class="px-4 py-2">${div.adjustment_date}</td>
+                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${div.amount.toFixed(2)}</td>
+                                                    <td class="px-4 py-2 text-right">$${(div.amount / stock.quantity).toFixed(4)}</td>
+                                                    <td class="px-4 py-2 text-center">${stock.quantity}</td>
+                                                    <td class="px-4 py-2 text-gray-600">${div.notes || '-'}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ` : `
+                                <div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                                    <i class="fas fa-inbox text-3xl mb-2"></i>
+                                    <p>No dividend payments recorded yet</p>
+                                    <button onclick="recordDividend(${id})" class="mt-3 text-brand-teal hover:underline">
+                                        <i class="fas fa-plus mr-1"></i>Record Dividend
                                     </button>
                                 </div>
                             `}
