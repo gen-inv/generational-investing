@@ -1715,54 +1715,38 @@ async function showStockDetails(id) {
                     
                     <!-- Main Content Area -->
                     <div class="flex-1 p-6 overflow-y-auto">
-                        <!-- Position Summary -->
-                        <div class="mb-6">
-                            <h4 class="text-lg font-semibold text-gray-800 mb-4">Position Summary</h4>
-                            <div class="grid grid-cols-3 gap-4">
-                                <div class="card">
-                                    <h5 class="text-sm text-gray-600 mb-1">Account</h5>
-                                    <p class="text-lg font-semibold">${stock.account_name || 'N/A'}</p>
+                        <!-- Position Summary (Compressed) -->
+                        <div class="mb-4 bg-gradient-to-r from-brand-teal to-teal-600 text-white rounded-lg p-4 shadow-md">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <h4 class="text-lg font-semibold mb-1">${stock.ticker} - ${stock.company_name || stock.ticker}</h4>
+                                    <p class="text-sm opacity-90">${stock.account_name || 'N/A'} • Opened ${stock.trade_date}</p>
                                 </div>
-                                <div class="card">
-                                    <h5 class="text-sm text-gray-600 mb-1">Company</h5>
-                                    <p class="text-lg font-semibold">${stock.company_name || stock.ticker}</p>
+                                <div class="text-right">
+                                    <p class="text-3xl font-bold">${stock.quantity}</p>
+                                    <p class="text-xs opacity-90">shares</p>
                                 </div>
-                                <div class="card">
-                                    <h5 class="text-sm text-gray-600 mb-1">Open Date</h5>
-                                    <p class="text-lg">${stock.trade_date}</p>
-                                </div>
-                                <div class="card">
-                                    <h5 class="text-sm text-gray-600 mb-1">Shares</h5>
-                                    <p class="text-xl font-bold text-brand-teal">${stock.quantity}</p>
-                                </div>
-                                <div class="card">
-                                    <h5 class="text-sm text-gray-600 mb-1">Avg Price</h5>
-                                    <p class="text-xl font-semibold">$${avgPrice.toFixed(2)}</p>
-                                </div>
-                                <div class="card">
-                                    <h5 class="text-sm text-gray-600 mb-1">Cost Basis/Share</h5>
-                                    <p class="text-xl font-bold text-brand-gold">$${costBasis.toFixed(2)}</p>
-                                </div>
-                                <div class="card col-span-3">
-                                    <div class="flex justify-between items-center">
-                                        <div>
-                                            <h5 class="text-sm text-gray-600 mb-1">Cost Basis Adjustments</h5>
-                                            <p class="text-lg font-semibold">${adjustments > 0 ? '-' : ''}$${Math.abs(adjustments).toFixed(2)}</p>
-                                        </div>
-                                        <div class="text-right text-sm text-gray-500">
-                                            From dividends and covered calls
-                                        </div>
-                                    </div>
-                                </div>
-                                ${stock.notes ? `
-                                    <div class="card col-span-3 bg-yellow-50 border-yellow-200">
-                                        <h5 class="text-sm text-gray-600 mb-1">
-                                            <i class="fas fa-sticky-note mr-1"></i>Notes
-                                        </h5>
-                                        <p class="text-sm text-gray-700">${stock.notes}</p>
-                                    </div>
-                                ` : ''}
                             </div>
+                            <div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20">
+                                <div>
+                                    <p class="text-xs opacity-75">Avg Price</p>
+                                    <p class="text-lg font-semibold">$${avgPrice.toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs opacity-75">Cost Basis/Share</p>
+                                    <p class="text-lg font-bold text-brand-gold">$${costBasis.toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs opacity-75">CB Adjustments</p>
+                                    <p class="text-lg font-semibold">${adjustments > 0 ? '-' : ''}$${Math.abs(adjustments).toFixed(2)}</p>
+                                </div>
+                            </div>
+                            ${stock.notes ? `
+                                <div class="mt-3 pt-3 border-t border-white/20">
+                                    <p class="text-xs opacity-75"><i class="fas fa-sticky-note mr-1"></i>Notes</p>
+                                    <p class="text-sm mt-1">${stock.notes}</p>
+                                </div>
+                            ` : ''}
                         </div>
                         
                         <!-- Dividend History -->
@@ -2386,8 +2370,9 @@ async function closeCoveredCall(ccId, stockId) {
                 
                 <div class="mb-4 p-4 bg-gray-100 rounded-lg">
                     <p class="text-sm text-gray-600">Strike: <span class="font-semibold">$${cc.strike_price.toFixed(2)}</span></p>
-                    <p class="text-sm text-gray-600">Premium: <span class="font-semibold">$${cc.premium.toFixed(2)}</span></p>
+                    <p class="text-sm text-gray-600">Premium Received: <span class="font-semibold text-green-600">$${cc.premium.toFixed(2)}</span> per contract</p>
                     <p class="text-sm text-gray-600">Contracts: <span class="font-semibold">${cc.quantity}</span></p>
+                    <p class="text-sm text-gray-600">Total Premium: <span class="font-semibold text-green-600">$${(cc.premium * cc.quantity).toFixed(2)}</span></p>
                     <p class="text-sm text-gray-600">Expiration: <span class="font-semibold">${cc.expiration_date}</span></p>
                 </div>
                 
@@ -2399,14 +2384,20 @@ async function closeCoveredCall(ccId, stockId) {
                     
                     <div class="mb-4">
                         <label class="block text-gray-700 mb-2">Close Price Per Contract *</label>
-                        <input type="number" step="0.01" name="close_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required placeholder="0.00">
-                        <small class="text-gray-500">Cost to buy back the option (0 if expired)</small>
+                        <input type="number" step="0.01" name="close_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required placeholder="0.00" value="0">
+                        <small class="text-gray-500">Cost to buy back the option (0 if expired or assigned)</small>
                     </div>
                     
                     <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Profit/Loss *</label>
-                        <input type="number" step="0.01" name="profit_loss" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required placeholder="0.00">
-                        <small class="text-gray-500">Positive for profit, negative for loss</small>
+                        <label class="block text-gray-700 mb-2">Commission *</label>
+                        <input type="number" step="0.01" name="commission" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required placeholder="0.00" value="0">
+                        <small class="text-gray-500">Commission paid to close the position</small>
+                    </div>
+                    
+                    <div class="mb-4 p-4 bg-blue-50 rounded-lg">
+                        <p class="text-sm text-gray-700 mb-1">P/L Calculation:</p>
+                        <p class="text-xs text-gray-600">Premium Received - (Close Price × Contracts) - Commission</p>
+                        <p class="text-xs text-gray-600 mt-2"><strong>Note:</strong> P/L will be applied to the stock's cost basis</p>
                     </div>
                     
                     <div class="flex gap-4">
@@ -2425,15 +2416,30 @@ async function closeCoveredCall(ccId, stockId) {
             e.preventDefault()
             const formData = new FormData(e.target)
             
+            const closePrice = parseFloat(formData.get('close_price'))
+            const commission = parseFloat(formData.get('commission'))
+            
+            // Calculate P/L: Premium Received - (Close Price × Contracts) - Commission
+            const premiumReceived = cc.premium * cc.quantity
+            const closeCost = closePrice * cc.quantity
+            const profitLoss = premiumReceived - closeCost - commission
+            
             try {
-                await api.put(`/api/covered-calls/${ccId}/close`, {
+                const response = await api.put(`/api/covered-calls/${ccId}/close`, {
                     close_date: formData.get('close_date'),
-                    close_price: parseFloat(formData.get('close_price')),
-                    profit_loss: parseFloat(formData.get('profit_loss'))
+                    close_price: closePrice,
+                    commission: commission,
+                    profit_loss: profitLoss
                 })
                 
                 modal.remove()
-                alert('Covered call closed successfully!')
+                
+                // Show P/L message
+                const plMessage = profitLoss >= 0 
+                    ? `✅ Covered call closed successfully!\n\n💰 Profit: $${profitLoss.toFixed(2)}\n\nPremium Received: $${premiumReceived.toFixed(2)}\nClose Cost: $${closeCost.toFixed(2)}\nCommission: $${commission.toFixed(2)}\n\nThis ${profitLoss >= 0 ? 'profit' : 'loss'} has been applied to the stock's cost basis.`
+                    : `✅ Covered call closed successfully!\n\n📉 Loss: $${Math.abs(profitLoss).toFixed(2)}\n\nPremium Received: $${premiumReceived.toFixed(2)}\nClose Cost: $${closeCost.toFixed(2)}\nCommission: $${commission.toFixed(2)}\n\nThis loss has been applied to the stock's cost basis.`
+                
+                alert(plMessage)
                 
                 // Reload stock details to reflect changes
                 if (stockId) {

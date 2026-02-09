@@ -1891,10 +1891,12 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
     const data = await c.req.json()
     const { DB } = c.env
     
-    // Verify covered call belongs to user
+    // Verify covered call belongs to user and get details
     const cc = await DB.prepare(`
-      SELECT id, is_open FROM option_trades 
-      WHERE id = ? AND user_id = ? AND strategy_type = 'COVERED_CALL'
+      SELECT ot.*, st.id as stock_trade_id
+      FROM option_trades ot
+      LEFT JOIN stock_trades st ON st.ticker = ot.ticker AND st.user_id = ot.user_id AND st.is_open = 1
+      WHERE ot.id = ? AND ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
     `).bind(ccId, userId).first()
     
     if (!cc) {
@@ -1911,18 +1913,38 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
         is_open = 0,
         close_date = ?,
         close_price = ?,
+        commission = ?,
         profit_loss = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).bind(
       data.close_date || new Date().toISOString().split('T')[0],
       data.close_price || 0,
-      data.profit_loss || null,
+      data.commission || 0,
+      data.profit_loss || 0,
       ccId,
       userId
     ).run()
     
-    return c.json({ success: true, message: 'Covered call closed successfully' })
+    // Apply P/L to stock's cost basis if stock trade exists
+    if (cc.stock_trade_id && data.profit_loss) {
+      await DB.prepare(`
+        INSERT INTO cost_basis_adjustments (user_id, stock_trade_id, adjustment_type, amount, adjustment_date, notes)
+        VALUES (?, ?, 'COVERED_CALL_CLOSE', ?, ?, ?)
+      `).bind(
+        userId,
+        cc.stock_trade_id,
+        -data.profit_loss, // Negative because P/L reduces cost basis
+        data.close_date || new Date().toISOString().split('T')[0],
+        `Covered call closed - P/L: $${data.profit_loss.toFixed(2)}`
+      ).run()
+    }
+    
+    return c.json({ 
+      success: true, 
+      message: 'Covered call closed successfully',
+      profit_loss: data.profit_loss 
+    })
   } catch (error) {
     console.error('Close covered call error:', error)
     return c.json({ error: 'Failed to close covered call' }, 500)
