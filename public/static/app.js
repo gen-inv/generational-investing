@@ -1419,10 +1419,24 @@ async function loadStocks() {
             const costBasis = stock.cost_basis || stock.price
             const accountName = stock.account_name || 'N/A'
             
+            // Determine row color based on covered call status
+            let rowClass = 'border-b border-gray-200 hover:bg-gray-50'
+            let ccIndicator = ''
+            
+            if (stock.cc_status === 'urgent') {
+                // Red highlight for covered calls expiring within 14 days
+                rowClass = 'border-b border-gray-200 bg-red-50 hover:bg-red-100'
+                ccIndicator = `<i class="fas fa-exclamation-triangle text-red-600 mr-2" title="Covered call expires in ${stock.days_until_cc_expiration} days"></i>`
+            } else if (stock.cc_status === 'active') {
+                // Orange highlight for covered calls expiring beyond 14 days
+                rowClass = 'border-b border-gray-200 bg-orange-50 hover:bg-orange-100'
+                ccIndicator = `<i class="fas fa-shield-alt text-orange-600 mr-2" title="Covered call expires in ${stock.days_until_cc_expiration} days"></i>`
+            }
+            
             table.innerHTML += `
-                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                <tr class="${rowClass}">
                     <td class="px-4 py-3">${accountName}</td>
-                    <td class="px-4 py-3 font-semibold text-brand-teal">${stock.ticker}</td>
+                    <td class="px-4 py-3 font-semibold text-brand-teal">${ccIndicator}${stock.ticker}</td>
                     <td class="px-4 py-3">${stock.trade_date}</td>
                     <td class="px-4 py-3 text-right">${stock.quantity}</td>
                     <td class="px-4 py-3 text-right">$${parseFloat(avgPrice).toFixed(2)}</td>
@@ -1810,14 +1824,32 @@ async function showStockDetails(id) {
                                                 <th class="px-4 py-2 text-right">Premium</th>
                                                 <th class="px-4 py-2 text-center">Contracts</th>
                                                 <th class="px-4 py-2 text-center">Status</th>
+                                                <th class="px-4 py-2 text-center">Actions</th>
                                             </tr>
                                         </thead>
                                         <tbody class="divide-y divide-gray-200">
-                                            ${coveredCalls.map(cc => `
+                                            ${coveredCalls.map(cc => {
+                                                // Calculate days until expiration
+                                                const expDate = new Date(cc.expiration_date)
+                                                const today = new Date()
+                                                const daysUntil = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24))
+                                                
+                                                // Determine expiration warning color
+                                                let expirationClass = ''
+                                                let expirationWarning = ''
+                                                if (cc.is_open && daysUntil <= 14) {
+                                                    expirationClass = 'text-red-600 font-semibold'
+                                                    expirationWarning = ` <i class="fas fa-exclamation-triangle text-red-600" title="Expires in ${daysUntil} days"></i>`
+                                                } else if (cc.is_open && daysUntil <= 30) {
+                                                    expirationClass = 'text-orange-600 font-semibold'
+                                                    expirationWarning = ` <i class="fas fa-clock text-orange-600" title="Expires in ${daysUntil} days"></i>`
+                                                }
+                                                
+                                                return `
                                                 <tr class="hover:bg-gray-50">
                                                     <td class="px-4 py-2">${cc.trade_date}</td>
                                                     <td class="px-4 py-2 text-center font-semibold">$${cc.strike_price.toFixed(2)}</td>
-                                                    <td class="px-4 py-2">${cc.expiration_date}</td>
+                                                    <td class="px-4 py-2 ${expirationClass}">${cc.expiration_date}${expirationWarning}</td>
                                                     <td class="px-4 py-2 text-right font-semibold text-green-600">$${cc.premium.toFixed(2)}</td>
                                                     <td class="px-4 py-2 text-center">${cc.quantity}</td>
                                                     <td class="px-4 py-2 text-center">
@@ -1825,8 +1857,25 @@ async function showStockDetails(id) {
                                                             ${cc.is_open ? 'Open' : 'Closed'}
                                                         </span>
                                                     </td>
+                                                    <td class="px-4 py-2 text-center">
+                                                        ${cc.is_open ? `
+                                                            <button onclick="viewCoveredCallDetails(${cc.id})" class="text-brand-teal hover:text-brand-gold mr-2" title="View Details">
+                                                                <i class="fas fa-eye"></i>
+                                                            </button>
+                                                            <button onclick="editCoveredCall(${cc.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
+                                                                <i class="fas fa-edit"></i>
+                                                            </button>
+                                                            <button onclick="closeCoveredCall(${cc.id}, ${id})" class="text-yellow-600 hover:text-yellow-800" title="Close">
+                                                                <i class="fas fa-check-circle"></i>
+                                                            </button>
+                                                        ` : `
+                                                            <button onclick="viewCoveredCallDetails(${cc.id})" class="text-brand-teal hover:text-brand-gold" title="View Details">
+                                                                <i class="fas fa-eye"></i>
+                                                            </button>
+                                                        `}
+                                                    </td>
                                                 </tr>
-                                            `).join('')}
+                                            `}).join('')}
                                         </tbody>
                                     </table>
                                 </div>
@@ -2129,6 +2178,278 @@ async function closeStockPosition(stockId) {
     
     // Call existing closeStock function
     closeStock(stockId)
+}
+
+// View covered call details
+async function viewCoveredCallDetails(ccId) {
+    try {
+        const response = await api.get('/api/options')
+        const cc = response.data.find(o => o.id === ccId)
+        
+        if (!cc) {
+            alert('Covered call not found')
+            return
+        }
+        
+        // Calculate days until expiration
+        const expDate = new Date(cc.expiration_date)
+        const today = new Date()
+        const daysUntil = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24))
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full">
+                <h3 class="text-2xl font-bold text-brand-teal mb-6">
+                    <i class="fas fa-file-contract mr-2"></i>Covered Call Details
+                </h3>
+                
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600 mb-1">Ticker</p>
+                        <p class="font-semibold text-lg">${cc.ticker}</p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600 mb-1">Strike Price</p>
+                        <p class="font-semibold text-lg">$${cc.strike_price.toFixed(2)}</p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600 mb-1">Premium</p>
+                        <p class="font-semibold text-lg text-green-600">$${cc.premium.toFixed(2)}</p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600 mb-1">Contracts</p>
+                        <p class="font-semibold text-lg">${cc.quantity}</p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600 mb-1">Trade Date</p>
+                        <p class="font-semibold">${cc.trade_date}</p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg ${daysUntil <= 14 ? 'bg-red-50' : daysUntil <= 30 ? 'bg-orange-50' : ''}">
+                        <p class="text-sm text-gray-600 mb-1">Expiration Date</p>
+                        <p class="font-semibold ${daysUntil <= 14 ? 'text-red-600' : daysUntil <= 30 ? 'text-orange-600' : ''}">${cc.expiration_date}</p>
+                        ${cc.is_open ? `<p class="text-xs mt-1 ${daysUntil <= 14 ? 'text-red-600' : daysUntil <= 30 ? 'text-orange-600' : 'text-gray-500'}">${daysUntil} days remaining</p>` : ''}
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600 mb-1">Status</p>
+                        <span class="px-3 py-1 rounded text-sm ${cc.is_open ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
+                            ${cc.is_open ? 'Open' : 'Closed'}
+                        </span>
+                    </div>
+                    ${!cc.is_open ? `
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600 mb-1">Close Date</p>
+                        <p class="font-semibold">${cc.close_date || 'N/A'}</p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600 mb-1">Close Price</p>
+                        <p class="font-semibold">$${(cc.close_price || 0).toFixed(2)}</p>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <p class="text-sm text-gray-600 mb-1">Profit/Loss</p>
+                        <p class="font-semibold ${(cc.profit_loss || 0) >= 0 ? 'text-green-600' : 'text-red-600'}">$${(cc.profit_loss || 0).toFixed(2)}</p>
+                    </div>
+                    ` : ''}
+                </div>
+                
+                ${cc.notes ? `
+                <div class="mb-4">
+                    <p class="text-sm text-gray-600 mb-1">Notes</p>
+                    <p class="bg-gray-50 p-3 rounded-lg">${cc.notes}</p>
+                </div>
+                ` : ''}
+                
+                <button onclick="this.closest('.fixed').remove()" class="btn-secondary w-full">Close</button>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+    } catch (error) {
+        console.error('Error viewing covered call:', error)
+        alert('Failed to load covered call details')
+    }
+}
+
+// Edit covered call
+async function editCoveredCall(ccId) {
+    try {
+        const response = await api.get('/api/options')
+        const cc = response.data.find(o => o.id === ccId)
+        
+        if (!cc) {
+            alert('Covered call not found')
+            return
+        }
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'edit-covered-call-modal'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                <h3 class="text-2xl font-bold text-brand-teal mb-6">
+                    <i class="fas fa-edit mr-2"></i>Edit Covered Call - ${cc.ticker}
+                </h3>
+                
+                <form id="editCoveredCallForm">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Strike Price *</label>
+                        <input type="number" step="0.01" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.strike_price}">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Premium Per Contract *</label>
+                        <input type="number" step="0.01" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.premium}">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Number of Contracts *</label>
+                        <input type="number" name="quantity" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.quantity}">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Expiration Date *</label>
+                        <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.expiration_date}">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Trade Date *</label>
+                        <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.trade_date}">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Notes</label>
+                        <textarea name="notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2">${cc.notes || ''}</textarea>
+                    </div>
+                    
+                    <div class="flex gap-4">
+                        <button type="submit" class="btn-primary flex-1">
+                            <i class="fas fa-save mr-2"></i>Save Changes
+                        </button>
+                        <button type="button" onclick="this.closest('.fixed').remove()" class="btn-secondary flex-1">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        document.getElementById('editCoveredCallForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target)
+            
+            try {
+                await api.put(`/api/covered-calls/${ccId}`, {
+                    strike_price: parseFloat(formData.get('strike_price')),
+                    premium: parseFloat(formData.get('premium')),
+                    quantity: parseInt(formData.get('quantity')),
+                    expiration_date: formData.get('expiration_date'),
+                    trade_date: formData.get('trade_date'),
+                    notes: formData.get('notes') || null
+                })
+                
+                modal.remove()
+                alert('Covered call updated successfully!')
+                
+                // Reload stock details to reflect changes
+                loadStocks()
+                loadDashboard()
+            } catch (error) {
+                console.error('Error updating covered call:', error)
+                alert(error.response?.data?.error || 'Failed to update covered call')
+            }
+        })
+    } catch (error) {
+        console.error('Error:', error)
+        alert('Failed to load covered call details')
+    }
+}
+
+// Close covered call
+async function closeCoveredCall(ccId, stockId) {
+    try {
+        const response = await api.get('/api/options')
+        const cc = response.data.find(o => o.id === ccId)
+        
+        if (!cc) {
+            alert('Covered call not found')
+            return
+        }
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'close-covered-call-modal'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                <h3 class="text-2xl font-bold text-brand-teal mb-6">
+                    <i class="fas fa-check-circle mr-2"></i>Close Covered Call - ${cc.ticker}
+                </h3>
+                
+                <div class="mb-4 p-4 bg-gray-100 rounded-lg">
+                    <p class="text-sm text-gray-600">Strike: <span class="font-semibold">$${cc.strike_price.toFixed(2)}</span></p>
+                    <p class="text-sm text-gray-600">Premium: <span class="font-semibold">$${cc.premium.toFixed(2)}</span></p>
+                    <p class="text-sm text-gray-600">Contracts: <span class="font-semibold">${cc.quantity}</span></p>
+                    <p class="text-sm text-gray-600">Expiration: <span class="font-semibold">${cc.expiration_date}</span></p>
+                </div>
+                
+                <form id="closeCoveredCallForm">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Close Date *</label>
+                        <input type="date" name="close_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Close Price Per Contract *</label>
+                        <input type="number" step="0.01" name="close_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required placeholder="0.00">
+                        <small class="text-gray-500">Cost to buy back the option (0 if expired)</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Profit/Loss *</label>
+                        <input type="number" step="0.01" name="profit_loss" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required placeholder="0.00">
+                        <small class="text-gray-500">Positive for profit, negative for loss</small>
+                    </div>
+                    
+                    <div class="flex gap-4">
+                        <button type="submit" class="btn-primary flex-1">
+                            <i class="fas fa-check mr-2"></i>Close Position
+                        </button>
+                        <button type="button" onclick="this.closest('.fixed').remove()" class="btn-secondary flex-1">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        document.getElementById('closeCoveredCallForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target)
+            
+            try {
+                await api.put(`/api/covered-calls/${ccId}/close`, {
+                    close_date: formData.get('close_date'),
+                    close_price: parseFloat(formData.get('close_price')),
+                    profit_loss: parseFloat(formData.get('profit_loss'))
+                })
+                
+                modal.remove()
+                alert('Covered call closed successfully!')
+                
+                // Reload stock details to reflect changes
+                if (stockId) {
+                    showStockDetails(stockId)
+                }
+                loadStocks()
+                loadDashboard()
+            } catch (error) {
+                console.error('Error closing covered call:', error)
+                alert(error.response?.data?.error || 'Failed to close covered call')
+            }
+        })
+    } catch (error) {
+        console.error('Error:', error)
+        alert('Failed to load covered call details')
+    }
 }
 
 // ============================================================================

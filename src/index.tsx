@@ -1456,7 +1456,13 @@ app.get('/api/stocks', authMiddleware, async (c) => {
       c.company_name,
       (SELECT COALESCE(SUM(amount), 0) 
        FROM cost_basis_adjustments 
-       WHERE stock_trade_id = st.id AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL')) as total_adjustments
+       WHERE stock_trade_id = st.id AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL')) as total_adjustments,
+      (SELECT MIN(expiration_date)
+       FROM option_trades
+       WHERE user_id = st.user_id 
+         AND ticker = st.ticker 
+         AND strategy_type = 'COVERED_CALL' 
+         AND is_open = 1) as nearest_cc_expiration
     FROM stock_trades st
     LEFT JOIN accounts a ON st.account_id = a.id
     LEFT JOIN companies c ON st.company_id = c.id
@@ -1474,15 +1480,34 @@ app.get('/api/stocks', authMiddleware, async (c) => {
   const stmt = DB.prepare(query)
   const stocks = await stmt.bind(...params).all()
   
-  // Calculate avg price and cost basis for each stock
+  // Calculate avg price, cost basis, and covered call status for each stock
   const enhancedStocks = stocks.results.map((stock: any) => {
     const avgPrice = stock.price
     const costBasis = avgPrice - (stock.total_adjustments / stock.quantity || 0)
     
+    // Calculate days until covered call expiration
+    let ccStatus = null
+    let daysUntilExpiration = null
+    
+    if (stock.nearest_cc_expiration) {
+      const expDate = new Date(stock.nearest_cc_expiration)
+      const today = new Date()
+      daysUntilExpiration = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+      
+      if (daysUntilExpiration <= 14) {
+        ccStatus = 'urgent' // Red - expires within 14 days
+      } else {
+        ccStatus = 'active' // Orange - expires beyond 14 days
+      }
+    }
+    
     return {
       ...stock,
       avg_price: avgPrice,
-      cost_basis: costBasis
+      cost_basis: costBasis,
+      cc_status: ccStatus,
+      cc_expiration: stock.nearest_cc_expiration,
+      days_until_cc_expiration: daysUntilExpiration
     }
   })
   
@@ -1855,6 +1880,124 @@ app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
   } catch (error) {
     console.error('Record covered call error:', error)
     return c.json({ error: 'Failed to record covered call' }, 500)
+  }
+})
+
+// Close a covered call
+app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const ccId = c.req.param('id')
+    const data = await c.req.json()
+    const { DB } = c.env
+    
+    // Verify covered call belongs to user
+    const cc = await DB.prepare(`
+      SELECT id, is_open FROM option_trades 
+      WHERE id = ? AND user_id = ? AND strategy_type = 'COVERED_CALL'
+    `).bind(ccId, userId).first()
+    
+    if (!cc) {
+      return c.json({ error: 'Covered call not found' }, 404)
+    }
+    
+    if (cc.is_open === 0) {
+      return c.json({ error: 'Covered call is already closed' }, 400)
+    }
+    
+    // Close the covered call
+    await DB.prepare(`
+      UPDATE option_trades SET
+        is_open = 0,
+        close_date = ?,
+        close_price = ?,
+        profit_loss = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      data.close_date || new Date().toISOString().split('T')[0],
+      data.close_price || 0,
+      data.profit_loss || null,
+      ccId,
+      userId
+    ).run()
+    
+    return c.json({ success: true, message: 'Covered call closed successfully' })
+  } catch (error) {
+    console.error('Close covered call error:', error)
+    return c.json({ error: 'Failed to close covered call' }, 500)
+  }
+})
+
+// Edit a covered call
+app.put('/api/covered-calls/:id', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const ccId = c.req.param('id')
+    const data = await c.req.json()
+    const { DB } = c.env
+    
+    // Verify covered call belongs to user
+    const cc = await DB.prepare(`
+      SELECT id FROM option_trades 
+      WHERE id = ? AND user_id = ? AND strategy_type = 'COVERED_CALL'
+    `).bind(ccId, userId).first()
+    
+    if (!cc) {
+      return c.json({ error: 'Covered call not found' }, 404)
+    }
+    
+    // Update the covered call
+    await DB.prepare(`
+      UPDATE option_trades SET
+        strike_price = ?,
+        premium = ?,
+        quantity = ?,
+        expiration_date = ?,
+        trade_date = ?,
+        notes = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      data.strike_price,
+      data.premium,
+      data.quantity,
+      data.expiration_date,
+      data.trade_date,
+      data.notes || null,
+      ccId,
+      userId
+    ).run()
+    
+    return c.json({ success: true, message: 'Covered call updated successfully' })
+  } catch (error) {
+    console.error('Edit covered call error:', error)
+    return c.json({ error: 'Failed to edit covered call' }, 500)
+  }
+})
+
+// Get details of a specific covered call
+app.get('/api/covered-calls/:id', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const ccId = c.req.param('id')
+    const { DB } = c.env
+    
+    const cc = await DB.prepare(`
+      SELECT ot.*, c.company_name 
+      FROM option_trades ot
+      LEFT JOIN companies c ON ot.company_id = c.id
+      WHERE ot.id = ? AND ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
+    `).bind(ccId, userId).first()
+    
+    if (!cc) {
+      return c.json({ error: 'Covered call not found' }, 404)
+    }
+    
+    return c.json(cc)
+  } catch (error) {
+    console.error('Get covered call error:', error)
+    return c.json({ error: 'Failed to fetch covered call' }, 500)
   }
 })
 
