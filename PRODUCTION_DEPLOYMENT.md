@@ -2,7 +2,27 @@
 
 **Deployment Date**: 2026-02-09  
 **Status**: ✅ **SUCCESSFUL**  
-**Production URL**: https://a5ddc1bb.generational-investing.pages.dev
+**Latest Production URL**: https://7022bcf6.generational-investing.pages.dev  
+**Previous URL**: https://a5ddc1bb.generational-investing.pages.dev
+
+---
+
+## 🚀 Latest Deployment (UI Reordering)
+
+**Date**: 2026-02-09  
+**Changes**: Reordered Stock Trade Details view - Covered Calls now displayed above Dividends
+
+### What Changed
+- **Covered Call History** section moved to top position
+- **Dividend History** section moved below covered calls
+- Better workflow for options traders (time-sensitive data first)
+- No functional changes - purely visual reordering
+
+### Verification
+✅ Production URL accessible  
+✅ All 46 regression tests passing  
+✅ Build size: 94.45 kB  
+✅ No errors in deployment  
 
 ---
 
