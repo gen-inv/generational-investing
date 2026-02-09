@@ -1675,6 +1675,190 @@ app.delete('/api/stocks/:id', authMiddleware, async (c) => {
 })
 
 // ============================================================================
+// STOCK TRADE - DIVIDENDS & COVERED CALLS
+// ============================================================================
+
+// Get dividend history for a stock trade
+app.get('/api/stocks/:id/dividends', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Verify trade belongs to user
+    const trade = await DB.prepare(`
+      SELECT id FROM stock_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+    
+    if (!trade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+    
+    // Get dividend adjustments
+    const dividends = await DB.prepare(`
+      SELECT * FROM cost_basis_adjustments
+      WHERE stock_trade_id = ? AND adjustment_type = 'DIVIDEND'
+      ORDER BY adjustment_date DESC
+    `).bind(tradeId).all()
+    
+    return c.json(dividends.results || [])
+  } catch (error) {
+    console.error('Get dividends error:', error)
+    return c.json({ error: 'Failed to fetch dividends' }, 500)
+  }
+})
+
+// Record a dividend payment
+app.post('/api/stocks/:id/dividends', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const data = await c.req.json()
+    const { DB } = c.env
+    
+    // Validation
+    if (!data.amount || !data.payment_date) {
+      return c.json({ error: 'Amount and payment date are required' }, 400)
+    }
+    
+    // Verify trade belongs to user
+    const trade = await DB.prepare(`
+      SELECT id FROM stock_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+    
+    if (!trade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+    
+    // Insert dividend adjustment
+    const result = await DB.prepare(`
+      INSERT INTO cost_basis_adjustments (
+        user_id, stock_trade_id, adjustment_type, amount, adjustment_date, notes
+      ) VALUES (?, ?, 'DIVIDEND', ?, ?, ?)
+    `).bind(
+      userId,
+      tradeId,
+      data.amount,
+      data.payment_date,
+      data.notes || null
+    ).run()
+    
+    return c.json({
+      id: result.meta.last_row_id,
+      message: 'Dividend recorded successfully'
+    })
+  } catch (error) {
+    console.error('Record dividend error:', error)
+    return c.json({ error: 'Failed to record dividend' }, 500)
+  }
+})
+
+// Get covered call history for a stock trade
+app.get('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Verify trade belongs to user
+    const trade = await DB.prepare(`
+      SELECT id, ticker FROM stock_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+    
+    if (!trade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+    
+    // Get covered calls for this ticker in the same account
+    // We link by ticker since covered calls are separate option trades
+    const coveredCalls = await DB.prepare(`
+      SELECT * FROM option_trades
+      WHERE user_id = ? AND ticker = ? AND strategy_type = 'COVERED_CALL'
+      ORDER BY trade_date DESC
+    `).bind(userId, trade.ticker).all()
+    
+    return c.json(coveredCalls.results || [])
+  } catch (error) {
+    console.error('Get covered calls error:', error)
+    return c.json({ error: 'Failed to fetch covered calls' }, 500)
+  }
+})
+
+// Record a covered call
+app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const data = await c.req.json()
+    const { DB } = c.env
+    
+    // Validation
+    if (!data.strike_price || !data.premium || !data.quantity || !data.expiration_date || !data.trade_date) {
+      return c.json({ error: 'All fields are required' }, 400)
+    }
+    
+    // Verify trade belongs to user and get details
+    const trade = await DB.prepare(`
+      SELECT id, ticker, quantity, company_id, account_id FROM stock_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+    
+    if (!trade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+    
+    // Verify user has enough shares (need 100 shares per contract)
+    const sharesNeeded = data.quantity * 100
+    if (trade.quantity < sharesNeeded) {
+      return c.json({ 
+        error: `Insufficient shares. Need ${sharesNeeded} shares, have ${trade.quantity}` 
+      }, 400)
+    }
+    
+    // Insert covered call as an option trade
+    const optionResult = await DB.prepare(`
+      INSERT INTO option_trades (
+        user_id, company_id, ticker, strategy_type, strike_price, premium, quantity,
+        expiration_date, account_type, trade_date, is_open, notes
+      ) VALUES (?, ?, ?, 'COVERED_CALL', ?, ?, ?, ?, 
+        (SELECT account_type FROM stock_trades WHERE id = ?), ?, 1, ?)
+    `).bind(
+      userId,
+      trade.company_id,
+      trade.ticker,
+      data.strike_price,
+      data.premium,
+      data.quantity,
+      data.expiration_date,
+      trade.id, // Get account_type from the stock trade
+      data.trade_date,
+      data.notes || null
+    ).run()
+    
+    // Also record as cost basis adjustment (premium received reduces cost basis)
+    const totalPremium = data.premium * data.quantity
+    await DB.prepare(`
+      INSERT INTO cost_basis_adjustments (
+        user_id, stock_trade_id, adjustment_type, amount, adjustment_date, notes
+      ) VALUES (?, ?, 'COVERED_CALL', ?, ?, ?)
+    `).bind(
+      userId,
+      tradeId,
+      totalPremium,
+      data.trade_date,
+      `Covered call: ${data.quantity} contracts @ $${data.strike_price} strike, exp ${data.expiration_date}`
+    ).run()
+    
+    return c.json({
+      id: optionResult.meta.last_row_id,
+      message: 'Covered call recorded successfully'
+    })
+  } catch (error) {
+    console.error('Record covered call error:', error)
+    return c.json({ error: 'Failed to record covered call' }, 500)
+  }
+})
+
+// ============================================================================
 // OPTION TRADES ROUTES
 // ============================================================================
 

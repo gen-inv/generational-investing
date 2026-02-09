@@ -1628,90 +1628,218 @@ async function showStockDetails(id) {
             return
         }
         
+        // Fetch dividend history and covered call history for this position
+        const dividendHistoryPromise = api.get(`/api/stocks/${id}/dividends`).catch(() => ({ data: [] }))
+        const coveredCallHistoryPromise = api.get(`/api/stocks/${id}/covered-calls`).catch(() => ({ data: [] }))
+        
+        const [dividendHistory, coveredCallHistory] = await Promise.all([
+            dividendHistoryPromise,
+            coveredCallHistoryPromise
+        ])
+        
+        const dividends = dividendHistory.data || []
+        const coveredCalls = coveredCallHistory.data || []
+        
         const avgPrice = stock.avg_price || stock.price
         const costBasis = stock.cost_basis || stock.price
-        const totalValue = avgPrice * stock.quantity
-        const costBasisTotal = costBasis * stock.quantity
         const adjustments = stock.total_adjustments || 0
         
         const modal = document.createElement('div')
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'stock-details-modal'
         modal.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-2xl w-full">
-                <div class="flex justify-between items-center mb-6">
+            <div class="bg-white rounded-lg p-0 max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                <!-- Header -->
+                <div class="flex justify-between items-center p-6 border-b border-gray-200">
                     <h3 class="text-2xl font-bold text-brand-teal">
-                        <i class="fas fa-info-circle mr-2"></i>Stock Details
+                        <i class="fas fa-chart-line mr-2"></i>${stock.ticker} - Position Management
                     </h3>
                     <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-times text-xl"></i>
+                        <i class="fas fa-times text-2xl"></i>
                     </button>
                 </div>
                 
-                <div class="space-y-4">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="card">
-                            <h4 class="text-sm text-gray-600 mb-1">Account</h4>
-                            <p class="text-lg font-semibold">${stock.account_name || 'N/A'}</p>
+                <!-- Content: Sidebar + Main -->
+                <div class="flex flex-1 overflow-hidden">
+                    <!-- Left Sidebar - Actions -->
+                    <div class="w-64 bg-gray-50 p-4 border-r border-gray-200 overflow-y-auto">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Actions</h4>
+                        <div class="space-y-2">
+                            <button onclick="addStockToPosition(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-brand-teal hover:text-white rounded-lg border border-gray-200 transition-colors group">
+                                <i class="fas fa-plus-circle mr-2 text-green-600 group-hover:text-white"></i>
+                                <span class="font-medium">Add to Position</span>
+                            </button>
+                            
+                            <button onclick="editStockTrade(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-brand-teal hover:text-white rounded-lg border border-gray-200 transition-colors group">
+                                <i class="fas fa-edit mr-2 text-blue-600 group-hover:text-white"></i>
+                                <span class="font-medium">Edit Trade</span>
+                            </button>
+                            
+                            <button onclick="sellStockFromPosition(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-brand-teal hover:text-white rounded-lg border border-gray-200 transition-colors group">
+                                <i class="fas fa-minus-circle mr-2 text-orange-600 group-hover:text-white"></i>
+                                <span class="font-medium">Sell from Position</span>
+                            </button>
+                            
+                            <button onclick="recordDividend(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-brand-teal hover:text-white rounded-lg border border-gray-200 transition-colors group">
+                                <i class="fas fa-dollar-sign mr-2 text-brand-gold group-hover:text-white"></i>
+                                <span class="font-medium">Record Dividend</span>
+                            </button>
+                            
+                            <button onclick="initiateCoveredCall(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-brand-teal hover:text-white rounded-lg border border-gray-200 transition-colors group">
+                                <i class="fas fa-file-contract mr-2 text-purple-600 group-hover:text-white"></i>
+                                <span class="font-medium">Covered Call</span>
+                            </button>
+                            
+                            <hr class="my-3 border-gray-300">
+                            
+                            <button onclick="closeStockPosition(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-red-600 hover:text-white rounded-lg border border-red-300 transition-colors group">
+                                <i class="fas fa-times-circle mr-2 text-red-600 group-hover:text-white"></i>
+                                <span class="font-medium">Close Position</span>
+                            </button>
                         </div>
-                        <div class="card">
-                            <h4 class="text-sm text-gray-600 mb-1">Company</h4>
-                            <p class="text-lg font-semibold">${stock.company_name || stock.ticker}</p>
-                        </div>
-                        <div class="card">
-                            <h4 class="text-sm text-gray-600 mb-1">Ticker</h4>
-                            <p class="text-lg font-semibold text-brand-teal">${stock.ticker}</p>
-                        </div>
-                        <div class="card">
-                            <h4 class="text-sm text-gray-600 mb-1">Trade Date</h4>
-                            <p class="text-lg">${stock.trade_date}</p>
-                        </div>
-                        <div class="card">
-                            <h4 class="text-sm text-gray-600 mb-1">Shares</h4>
-                            <p class="text-lg font-semibold">${stock.quantity}</p>
-                        </div>
-                        <div class="card">
-                            <h4 class="text-sm text-gray-600 mb-1">Avg Price</h4>
-                            <p class="text-lg">$${avgPrice.toFixed(2)}</p>
-                        </div>
-                        <div class="card">
-                            <h4 class="text-sm text-gray-600 mb-1">Cost Basis/Share</h4>
-                            <p class="text-lg text-brand-gold font-semibold">$${costBasis.toFixed(2)}</p>
-                        </div>
-                        <div class="card">
-                            <h4 class="text-sm text-gray-600 mb-1">Commission</h4>
-                            <p class="text-lg">$${(stock.commission || 0).toFixed(2)}</p>
-                        </div>
-                        <div class="card">
-                            <h4 class="text-sm text-gray-600 mb-1">Total Value</h4>
-                            <p class="text-lg">$${totalValue.toFixed(2)}</p>
-                        </div>
-                        <div class="card">
-                            <h4 class="text-sm text-gray-600 mb-1">Total Cost Basis</h4>
-                            <p class="text-lg">$${costBasisTotal.toFixed(2)}</p>
-                        </div>
-                        <div class="card col-span-2">
-                            <h4 class="text-sm text-gray-600 mb-1">Cost Basis Adjustments</h4>
-                            <p class="text-lg">${adjustments > 0 ? '-' : ''}$${Math.abs(adjustments).toFixed(2)}</p>
-                            <p class="text-xs text-gray-500 mt-1">From dividends and covered calls</p>
-                        </div>
-                        ${stock.notes ? `
-                            <div class="card col-span-2">
-                                <h4 class="text-sm text-gray-600 mb-1">Notes</h4>
-                                <p class="text-sm">${stock.notes}</p>
-                            </div>
-                        ` : ''}
                     </div>
                     
-                    <div class="flex gap-3 pt-4">
-                        <button onclick="editStock(${stock.id}); this.closest('.fixed').remove()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex-1">
-                            <i class="fas fa-edit mr-2"></i>Edit Trade
-                        </button>
-                        <button onclick="closeStock(${stock.id}); this.closest('.fixed').remove()" class="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 flex-1">
-                            <i class="fas fa-check-circle mr-2"></i>Close Position
-                        </button>
-                        <button onclick="this.closest('.fixed').remove()" class="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400">
-                            Close
-                        </button>
+                    <!-- Main Content Area -->
+                    <div class="flex-1 p-6 overflow-y-auto">
+                        <!-- Position Summary -->
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-4">Position Summary</h4>
+                            <div class="grid grid-cols-3 gap-4">
+                                <div class="card">
+                                    <h5 class="text-sm text-gray-600 mb-1">Account</h5>
+                                    <p class="text-lg font-semibold">${stock.account_name || 'N/A'}</p>
+                                </div>
+                                <div class="card">
+                                    <h5 class="text-sm text-gray-600 mb-1">Company</h5>
+                                    <p class="text-lg font-semibold">${stock.company_name || stock.ticker}</p>
+                                </div>
+                                <div class="card">
+                                    <h5 class="text-sm text-gray-600 mb-1">Open Date</h5>
+                                    <p class="text-lg">${stock.trade_date}</p>
+                                </div>
+                                <div class="card">
+                                    <h5 class="text-sm text-gray-600 mb-1">Shares</h5>
+                                    <p class="text-xl font-bold text-brand-teal">${stock.quantity}</p>
+                                </div>
+                                <div class="card">
+                                    <h5 class="text-sm text-gray-600 mb-1">Avg Price</h5>
+                                    <p class="text-xl font-semibold">$${avgPrice.toFixed(2)}</p>
+                                </div>
+                                <div class="card">
+                                    <h5 class="text-sm text-gray-600 mb-1">Cost Basis/Share</h5>
+                                    <p class="text-xl font-bold text-brand-gold">$${costBasis.toFixed(2)}</p>
+                                </div>
+                                <div class="card col-span-3">
+                                    <div class="flex justify-between items-center">
+                                        <div>
+                                            <h5 class="text-sm text-gray-600 mb-1">Cost Basis Adjustments</h5>
+                                            <p class="text-lg font-semibold">${adjustments > 0 ? '-' : ''}$${Math.abs(adjustments).toFixed(2)}</p>
+                                        </div>
+                                        <div class="text-right text-sm text-gray-500">
+                                            From dividends and covered calls
+                                        </div>
+                                    </div>
+                                </div>
+                                ${stock.notes ? `
+                                    <div class="card col-span-3 bg-yellow-50 border-yellow-200">
+                                        <h5 class="text-sm text-gray-600 mb-1">
+                                            <i class="fas fa-sticky-note mr-1"></i>Notes
+                                        </h5>
+                                        <p class="text-sm text-gray-700">${stock.notes}</p>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        
+                        <!-- Dividend History -->
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <i class="fas fa-dollar-sign text-brand-gold mr-2"></i>
+                                Dividend History
+                            </h4>
+                            ${dividends.length > 0 ? `
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead class="bg-gray-100">
+                                            <tr>
+                                                <th class="px-4 py-2 text-left">Date</th>
+                                                <th class="px-4 py-2 text-right">Amount</th>
+                                                <th class="px-4 py-2 text-right">Per Share</th>
+                                                <th class="px-4 py-2 text-center">Shares</th>
+                                                <th class="px-4 py-2 text-left">Notes</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-200">
+                                            ${dividends.map(div => `
+                                                <tr class="hover:bg-gray-50">
+                                                    <td class="px-4 py-2">${div.adjustment_date}</td>
+                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${div.amount.toFixed(2)}</td>
+                                                    <td class="px-4 py-2 text-right">$${(div.amount / stock.quantity).toFixed(4)}</td>
+                                                    <td class="px-4 py-2 text-center">${stock.quantity}</td>
+                                                    <td class="px-4 py-2 text-gray-600">${div.notes || '-'}</td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ` : `
+                                <div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                                    <i class="fas fa-inbox text-3xl mb-2"></i>
+                                    <p>No dividend payments recorded yet</p>
+                                    <button onclick="recordDividend(${id})" class="mt-3 text-brand-teal hover:underline">
+                                        <i class="fas fa-plus mr-1"></i>Record Dividend
+                                    </button>
+                                </div>
+                            `}
+                        </div>
+                        
+                        <!-- Covered Call History -->
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <i class="fas fa-file-contract text-purple-600 mr-2"></i>
+                                Covered Call History
+                            </h4>
+                            ${coveredCalls.length > 0 ? `
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead class="bg-gray-100">
+                                            <tr>
+                                                <th class="px-4 py-2 text-left">Trade Date</th>
+                                                <th class="px-4 py-2 text-center">Strike</th>
+                                                <th class="px-4 py-2 text-left">Expiration</th>
+                                                <th class="px-4 py-2 text-right">Premium</th>
+                                                <th class="px-4 py-2 text-center">Contracts</th>
+                                                <th class="px-4 py-2 text-center">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-200">
+                                            ${coveredCalls.map(cc => `
+                                                <tr class="hover:bg-gray-50">
+                                                    <td class="px-4 py-2">${cc.trade_date}</td>
+                                                    <td class="px-4 py-2 text-center font-semibold">$${cc.strike_price.toFixed(2)}</td>
+                                                    <td class="px-4 py-2">${cc.expiration_date}</td>
+                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${cc.premium.toFixed(2)}</td>
+                                                    <td class="px-4 py-2 text-center">${cc.quantity}</td>
+                                                    <td class="px-4 py-2 text-center">
+                                                        <span class="px-2 py-1 rounded text-xs ${cc.is_open ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
+                                                            ${cc.is_open ? 'Open' : 'Closed'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ` : `
+                                <div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                                    <i class="fas fa-inbox text-3xl mb-2"></i>
+                                    <p>No covered calls recorded yet</p>
+                                    <button onclick="initiateCoveredCall(${id})" class="mt-3 text-brand-teal hover:underline">
+                                        <i class="fas fa-plus mr-1"></i>Initiate Covered Call
+                                    </button>
+                                </div>
+                            `}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1723,6 +1851,286 @@ async function showStockDetails(id) {
         alert('Failed to load stock details')
     }
 }
+
+// ============================================================================
+// STOCK TRADE ACTION FUNCTIONS
+// ============================================================================
+
+// Add to existing position
+async function addStockToPosition(stockId) {
+    try {
+        const response = await api.get('/api/stocks')
+        const stock = response.data.find(s => s.id === stockId)
+        
+        if (!stock) {
+            alert('Stock not found')
+            return
+        }
+        
+        // Close the details modal
+        const modal = document.getElementById('stock-details-modal')
+        if (modal) modal.remove()
+        
+        // Show add stock form (similar to buy stock but updates existing position)
+        showAddToPositionForm(stock)
+    } catch (error) {
+        console.error('Error:', error)
+        alert('Failed to load stock information')
+    }
+}
+
+// Sell from existing position
+async function sellStockFromPosition(stockId) {
+    try {
+        const response = await api.get('/api/stocks')
+        const stock = response.data.find(s => s.id === stockId)
+        
+        if (!stock) {
+            alert('Stock not found')
+            return
+        }
+        
+        // Close the details modal
+        const modal = document.getElementById('stock-details-modal')
+        if (modal) modal.remove()
+        
+        // Show sell stock form
+        showSellFromPositionForm(stock)
+    } catch (error) {
+        console.error('Error:', error)
+        alert('Failed to load stock information')
+    }
+}
+
+// Record dividend payment
+async function recordDividend(stockId) {
+    try {
+        const response = await api.get('/api/stocks')
+        const stock = response.data.find(s => s.id === stockId)
+        
+        if (!stock) {
+            alert('Stock not found')
+            return
+        }
+        
+        // Close the details modal
+        const detailsModal = document.getElementById('stock-details-modal')
+        if (detailsModal) detailsModal.remove()
+        
+        // Show dividend form
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'dividend-modal'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                <h3 class="text-2xl font-bold text-brand-teal mb-6">
+                    <i class="fas fa-dollar-sign mr-2"></i>Record Dividend - ${stock.ticker}
+                </h3>
+                
+                <div class="mb-4 p-4 bg-gray-100 rounded-lg">
+                    <p class="text-sm text-gray-600">Position: <span class="font-semibold">${stock.quantity} shares</span></p>
+                    <p class="text-sm text-gray-600">Account: <span class="font-semibold">${stock.account_name}</span></p>
+                </div>
+                
+                <form id="dividendForm">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Dividend Amount (Total) *</label>
+                        <input type="number" step="0.01" name="amount" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <small class="text-gray-500">Total dividend received</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Payment Date *</label>
+                        <input type="date" name="payment_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Notes</label>
+                        <textarea name="notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2" placeholder="Optional notes"></textarea>
+                    </div>
+                    
+                    <div class="flex gap-4">
+                        <button type="submit" class="btn-primary flex-1">
+                            <i class="fas fa-save mr-2"></i>Save Dividend
+                        </button>
+                        <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="btn-secondary flex-1">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        document.getElementById('dividendForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target)
+            
+            try {
+                await api.post(`/api/stocks/${stockId}/dividends`, {
+                    amount: parseFloat(formData.get('amount')),
+                    payment_date: formData.get('payment_date'),
+                    notes: formData.get('notes') || null
+                })
+                
+                modal.remove()
+                alert('Dividend recorded successfully!')
+                
+                // Reload the details view to show updated history
+                showStockDetails(stockId)
+                loadStocks()
+                loadDashboard()
+            } catch (error) {
+                console.error('Error recording dividend:', error)
+                alert(error.response?.data?.error || 'Failed to record dividend')
+            }
+        })
+    } catch (error) {
+        console.error('Error:', error)
+        alert('Failed to load stock information')
+    }
+}
+
+// Initiate covered call
+async function initiateCoveredCall(stockId) {
+    try {
+        const response = await api.get('/api/stocks')
+        const stock = response.data.find(s => s.id === stockId)
+        
+        if (!stock) {
+            alert('Stock not found')
+            return
+        }
+        
+        const maxContracts = Math.floor(stock.quantity / 100)
+        
+        if (maxContracts === 0) {
+            alert('You need at least 100 shares to sell a covered call')
+            return
+        }
+        
+        // Close the details modal
+        const detailsModal = document.getElementById('stock-details-modal')
+        if (detailsModal) detailsModal.remove()
+        
+        // Show covered call form
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'covered-call-modal'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                <h3 class="text-2xl font-bold text-brand-teal mb-6">
+                    <i class="fas fa-file-contract mr-2"></i>Covered Call - ${stock.ticker}
+                </h3>
+                
+                <div class="mb-4 p-4 bg-gray-100 rounded-lg">
+                    <p class="text-sm text-gray-600">Position: <span class="font-semibold">${stock.quantity} shares</span></p>
+                    <p class="text-sm text-gray-600">Account: <span class="font-semibold">${stock.account_name}</span></p>
+                    <p class="text-sm text-gray-600">Max Contracts: <span class="font-semibold">${maxContracts}</span></p>
+                </div>
+                
+                <form id="coveredCallForm">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Strike Price *</label>
+                        <input type="number" step="0.01" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Premium Per Contract *</label>
+                        <input type="number" step="0.01" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <small class="text-gray-500">Premium received per contract</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Number of Contracts *</label>
+                        <input type="number" name="quantity" min="1" max="${maxContracts}" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="1">
+                        <small class="text-gray-500">Max: ${maxContracts} contracts</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Expiration Date *</label>
+                        <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Trade Date *</label>
+                        <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Notes</label>
+                        <textarea name="notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2" placeholder="Optional notes"></textarea>
+                    </div>
+                    
+                    <div class="flex gap-4">
+                        <button type="submit" class="btn-primary flex-1">
+                            <i class="fas fa-save mr-2"></i>Save Covered Call
+                        </button>
+                        <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="btn-secondary flex-1">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        document.getElementById('coveredCallForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target)
+            
+            const quantity = parseInt(formData.get('quantity'))
+            if (quantity > maxContracts) {
+                alert(`Maximum ${maxContracts} contracts allowed for this position`)
+                return
+            }
+            
+            try {
+                await api.post(`/api/stocks/${stockId}/covered-calls`, {
+                    strike_price: parseFloat(formData.get('strike_price')),
+                    premium: parseFloat(formData.get('premium')),
+                    quantity: quantity,
+                    expiration_date: formData.get('expiration_date'),
+                    trade_date: formData.get('trade_date'),
+                    notes: formData.get('notes') || null
+                })
+                
+                modal.remove()
+                alert('Covered call recorded successfully!')
+                
+                // Reload the details view to show updated history
+                showStockDetails(stockId)
+                loadStocks()
+                loadDashboard()
+            } catch (error) {
+                console.error('Error recording covered call:', error)
+                alert(error.response?.data?.error || 'Failed to record covered call')
+            }
+        })
+    } catch (error) {
+        console.error('Error:', error)
+        alert('Failed to load stock information')
+    }
+}
+
+// Edit stock trade
+async function editStockTrade(stockId) {
+    // Close the details modal
+    const modal = document.getElementById('stock-details-modal')
+    if (modal) modal.remove()
+    
+    // Call existing editStock function
+    editStock(stockId)
+}
+
+// Close position
+async function closeStockPosition(stockId) {
+    // Close the details modal
+    const modal = document.getElementById('stock-details-modal')
+    if (modal) modal.remove()
+    
+    // Call existing closeStock function
+    closeStock(stockId)
+}
+
 // ============================================================================
 // OPTION TRADE FUNCTIONS
 // ============================================================================
