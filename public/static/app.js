@@ -1830,7 +1830,7 @@ async function showStockDetails(id) {
                                                     <td class="px-4 py-2">${cc.trade_date}</td>
                                                     <td class="px-4 py-2 text-center font-semibold">$${cc.strike_price.toFixed(2)}</td>
                                                     <td class="px-4 py-2 ${expirationClass}">${cc.expiration_date}${expirationWarning}</td>
-                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${(cc.premium * 100).toFixed(2)}</td>
+                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${cc.premium.toFixed(2)}</td>
                                                     <td class="px-4 py-2 text-center">${cc.quantity}</td>
                                                     <td class="px-4 py-2 text-right ${plClass}">${closedPL}</td>
                                                     <td class="px-4 py-2 text-center">
