@@ -2196,8 +2196,21 @@ async function closeStockPosition(stockId) {
 // View covered call details
 async function viewCoveredCallDetails(ccId) {
     try {
-        const response = await api.get('/api/options')
-        const cc = response.data.find(o => o.id === ccId)
+        // First get all stocks to find the one with this covered call
+        const stocksResponse = await api.get('/api/stocks')
+        let cc = null
+        let stockId = null
+        
+        // Find the stock that has this covered call
+        for (const stock of stocksResponse.data) {
+            const ccResponse = await api.get(`/api/stocks/${stock.id}/covered-calls`)
+            const foundCC = ccResponse.data.find(o => o.id === ccId)
+            if (foundCC) {
+                cc = foundCC
+                stockId = stock.id
+                break
+            }
+        }
         
         if (!cc) {
             alert('Covered call not found')
@@ -2209,71 +2222,147 @@ async function viewCoveredCallDetails(ccId) {
         const today = new Date()
         const daysUntil = Math.ceil((expDate - today) / (1000 * 60 * 60 * 24))
         
+        // Determine expiration urgency
+        let expirationBgClass = 'bg-gray-50'
+        let expirationTextClass = 'text-gray-900'
+        let expirationBadge = ''
+        
+        if (cc.is_open && daysUntil <= 14) {
+            expirationBgClass = 'bg-red-50 border-2 border-red-300'
+            expirationTextClass = 'text-red-700'
+            expirationBadge = `<span class="ml-2 px-2 py-1 bg-red-600 text-white text-xs rounded-full font-semibold">URGENT</span>`
+        } else if (cc.is_open && daysUntil <= 30) {
+            expirationBgClass = 'bg-orange-50 border-2 border-orange-300'
+            expirationTextClass = 'text-orange-700'
+            expirationBadge = `<span class="ml-2 px-2 py-1 bg-orange-600 text-white text-xs rounded-full">SOON</span>`
+        }
+        
         const modal = document.createElement('div')
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
         modal.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-2xl w-full">
-                <h3 class="text-2xl font-bold text-brand-teal mb-6">
-                    <i class="fas fa-file-contract mr-2"></i>Covered Call Details
-                </h3>
+            <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-brand-teal to-teal-700 text-white p-6 sticky top-0 z-10">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-3xl font-bold flex items-center">
+                                <i class="fas fa-file-contract mr-3"></i>Covered Call Details
+                            </h3>
+                            <p class="text-teal-100 mt-1">${cc.ticker} - ${cc.is_open ? 'Open Position' : 'Closed Position'}</p>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-teal-200 text-2xl">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
                 
-                <div class="grid grid-cols-2 gap-4 mb-6">
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600 mb-1">Ticker</p>
-                        <p class="font-semibold text-lg">${cc.ticker}</p>
-                    </div>
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600 mb-1">Strike Price</p>
-                        <p class="font-semibold text-lg">$${cc.strike_price.toFixed(2)}</p>
-                    </div>
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600 mb-1">Total Premium</p>
-                        <p class="font-semibold text-lg text-green-600">$${(cc.premium * cc.quantity * 100).toFixed(2)}</p>
-                        <p class="text-xs text-gray-500 mt-1">$${cc.premium.toFixed(2)}/share × ${cc.quantity} contracts</p>
-                    </div>
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600 mb-1">Contracts</p>
-                        <p class="font-semibold text-lg">${cc.quantity}</p>
-                    </div>
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600 mb-1">Trade Date</p>
-                        <p class="font-semibold">${cc.trade_date}</p>
-                    </div>
-                    <div class="bg-gray-50 p-4 rounded-lg ${daysUntil <= 14 ? 'bg-red-50' : daysUntil <= 30 ? 'bg-orange-50' : ''}">
-                        <p class="text-sm text-gray-600 mb-1">Expiration Date</p>
-                        <p class="font-semibold ${daysUntil <= 14 ? 'text-red-600' : daysUntil <= 30 ? 'text-orange-600' : ''}">${cc.expiration_date}</p>
-                        ${cc.is_open ? `<p class="text-xs mt-1 ${daysUntil <= 14 ? 'text-red-600' : daysUntil <= 30 ? 'text-orange-600' : 'text-gray-500'}">${daysUntil} days remaining</p>` : ''}
-                    </div>
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600 mb-1">Status</p>
-                        <span class="px-3 py-1 rounded text-sm ${cc.is_open ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
-                            ${cc.is_open ? 'Open' : 'Closed'}
+                <!-- Content -->
+                <div class="p-6">
+                    <!-- Status Badge -->
+                    <div class="mb-6">
+                        <span class="px-4 py-2 rounded-lg text-lg font-semibold ${cc.is_open ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
+                            <i class="fas fa-${cc.is_open ? 'lock-open' : 'lock'} mr-2"></i>${cc.is_open ? 'OPEN' : 'CLOSED'}
                         </span>
                     </div>
+                    
+                    <!-- Premium & Contracts Summary -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-xl border-2 border-green-300">
+                            <p class="text-sm text-green-700 mb-1 font-medium">Total Premium Received</p>
+                            <p class="text-3xl font-bold text-green-700">$${(cc.premium * cc.quantity * 100).toFixed(2)}</p>
+                            <p class="text-xs text-green-600 mt-2">
+                                <i class="fas fa-info-circle mr-1"></i>$${cc.premium.toFixed(2)}/share × ${cc.quantity} contracts × 100 shares
+                            </p>
+                        </div>
+                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl border-2 border-blue-300">
+                            <p class="text-sm text-blue-700 mb-1 font-medium">Strike Price</p>
+                            <p class="text-3xl font-bold text-blue-700">$${cc.strike_price.toFixed(2)}</p>
+                            <p class="text-xs text-blue-600 mt-2">
+                                <i class="fas fa-bullseye mr-1"></i>Target assignment price
+                            </p>
+                        </div>
+                        <div class="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-xl border-2 border-purple-300">
+                            <p class="text-sm text-purple-700 mb-1 font-medium">Contracts</p>
+                            <p class="text-3xl font-bold text-purple-700">${cc.quantity}</p>
+                            <p class="text-xs text-purple-600 mt-2">
+                                <i class="fas fa-layer-group mr-1"></i>${cc.quantity * 100} shares covered
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Dates & Expiration -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
+                            <p class="text-sm text-gray-600 mb-2 font-medium">
+                                <i class="fas fa-calendar-plus mr-2"></i>Trade Date
+                            </p>
+                            <p class="text-xl font-semibold text-gray-900">${cc.trade_date}</p>
+                        </div>
+                        <div class="${expirationBgClass} p-5 rounded-xl">
+                            <p class="text-sm ${expirationTextClass} mb-2 font-medium flex items-center">
+                                <i class="fas fa-calendar-day mr-2"></i>Expiration Date
+                                ${expirationBadge}
+                            </p>
+                            <p class="text-xl font-semibold ${expirationTextClass}">${cc.expiration_date}</p>
+                            ${cc.is_open ? `
+                                <p class="text-sm ${expirationTextClass} mt-2 font-semibold">
+                                    <i class="fas fa-clock mr-1"></i>${daysUntil} day${daysUntil !== 1 ? 's' : ''} remaining
+                                </p>
+                            ` : ''}
+                        </div>
+                    </div>
+                    
                     ${!cc.is_open ? `
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600 mb-1">Close Date</p>
-                        <p class="font-semibold">${cc.close_date || 'N/A'}</p>
-                    </div>
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600 mb-1">Close Price</p>
-                        <p class="font-semibold">$${(cc.close_price || 0).toFixed(2)}</p>
-                    </div>
-                    <div class="bg-gray-50 p-4 rounded-lg">
-                        <p class="text-sm text-gray-600 mb-1">Profit/Loss</p>
-                        <p class="font-semibold ${(cc.profit_loss || 0) >= 0 ? 'text-green-600' : 'text-red-600'}">$${(cc.profit_loss || 0).toFixed(2)}</p>
-                    </div>
+                        <!-- Closed Position Details -->
+                        <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-5 rounded-xl border-2 border-gray-300 mb-6">
+                            <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                <i class="fas fa-chart-line mr-2"></i>Closing Details
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1">Close Date</p>
+                                    <p class="text-lg font-semibold text-gray-900">${cc.close_date || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1">Close Price</p>
+                                    <p class="text-lg font-semibold text-gray-900">$${(cc.close_price || 0).toFixed(2)}/share</p>
+                                    <p class="text-xs text-gray-500">$${((cc.close_price || 0) * cc.quantity * 100).toFixed(2)} total</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1">Net Profit/Loss</p>
+                                    <p class="text-2xl font-bold ${(cc.profit_loss || 0) >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                        ${(cc.profit_loss || 0) >= 0 ? '+' : ''}$${(cc.profit_loss || 0).toFixed(2)}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     ` : ''}
+                    
+                    ${cc.notes ? `
+                        <!-- Notes -->
+                        <div class="bg-yellow-50 p-5 rounded-xl border-2 border-yellow-300 mb-6">
+                            <p class="text-sm text-yellow-800 mb-2 font-medium">
+                                <i class="fas fa-sticky-note mr-2"></i>Notes
+                            </p>
+                            <p class="text-gray-700">${cc.notes}</p>
+                        </div>
+                    ` : ''}
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex gap-3 flex-wrap">
+                        ${cc.is_open ? `
+                            <button onclick="editCoveredCall(${ccId}); this.closest('.fixed').remove();" class="flex-1 min-w-[200px] bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition">
+                                <i class="fas fa-edit mr-2"></i>Edit Details
+                            </button>
+                            <button onclick="closeCoveredCall(${ccId}, ${stockId}); this.closest('.fixed').remove();" class="flex-1 min-w-[200px] bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-3 px-6 rounded-lg transition">
+                                <i class="fas fa-check-circle mr-2"></i>Close Position
+                            </button>
+                        ` : ''}
+                        <button onclick="this.closest('.fixed').remove()" class="flex-1 min-w-[200px] bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition">
+                            <i class="fas fa-times mr-2"></i>Close Window
+                        </button>
+                    </div>
                 </div>
-                
-                ${cc.notes ? `
-                <div class="mb-4">
-                    <p class="text-sm text-gray-600 mb-1">Notes</p>
-                    <p class="bg-gray-50 p-3 rounded-lg">${cc.notes}</p>
-                </div>
-                ` : ''}
-                
-                <button onclick="this.closest('.fixed').remove()" class="btn-secondary w-full">Close</button>
             </div>
         `
         
@@ -2287,8 +2376,19 @@ async function viewCoveredCallDetails(ccId) {
 // Edit covered call
 async function editCoveredCall(ccId) {
     try {
-        const response = await api.get('/api/options')
-        const cc = response.data.find(o => o.id === ccId)
+        // First get all stocks to find the one with this covered call
+        const stocksResponse = await api.get('/api/stocks')
+        let cc = null
+        
+        // Find the stock that has this covered call
+        for (const stock of stocksResponse.data) {
+            const ccResponse = await api.get(`/api/stocks/${stock.id}/covered-calls`)
+            const foundCC = ccResponse.data.find(o => o.id === ccId)
+            if (foundCC) {
+                cc = foundCC
+                break
+            }
+        }
         
         if (!cc) {
             alert('Covered call not found')
