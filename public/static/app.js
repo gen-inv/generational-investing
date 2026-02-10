@@ -2159,7 +2159,7 @@ async function initiateCoveredCall(stockId) {
                     
                     <!-- Action Buttons -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <button type="submit" class="w-full bg-gradient-to-r from-brand-teal to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-bold py-3 px-6 rounded-lg transition shadow-lg hover:shadow-xl">
+                        <button type="submit" class="w-full bg-gradient-to-r from-teal-700 to-teal-800 hover:from-teal-800 hover:to-teal-900 text-white font-bold py-3 px-6 rounded-lg transition shadow-lg hover:shadow-xl">
                             <i class="fas fa-save mr-2"></i>Save Covered Call
                         </button>
                         <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-bold py-3 px-6 rounded-lg transition shadow-lg hover:shadow-xl">
