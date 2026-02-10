@@ -1848,9 +1848,9 @@ app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
     const optionResult = await DB.prepare(`
       INSERT INTO option_trades (
         user_id, company_id, ticker, strategy_type, strike_price, premium, quantity,
-        expiration_date, account_type, trade_date, is_open, notes
+        expiration_date, account_type, trade_date, is_open, commission, notes
       ) VALUES (?, ?, ?, 'COVERED_CALL', ?, ?, ?, ?, 
-        (SELECT account_type FROM stock_trades WHERE id = ?), ?, 1, ?)
+        (SELECT account_type FROM stock_trades WHERE id = ?), ?, 1, ?, ?)
     `).bind(
       userId,
       trade.company_id,
@@ -1861,6 +1861,7 @@ app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
       data.expiration_date,
       trade.id, // Get account_type from the stock trade
       data.trade_date,
+      data.commission || 0,
       data.notes || null
     ).run()
     
