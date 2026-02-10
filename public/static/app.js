@@ -2620,7 +2620,7 @@ async function closeCoveredCall(ccId, stockId) {
                             </h4>
                             <div class="space-y-1 text-xs">
                                 <div class="flex items-center justify-between">
-                                    <span class="text-blue-800">Premium:</span>
+                                    <span class="text-blue-800">Premium Received:</span>
                                     <span class="font-semibold text-green-700">+ $${(cc.premium * cc.quantity * 100).toFixed(2)}</span>
                                 </div>
                                 <div class="flex items-center justify-between">
@@ -2628,12 +2628,16 @@ async function closeCoveredCall(ccId, stockId) {
                                     <span class="font-semibold text-red-700">- (Price × ${cc.quantity} × 100)</span>
                                 </div>
                                 <div class="flex items-center justify-between">
-                                    <span class="text-blue-800">Commission:</span>
-                                    <span class="font-semibold text-red-700">- Commission</span>
+                                    <span class="text-blue-800">Opening Commission:</span>
+                                    <span class="font-semibold text-red-700">- $${(cc.commission || 0).toFixed(2)}</span>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-blue-800">Closing Commission:</span>
+                                    <span class="font-semibold text-red-700">- (form value)</span>
                                 </div>
                             </div>
                             <p class="text-xs text-blue-700 mt-2 bg-blue-200 p-2 rounded">
-                                <i class="fas fa-lightbulb mr-1"></i>P/L will update your stock's cost basis
+                                <i class="fas fa-lightbulb mr-1"></i>Net P/L updates your stock's cost basis
                             </p>
                         </div>
                         
@@ -2658,19 +2662,21 @@ async function closeCoveredCall(ccId, stockId) {
             const formData = new FormData(e.target)
             
             const closePrice = parseFloat(formData.get('close_price'))
-            const commission = parseFloat(formData.get('commission'))
+            const closeCommission = parseFloat(formData.get('commission'))
             
-            // Calculate P/L: Premium Received - (Close Price × Contracts × 100) - Commission
+            // Calculate P/L: Premium Received - (Close Price × Contracts × 100) - Opening Commission - Closing Commission
             // Note: Premium is per share, 1 contract = 100 shares
             const premiumReceived = cc.premium * cc.quantity * 100
             const closeCost = closePrice * cc.quantity * 100
-            const profitLoss = premiumReceived - closeCost - commission
+            const openCommission = cc.commission || 0
+            const totalCommission = openCommission + closeCommission
+            const profitLoss = premiumReceived - closeCost - totalCommission
             
             try {
                 const response = await api.put(`/api/covered-calls/${ccId}/close`, {
                     close_date: formData.get('close_date'),
                     close_price: closePrice,
-                    commission: commission,
+                    commission: closeCommission,
                     profit_loss: profitLoss
                 })
                 
@@ -2678,8 +2684,8 @@ async function closeCoveredCall(ccId, stockId) {
                 
                 // Show P/L message
                 const plMessage = profitLoss >= 0 
-                    ? `✅ Covered call closed successfully!\n\n💰 Profit: $${profitLoss.toFixed(2)}\n\nPremium Received: $${premiumReceived.toFixed(2)}\nClose Cost: $${closeCost.toFixed(2)}\nCommission: $${commission.toFixed(2)}\n\nThis ${profitLoss >= 0 ? 'profit' : 'loss'} has been applied to the stock's cost basis.`
-                    : `✅ Covered call closed successfully!\n\n📉 Loss: $${Math.abs(profitLoss).toFixed(2)}\n\nPremium Received: $${premiumReceived.toFixed(2)}\nClose Cost: $${closeCost.toFixed(2)}\nCommission: $${commission.toFixed(2)}\n\nThis loss has been applied to the stock's cost basis.`
+                    ? `✅ Covered call closed successfully!\n\n💰 Profit: $${profitLoss.toFixed(2)}\n\nPremium Received: $${premiumReceived.toFixed(2)}\nClose Cost: $${closeCost.toFixed(2)}\nOpening Commission: $${openCommission.toFixed(2)}\nClosing Commission: $${closeCommission.toFixed(2)}\nTotal Commissions: $${totalCommission.toFixed(2)}\n\nThis ${profitLoss >= 0 ? 'profit' : 'loss'} has been applied to the stock's cost basis.`
+                    : `✅ Covered call closed successfully!\n\n📉 Loss: $${Math.abs(profitLoss).toFixed(2)}\n\nPremium Received: $${premiumReceived.toFixed(2)}\nClose Cost: $${closeCost.toFixed(2)}\nOpening Commission: $${openCommission.toFixed(2)}\nClosing Commission: $${closeCommission.toFixed(2)}\nTotal Commissions: $${totalCommission.toFixed(2)}\n\nThis loss has been applied to the stock's cost basis.`
                 
                 alert(plMessage)
                 
