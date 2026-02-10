@@ -2814,6 +2814,13 @@ function showOptionForm(optionId = null) {
                         <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
+                        <label class="block text-gray-700 mb-2">Commission</label>
+                        <input type="number" step="0.01" name="commission" value="0" placeholder="0.00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <small class="text-gray-500 text-xs">
+                            <i class="fas fa-info-circle mr-1"></i>Opening commission
+                        </small>
+                    </div>
+                    <div>
                         <label class="flex items-center pt-8">
                             <input type="checkbox" name="is_open" checked class="mr-2">
                             <span class="text-gray-700">Position Open</span>
@@ -2846,6 +2853,7 @@ function showOptionForm(optionId = null) {
             expiration_date: formData.get('expiration_date'),
             account_id: parseInt(formData.get('account_id')),
             trade_date: formData.get('trade_date'),
+            commission: parseFloat(formData.get('commission')) || 0,
             is_open: formData.get('is_open') === 'on',
             notes: formData.get('notes') || null
         }
@@ -2876,6 +2884,7 @@ function showOptionForm(optionId = null) {
             form.expiration_date.value = option.expiration_date
             form.account_id.value = option.account_id
             form.trade_date.value = option.trade_date
+            form.commission.value = option.commission || 0
             form.is_open.checked = option.is_open === 1
             form.notes.value = option.notes || ''
         })

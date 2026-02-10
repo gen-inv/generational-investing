@@ -2095,8 +2095,8 @@ app.post('/api/options', authMiddleware, async (c) => {
     INSERT INTO option_trades (
       user_id, company_id, ticker, strategy_type, strike_price,
       strike_price_2, strike_price_3, strike_price_4, premium, quantity,
-      expiration_date, account_type, trade_date, is_open, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      expiration_date, account_type, trade_date, commission, is_open, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     userId,
     data.company_id || null,
@@ -2111,6 +2111,7 @@ app.post('/api/options', authMiddleware, async (c) => {
     data.expiration_date,
     data.account_type,
     data.trade_date,
+    data.commission || 0,
     data.is_open !== undefined ? (data.is_open ? 1 : 0) : 1,
     data.notes || null
   ).run()
@@ -2128,7 +2129,7 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       ticker = ?, strategy_type = ?, strike_price = ?,
       strike_price_2 = ?, strike_price_3 = ?, strike_price_4 = ?,
       premium = ?, quantity = ?, expiration_date = ?,
-      account_type = ?, trade_date = ?, is_open = ?,
+      account_type = ?, trade_date = ?, commission = ?, is_open = ?,
       close_date = ?, close_price = ?, profit_loss = ?,
       notes = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ? AND user_id = ?
@@ -2144,6 +2145,7 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
     data.expiration_date,
     data.account_type,
     data.trade_date,
+    data.commission || 0,
     data.is_open ? 1 : 0,
     data.close_date || null,
     data.close_price || null,
