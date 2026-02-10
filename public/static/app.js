@@ -1792,8 +1792,9 @@ async function showStockDetails(id) {
                                                 <th class="px-4 py-2 text-left">Trade Date</th>
                                                 <th class="px-4 py-2 text-center">Strike</th>
                                                 <th class="px-4 py-2 text-left">Expiration</th>
-                                                <th class="px-4 py-2 text-right">Premium</th>
+                                                <th class="px-4 py-2 text-right">Credit Received</th>
                                                 <th class="px-4 py-2 text-center">Contracts</th>
+                                                <th class="px-4 py-2 text-right">Closed P/L</th>
                                                 <th class="px-4 py-2 text-center">Status</th>
                                                 <th class="px-4 py-2 text-center">Actions</th>
                                             </tr>
@@ -1816,13 +1817,22 @@ async function showStockDetails(id) {
                                                     expirationWarning = ` <i class="fas fa-clock text-orange-600" title="Expires in ${daysUntil} days"></i>`
                                                 }
                                                 
+                                                // Format closed P/L
+                                                let closedPL = '-'
+                                                let plClass = ''
+                                                if (!cc.is_open && cc.profit_loss !== null && cc.profit_loss !== undefined) {
+                                                    closedPL = '$' + cc.profit_loss.toFixed(2)
+                                                    plClass = cc.profit_loss >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'
+                                                }
+                                                
                                                 return `
                                                 <tr class="hover:bg-gray-50">
                                                     <td class="px-4 py-2">${cc.trade_date}</td>
                                                     <td class="px-4 py-2 text-center font-semibold">$${cc.strike_price.toFixed(2)}</td>
                                                     <td class="px-4 py-2 ${expirationClass}">${cc.expiration_date}${expirationWarning}</td>
-                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${(cc.premium * cc.quantity * 100).toFixed(2)}</td>
+                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${(cc.premium * 100).toFixed(2)}</td>
                                                     <td class="px-4 py-2 text-center">${cc.quantity}</td>
+                                                    <td class="px-4 py-2 text-right ${plClass}">${closedPL}</td>
                                                     <td class="px-4 py-2 text-center">
                                                         <span class="px-2 py-1 rounded text-xs ${cc.is_open ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
                                                             ${cc.is_open ? 'Open' : 'Closed'}
