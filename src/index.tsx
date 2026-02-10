@@ -1803,7 +1803,7 @@ app.get('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
     // We link by ticker since covered calls are separate option trades
     const coveredCalls = await DB.prepare(`
       SELECT * FROM option_trades
-      WHERE user_id = ? AND ticker = ? AND strategy_type = 'COVERED_CALL'
+      WHERE user_id = ? AND ticker = ? AND strategy_type = 'COVERED_CALL' AND is_open = 1
       ORDER BY trade_date DESC
     `).bind(userId, trade.ticker).all()
     
