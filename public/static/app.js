@@ -2089,61 +2089,82 @@ async function initiateCoveredCall(stockId) {
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
         modal.id = 'covered-call-modal'
         modal.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+            <div class="bg-white rounded-lg p-6 max-w-4xl w-full">
                 <h3 class="text-2xl font-bold text-brand-teal mb-6">
                     <i class="fas fa-file-contract mr-2"></i>Covered Call - ${stock.ticker}
                 </h3>
                 
-                <div class="mb-4 p-4 bg-gray-100 rounded-lg">
-                    <p class="text-sm text-gray-600">Position: <span class="font-semibold">${stock.quantity} shares</span></p>
-                    <p class="text-sm text-gray-600">Account: <span class="font-semibold">${stock.account_name}</span></p>
-                    <p class="text-sm text-gray-600">Max Contracts: <span class="font-semibold">${maxContracts}</span></p>
+                <div class="mb-6 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-200">
+                    <div class="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                            <p class="text-gray-600">Position</p>
+                            <p class="font-semibold text-gray-900">${stock.quantity} shares</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-600">Account</p>
+                            <p class="font-semibold text-gray-900">${stock.account_name}</p>
+                        </div>
+                        <div>
+                            <p class="text-gray-600">Max Contracts</p>
+                            <p class="font-semibold text-gray-900">${maxContracts}</p>
+                        </div>
+                    </div>
                 </div>
                 
                 <form id="coveredCallForm">
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Strike Price *</label>
-                        <input type="number" step="0.01" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    <!-- Row 1: Strike, Premium, Contracts -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                            <label class="block text-gray-700 font-semibold mb-2">Strike Price *</label>
+                            <input type="number" step="0.01" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" required>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 font-semibold mb-2">Premium Per Share *</label>
+                            <input type="number" step="0.01" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" required>
+                            <small class="text-gray-500 text-xs">1 contract = 100 shares</small>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 font-semibold mb-2">Contracts *</label>
+                            <input type="number" name="quantity" min="1" max="${maxContracts}" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" required value="1">
+                            <small class="text-gray-500 text-xs">Max: ${maxContracts}</small>
+                        </div>
                     </div>
                     
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Premium Per Share *</label>
-                        <input type="number" step="0.01" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                        <small class="text-gray-500">Premium per share (1 contract = 100 shares)</small>
+                    <!-- Row 2: Expiration, Trade Date, Commission -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div>
+                            <label class="block text-gray-700 font-semibold mb-2">Expiration Date *</label>
+                            <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" required>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 font-semibold mb-2">Trade Date *</label>
+                            <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" required value="${new Date().toISOString().split('T')[0]}">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 font-semibold mb-2">Commission</label>
+                            <input type="number" step="0.01" name="commission" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" placeholder="0.00" value="0">
+                            <small class="text-gray-500 text-xs">Opening cost</small>
+                        </div>
                     </div>
                     
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Number of Contracts *</label>
-                        <input type="number" name="quantity" min="1" max="${maxContracts}" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="1">
-                        <small class="text-gray-500">Max: ${maxContracts} contracts</small>
+                    <!-- Row 3: Notes (full width) -->
+                    <div class="mb-6">
+                        <label class="block text-gray-700 font-semibold mb-2">Notes</label>
+                        <textarea name="notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" rows="2" placeholder="Optional notes"></textarea>
                     </div>
                     
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Expiration Date *</label>
-                        <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Trade Date *</label>
-                        <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${new Date().toISOString().split('T')[0]}">
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Commission</label>
-                        <input type="number" step="0.01" name="commission" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="0.00" value="0">
-                        <small class="text-gray-500">Commission paid to open the position</small>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Notes</label>
-                        <textarea name="notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2" placeholder="Optional notes"></textarea>
-                    </div>
-                    
-                    <div class="flex gap-4">
-                        <button type="submit" class="btn-primary flex-1">
+                    <!-- Action Buttons -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <button type="submit" class="w-full bg-gradient-to-r from-brand-teal to-teal-700 hover:from-teal-700 hover:to-teal-800 text-white font-bold py-3 px-6 rounded-lg transition shadow-lg hover:shadow-xl">
                             <i class="fas fa-save mr-2"></i>Save Covered Call
                         </button>
-                        <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="btn-secondary flex-1">Cancel</button>
+                        <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-bold py-3 px-6 rounded-lg transition shadow-lg hover:shadow-xl">
+                            <i class="fas fa-times mr-2"></i>Cancel
+                        </button>
                     </div>
                 </form>
             </div>
