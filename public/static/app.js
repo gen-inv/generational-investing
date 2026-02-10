@@ -2242,7 +2242,7 @@ async function viewCoveredCallDetails(ccId) {
         modal.innerHTML = `
             <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <!-- Header -->
-                <div class="bg-gradient-to-r from-brand-teal to-teal-700 text-white p-6 sticky top-0 z-10">
+                <div class="bg-gradient-to-r from-teal-700 to-teal-800 text-white p-6 sticky top-0 z-10">
                     <div class="flex items-center justify-between">
                         <div>
                             <h3 class="text-3xl font-bold flex items-center">
