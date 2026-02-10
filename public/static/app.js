@@ -2382,7 +2382,8 @@ async function editCoveredCall(ccId) {
 // Close covered call
 async function closeCoveredCall(ccId, stockId) {
     try {
-        const response = await api.get('/api/options')
+        // Fetch the covered call details directly
+        const response = await api.get(`/api/stocks/${stockId}/covered-calls`)
         const cc = response.data.find(o => o.id === ccId)
         
         if (!cc) {
@@ -2428,9 +2429,6 @@ async function closeCoveredCall(ccId, stockId) {
                     <div class="mb-4 p-4 bg-blue-50 rounded-lg">
                         <p class="text-sm text-gray-700 mb-1">P/L Calculation:</p>
                         <p class="text-xs text-gray-600">(Premium × Contracts × 100) - (Close Price × Contracts × 100) - Commission</p>
-                        <p class="text-xs text-gray-600 mt-2"><strong>Note:</strong> P/L will be applied to the stock's cost basis</p>
-                    </div>
-                        <p class="text-xs text-gray-600">Premium Received - (Close Price × Contracts) - Commission</p>
                         <p class="text-xs text-gray-600 mt-2"><strong>Note:</strong> P/L will be applied to the stock's cost basis</p>
                     </div>
                     
