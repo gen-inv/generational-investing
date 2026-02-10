@@ -1692,11 +1692,11 @@ async function showStockDetails(id) {
         modal.innerHTML = `
             <div class="bg-white rounded-lg p-0 max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
                 <!-- Header -->
-                <div class="flex justify-between items-center p-6 border-b border-gray-200">
-                    <h3 class="text-2xl font-bold text-brand-teal">
+                <div class="flex justify-between items-center p-6 border-b border-gray-200 bg-gradient-to-r from-teal-700 to-teal-800">
+                    <h3 class="text-2xl font-bold text-white">
                         <i class="fas fa-chart-line mr-2"></i>${stock.ticker} - Position Management
                     </h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
+                    <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-teal-200">
                         <i class="fas fa-times text-2xl"></i>
                     </button>
                 </div>
@@ -2497,126 +2497,111 @@ async function closeCoveredCall(ccId, stockId) {
         modal.innerHTML = `
             <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
                 <!-- Header -->
-                <div class="bg-gradient-to-r from-yellow-600 to-yellow-700 text-white p-6 sticky top-0 z-10">
+                <div class="bg-gradient-to-r from-yellow-600 to-yellow-700 text-white p-4 sticky top-0 z-10">
                     <div class="flex items-center justify-between">
                         <div>
-                            <h3 class="text-3xl font-bold flex items-center">
-                                <i class="fas fa-check-circle mr-3"></i>Close Covered Call
+                            <h3 class="text-2xl font-bold flex items-center">
+                                <i class="fas fa-check-circle mr-2"></i>Close Covered Call
                             </h3>
-                            <p class="text-yellow-100 mt-1">${cc.ticker} - Finalize Position</p>
+                            <p class="text-yellow-100 text-sm">${cc.ticker} - Finalize Position</p>
                         </div>
-                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-yellow-200 text-2xl">
+                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-yellow-200 text-xl">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
                 </div>
                 
                 <!-- Content -->
-                <div class="p-6">
+                <div class="p-4">
                     <!-- Position Summary -->
-                    <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-5 rounded-xl border-2 border-gray-300 mb-6">
-                        <h4 class="text-lg font-bold text-gray-800 mb-4 flex items-center">
-                            <i class="fas fa-info-circle mr-2 text-blue-600"></i>Position Summary
+                    <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-lg border border-gray-300 mb-4">
+                        <h4 class="text-sm font-bold text-gray-800 mb-2 flex items-center">
+                            <i class="fas fa-info-circle mr-1 text-blue-600"></i>Position Summary
                         </h4>
-                        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                             <div>
-                                <p class="text-sm text-gray-600 mb-1">Strike Price</p>
-                                <p class="text-lg font-semibold text-gray-900">$${cc.strike_price.toFixed(2)}</p>
+                                <p class="text-xs text-gray-600">Strike</p>
+                                <p class="font-semibold text-gray-900">$${cc.strike_price.toFixed(2)}</p>
                             </div>
                             <div>
-                                <p class="text-sm text-gray-600 mb-1">Premium Received</p>
-                                <p class="text-lg font-semibold text-green-600">$${cc.premium.toFixed(2)}/share</p>
-                                <p class="text-xs text-gray-500">Total: $${(cc.premium * cc.quantity * 100).toFixed(2)}</p>
+                                <p class="text-xs text-gray-600">Premium</p>
+                                <p class="font-semibold text-green-600">$${(cc.premium * cc.quantity * 100).toFixed(2)}</p>
                             </div>
                             <div>
-                                <p class="text-sm text-gray-600 mb-1">Contracts</p>
-                                <p class="text-lg font-semibold text-gray-900">${cc.quantity}</p>
-                                <p class="text-xs text-gray-500">${cc.quantity * 100} shares</p>
+                                <p class="text-xs text-gray-600">Contracts</p>
+                                <p class="font-semibold text-gray-900">${cc.quantity}</p>
                             </div>
-                            <div class="col-span-2 md:col-span-3">
-                                <p class="text-sm text-gray-600 mb-1">Expiration Date</p>
-                                <p class="text-lg font-semibold text-gray-900">${cc.expiration_date}</p>
+                            <div>
+                                <p class="text-xs text-gray-600">Expires</p>
+                                <p class="font-semibold text-gray-900">${cc.expiration_date}</p>
                             </div>
                         </div>
                     </div>
                     
                     <!-- Close Form -->
                     <form id="closeCoveredCallForm">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
                             <!-- Close Date -->
                             <div>
-                                <label class="block text-gray-700 font-semibold mb-2">
-                                    <i class="fas fa-calendar mr-2 text-blue-600"></i>Close Date *
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-calendar mr-1 text-blue-600"></i>Close Date *
                                 </label>
                                 <input type="date" name="close_date" 
-                                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none transition" 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-1 focus:ring-brand-teal focus:outline-none transition text-sm" 
                                     required value="${new Date().toISOString().split('T')[0]}">
                             </div>
                             
                             <!-- Close Price -->
                             <div>
-                                <label class="block text-gray-700 font-semibold mb-2">
-                                    <i class="fas fa-dollar-sign mr-2 text-green-600"></i>Close Price Per Share *
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-dollar-sign mr-1 text-green-600"></i>Close Price/Share *
                                 </label>
                                 <input type="number" step="0.01" name="close_price" 
-                                    class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none transition" 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-1 focus:ring-brand-teal focus:outline-none transition text-sm" 
                                     required placeholder="0.00" value="0">
-                                <small class="text-gray-500 text-xs">
-                                    <i class="fas fa-info-circle mr-1"></i>Enter 0 if expired or assigned
-                                </small>
+                            </div>
+                            
+                            <!-- Commission -->
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-receipt mr-1 text-purple-600"></i>Commission *
+                                </label>
+                                <input type="number" step="0.01" name="commission" 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-1 focus:ring-brand-teal focus:outline-none transition text-sm" 
+                                    required placeholder="0.00" value="0">
                             </div>
                         </div>
                         
-                        <!-- Commission -->
-                        <div class="mb-6">
-                            <label class="block text-gray-700 font-semibold mb-2">
-                                <i class="fas fa-receipt mr-2 text-purple-600"></i>Commission *
-                            </label>
-                            <input type="number" step="0.01" name="commission" 
-                                class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none transition" 
-                                required placeholder="0.00" value="0">
-                            <small class="text-gray-500 text-xs">
-                                <i class="fas fa-info-circle mr-1"></i>Commission paid to close the position
-                            </small>
-                        </div>
-                        
                         <!-- P/L Calculation Info -->
-                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl border-2 border-blue-300 mb-6">
-                            <h4 class="text-sm font-bold text-blue-900 mb-3 flex items-center">
-                                <i class="fas fa-calculator mr-2"></i>Profit/Loss Calculation
+                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-3 rounded-lg border border-blue-300 mb-4">
+                            <h4 class="text-xs font-bold text-blue-900 mb-2 flex items-center">
+                                <i class="fas fa-calculator mr-1"></i>P/L Calculation
                             </h4>
-                            <div class="space-y-2 text-sm">
+                            <div class="space-y-1 text-xs">
                                 <div class="flex items-center justify-between">
-                                    <span class="text-blue-800">Premium Received:</span>
+                                    <span class="text-blue-800">Premium:</span>
                                     <span class="font-semibold text-green-700">+ $${(cc.premium * cc.quantity * 100).toFixed(2)}</span>
                                 </div>
                                 <div class="flex items-center justify-between">
                                     <span class="text-blue-800">Close Cost:</span>
-                                    <span class="font-semibold text-red-700">- (Close Price × ${cc.quantity} × 100)</span>
+                                    <span class="font-semibold text-red-700">- (Price × ${cc.quantity} × 100)</span>
                                 </div>
                                 <div class="flex items-center justify-between">
                                     <span class="text-blue-800">Commission:</span>
                                     <span class="font-semibold text-red-700">- Commission</span>
                                 </div>
-                                <div class="border-t-2 border-blue-300 pt-2 mt-2">
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-blue-900 font-bold">Net P/L:</span>
-                                        <span class="font-bold text-blue-900">= Calculated on submit</span>
-                                    </div>
-                                </div>
                             </div>
-                            <p class="text-xs text-blue-700 mt-3 bg-blue-200 p-2 rounded">
-                                <i class="fas fa-lightbulb mr-1"></i>
-                                <strong>Note:</strong> The calculated P/L will be automatically applied to your stock's cost basis
+                            <p class="text-xs text-blue-700 mt-2 bg-blue-200 p-2 rounded">
+                                <i class="fas fa-lightbulb mr-1"></i>P/L will update your stock's cost basis
                             </p>
                         </div>
                         
                         <!-- Action Buttons -->
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <button type="submit" class="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold py-4 px-6 rounded-lg transition shadow-lg hover:shadow-xl transform hover:scale-105">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <button type="submit" class="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold py-3 px-4 rounded-lg transition shadow-lg hover:shadow-xl transform hover:scale-105">
                                 <i class="fas fa-check-circle mr-2"></i>Close Position
                             </button>
-                            <button type="button" onclick="this.closest('.fixed').remove()" class="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-bold py-4 px-6 rounded-lg transition shadow-lg hover:shadow-xl transform hover:scale-105">
+                            <button type="button" onclick="this.closest('.fixed').remove()" class="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-bold py-3 px-4 rounded-lg transition shadow-lg hover:shadow-xl transform hover:scale-105">
                                 <i class="fas fa-times mr-2"></i>Cancel
                             </button>
                         </div>
