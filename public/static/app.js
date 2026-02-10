@@ -2548,7 +2548,10 @@ async function closeCoveredCall(ccId, stockId) {
                                 </label>
                                 <input type="date" name="close_date" 
                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-1 focus:ring-brand-teal focus:outline-none transition text-sm" 
-                                    required value="${new Date().toISOString().split('T')[0]}">
+                                    required value="${cc.expiration_date}">
+                                <small class="text-gray-500 text-xs">
+                                    <i class="fas fa-info-circle mr-1"></i>Defaults to expiration date
+                                </small>
                             </div>
                             
                             <!-- Close Price -->
