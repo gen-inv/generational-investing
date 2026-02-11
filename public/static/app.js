@@ -2718,14 +2718,14 @@ async function closeCoveredCall(ccId, stockId) {
 
 async function loadOptions() {
     try {
-        const response = await api.get('/api/options')
+        const response = await api.get('/api/options?open=true')
         const options = response.data
         
         const table = document.getElementById('options-table')
         table.innerHTML = ''
         
         if (options.length === 0) {
-            table.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No option trades found</td></tr>'
+            table.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No open option trades found</td></tr>'
             return
         }
         
