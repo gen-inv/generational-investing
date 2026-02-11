@@ -2163,42 +2163,60 @@ app.post('/api/options', authMiddleware, async (c) => {
 })
 
 app.put('/api/options/:id', authMiddleware, async (c) => {
-  const userId = c.get('userId')
-  const tradeId = c.req.param('id')
-  const data = await c.req.json()
-  
-  await c.env.DB.prepare(`
-    UPDATE option_trades SET
-      ticker = ?, strategy_type = ?, strike_price = ?,
-      strike_price_2 = ?, strike_price_3 = ?, strike_price_4 = ?,
-      premium = ?, quantity = ?, expiration_date = ?,
-      account_type = ?, trade_date = ?, commission = ?, is_open = ?,
-      close_date = ?, close_price = ?, profit_loss = ?,
-      notes = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND user_id = ?
-  `).bind(
-    data.ticker,
-    data.strategy_type,
-    data.strike_price,
-    data.strike_price_2 || null,
-    data.strike_price_3 || null,
-    data.strike_price_4 || null,
-    data.premium,
-    data.quantity,
-    data.expiration_date,
-    data.account_type,
-    data.trade_date,
-    data.commission || 0,
-    data.is_open ? 1 : 0,
-    data.close_date || null,
-    data.close_price || null,
-    data.profit_loss || null,
-    data.notes || null,
-    tradeId,
-    userId
-  ).run()
-  
-  return c.json({ success: true })
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const data = await c.req.json()
+    const { DB } = c.env
+    
+    // If account_id is provided, fetch account_type
+    let accountType = data.account_type
+    if (data.account_id) {
+      const account = await DB.prepare(`
+        SELECT account_type FROM accounts WHERE id = ? AND user_id = ?
+      `).bind(data.account_id, userId).first() as any
+      
+      if (account) {
+        accountType = account.account_type
+      }
+    }
+    
+    await DB.prepare(`
+      UPDATE option_trades SET
+        ticker = ?, strategy_type = ?, strike_price = ?,
+        strike_price_2 = ?, strike_price_3 = ?, strike_price_4 = ?,
+        premium = ?, quantity = ?, expiration_date = ?,
+        account_type = ?, trade_date = ?, commission = ?, is_open = ?,
+        close_date = ?, close_price = ?, profit_loss = ?,
+        notes = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      data.ticker,
+      data.strategy_type,
+      data.strike_price,
+      data.strike_price_2 || null,
+      data.strike_price_3 || null,
+      data.strike_price_4 || null,
+      data.premium,
+      data.quantity,
+      data.expiration_date,
+      accountType,
+      data.trade_date,
+      data.commission || 0,
+      data.is_open ? 1 : 0,
+      data.close_date || null,
+      data.close_price || null,
+      data.profit_loss || null,
+      data.notes || null,
+      tradeId,
+      userId
+    ).run()
+    
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('Update option trade error:', error)
+    return c.json({ error: 'Failed to update option trade' }, 500)
+  }
 })
 
 app.delete('/api/options/:id', authMiddleware, async (c) => {

@@ -2936,7 +2936,13 @@ async function showOptionForm(optionId = null) {
             form.premium.value = option.premium
             form.quantity.value = option.quantity
             form.expiration_date.value = option.expiration_date
-            form.account_id.value = option.account_id
+            
+            // Find account_id from account_type (option only has account_type)
+            const matchingAccount = accounts.find(acc => acc.account_type === option.account_type)
+            if (matchingAccount) {
+                form.account_id.value = matchingAccount.id
+            }
+            
             form.trade_date.value = option.trade_date
             form.commission.value = option.commission || 0
             form.notes.value = option.notes || ''
