@@ -2621,7 +2621,7 @@ app.get('/', (c) => {
                         <div class="flex justify-between items-center mb-6">
                             <h2 class="text-3xl font-bold text-brand-teal">Option Trades</h2>
                             <button onclick="showOptionForm()" class="btn-primary">
-                                <i class="fas fa-plus mr-2"></i>Add Option
+                                <i class="fas fa-plus mr-2"></i>Add Option Trade
                             </button>
                         </div>
                         

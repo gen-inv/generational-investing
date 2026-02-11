@@ -2759,9 +2759,29 @@ async function loadOptions() {
     }
 }
 
-function showOptionForm(optionId = null) {
-    const isEdit = optionId !== null
-    const title = isEdit ? 'Edit Option Trade' : 'Add Option Trade'
+async function showOptionForm(optionId = null) {
+    try {
+        const isEdit = optionId !== null
+        const title = isEdit ? 'Edit Option Trade' : 'Add Option Trade'
+        
+        // Load companies and accounts
+        const companiesResponse = await api.get('/api/companies')
+        const companies = companiesResponse.data.companies || companiesResponse.data
+        
+        const accountsResponse = await api.get('/api/accounts')
+        const accounts = accountsResponse.data.accounts || accountsResponse.data
+        
+        if (companies.length === 0) {
+            alert('Please add companies first before creating option trades.')
+            showSection('companies')
+            return
+        }
+        
+        if (accounts.length === 0) {
+            alert('Please create an account first before adding option trades.')
+            showSection('accounts')
+            return
+        }
     
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
@@ -2771,11 +2791,29 @@ function showOptionForm(optionId = null) {
             <form id="optionForm">
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-gray-700 mb-2">Ticker *</label>
-                        <input type="text" name="ticker" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <label class="block text-gray-700 mb-2 font-semibold">Company *</label>
+                        <select name="company_id" id="option_company_select" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                            <option value="">Select company...</option>
+                            ${companies.map(c => `
+                                <option value="${c.id}" data-ticker="${c.ticker}" data-buy-price="${c.buy_price || ''}">${c.ticker} - ${c.company_name}</option>
+                            `).join('')}
+                        </select>
+                        <div id="option-buy-price-info" class="mt-2 text-sm hidden">
+                            <span class="text-gray-600">Target Buy Price: </span>
+                            <span class="font-semibold text-brand-gold"></span>
+                        </div>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2">Strategy Type *</label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Account *</label>
+                        <select name="account_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                            <option value="">Select account...</option>
+                            ${accounts.map(acc => `
+                                <option value="${acc.id}">${acc.account_name}</option>
+                            `).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Strategy Type *</label>
                         <select name="strategy_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                             <option value="SELLING_PUT">Selling Put (Stockpiling)</option>
                             <option value="BUYING_PUT">Buying Put</option>
@@ -2786,60 +2824,41 @@ function showOptionForm(optionId = null) {
                         </select>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2">Strike Price *</label>
-                        <input type="number" step="0.01" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Premium *</label>
-                        <input type="number" step="0.01" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Quantity (Contracts) *</label>
-                        <input type="number" name="quantity" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Expiration Date *</label>
-                        <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Account *</label>
-                        <select name="account_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="">Select account...</option>
-                            ${accountsList.map(acc => `
-                                <option value="${acc.id}">${acc.account_name} (${acc.account_type})</option>
-                            `).join('')}
-                        </select>
-                        <small class="text-gray-400">
-                            <a href="#" onclick="showSection('accounts'); return false;" class="text-brand-gold hover:underline">
-                                Manage accounts
-                            </a>
-                        </small>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2">Trade Date *</label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Trade Date *</label>
                         <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2">Commission</label>
-                        <input type="number" step="0.01" name="commission" value="0" placeholder="0.00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                        <small class="text-gray-500 text-xs">
-                            <i class="fas fa-info-circle mr-1"></i>Opening commission
-                        </small>
+                        <label class="block text-gray-700 mb-2 font-semibold">Strike Price *</label>
+                        <input type="number" step="0.01" name="strike_price" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
-                        <label class="flex items-center pt-8">
-                            <input type="checkbox" name="is_open" checked class="mr-2">
-                            <span class="text-gray-700">Position Open</span>
-                        </label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Premium per Share *</label>
+                        <input type="number" step="0.01" name="premium" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Quantity (Contracts) *</label>
+                        <input type="number" name="quantity" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Expiration Date *</label>
+                        <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Commission</label>
+                        <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                     </div>
                     <div class="col-span-2">
-                        <label class="block text-gray-700 mb-2">Notes</label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Notes</label>
                         <textarea name="notes" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
                     </div>
                 </div>
                 <div class="flex gap-4 mt-6">
-                    <button type="submit" class="btn-primary flex-1">Save</button>
-                    <button type="button" onclick="this.closest('.fixed').remove()" class="btn-secondary flex-1">Cancel</button>
+                    <button type="submit" class="bg-brand-teal text-white px-6 py-2 rounded-lg hover:bg-opacity-90 flex-1">
+                        <i class="fas fa-save mr-2"></i>Save Option Trade
+                    </button>
+                    <button type="button" onclick="this.closest('.fixed').remove()" class="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 flex-1">
+                        Cancel
+                    </button>
                 </div>
             </form>
         </div>
@@ -2847,11 +2866,30 @@ function showOptionForm(optionId = null) {
     
     document.body.appendChild(modal)
     
+    // Auto-fill ticker and show buy price when company is selected
+    document.getElementById('option_company_select').addEventListener('change', (e) => {
+        const selectedOption = e.target.options[e.target.selectedIndex]
+        const ticker = selectedOption.dataset.ticker
+        const buyPrice = selectedOption.dataset.buyPrice
+        
+        const buyPriceInfo = document.getElementById('option-buy-price-info')
+        if (buyPrice && buyPrice !== '' && buyPrice !== 'null') {
+            buyPriceInfo.classList.remove('hidden')
+            buyPriceInfo.querySelector('.font-semibold').textContent = '$' + parseFloat(buyPrice).toFixed(2)
+        } else {
+            buyPriceInfo.classList.add('hidden')
+        }
+    })
+    
     document.getElementById('optionForm').addEventListener('submit', async (e) => {
         e.preventDefault()
         const formData = new FormData(e.target)
+        
+        const selectedCompany = companies.find(c => c.id === parseInt(formData.get('company_id')))
+        
         const data = {
-            ticker: formData.get('ticker'),
+            company_id: parseInt(formData.get('company_id')),
+            ticker: selectedCompany.ticker,
             strategy_type: formData.get('strategy_type'),
             strike_price: parseFloat(formData.get('strike_price')),
             premium: parseFloat(formData.get('premium')),
@@ -2860,7 +2898,7 @@ function showOptionForm(optionId = null) {
             account_id: parseInt(formData.get('account_id')),
             trade_date: formData.get('trade_date'),
             commission: parseFloat(formData.get('commission')) || 0,
-            is_open: formData.get('is_open') === 'on',
+            is_open: true,
             notes: formData.get('notes') || null
         }
         
@@ -2873,16 +2911,24 @@ function showOptionForm(optionId = null) {
             modal.remove()
             loadOptions()
             loadDashboard()
+            alert(isEdit ? 'Option trade updated successfully!' : 'Option trade added successfully!')
         } catch (error) {
             alert(error.response?.data?.error || 'Operation failed')
         }
     })
     
+    // Load existing data for edit
     if (isEdit) {
-        api.get(`/api/options/${optionId}`).then(response => {
-            const option = response.data
+        const response = await api.get(`/api/options`)
+        const option = response.data.find(o => o.id === optionId)
+        if (option) {
             const form = document.getElementById('optionForm')
-            form.ticker.value = option.ticker
+            form.company_id.value = option.company_id
+            
+            // Trigger company change to show buy price
+            const companySelect = document.getElementById('option_company_select')
+            companySelect.dispatchEvent(new Event('change'))
+            
             form.strategy_type.value = option.strategy_type
             form.strike_price.value = option.strike_price
             form.premium.value = option.premium
@@ -2891,12 +2937,15 @@ function showOptionForm(optionId = null) {
             form.account_id.value = option.account_id
             form.trade_date.value = option.trade_date
             form.commission.value = option.commission || 0
-            form.is_open.checked = option.is_open === 1
             form.notes.value = option.notes || ''
-        })
+        }
     } else {
         const today = new Date().toISOString().split('T')[0]
         document.querySelector('[name="trade_date"]').value = today
+    }
+    } catch (error) {
+        console.error('Error loading option form:', error)
+        alert('Failed to load option form')
     }
 }
 
