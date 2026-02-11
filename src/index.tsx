@@ -2681,9 +2681,19 @@ app.get('/', (c) => {
                     <div id="options-section" class="section hidden">
                         <div class="flex justify-between items-center mb-6">
                             <h2 class="text-3xl font-bold text-brand-teal">Option Trades</h2>
-                            <button onclick="showOptionForm()" class="btn-primary">
-                                <i class="fas fa-plus mr-2"></i>Add Option Trade
-                            </button>
+                            <div class="flex items-center gap-4">
+                                <!-- Include Closed Trades Toggle -->
+                                <label class="flex items-center cursor-pointer group">
+                                    <span class="mr-3 text-gray-700 font-medium">Include Closed</span>
+                                    <div class="relative">
+                                        <input type="checkbox" id="include-closed-options" class="sr-only peer" onchange="toggleClosedOptions()">
+                                        <div class="w-11 h-6 bg-gray-300 rounded-full peer peer-focus:ring-2 peer-focus:ring-teal-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-teal"></div>
+                                    </div>
+                                </label>
+                                <button onclick="showOptionForm()" class="btn-primary">
+                                    <i class="fas fa-plus mr-2"></i>Add Option Trade
+                                </button>
+                            </div>
                         </div>
                         
                         <!-- Strategy Tabs -->

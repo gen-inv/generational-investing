@@ -2718,6 +2718,7 @@ async function closeCoveredCall(ccId, stockId) {
 
 // Strategy filter state
 let currentStrategyFilter = 'SELLING_PUT'
+let includeClosedOptions = false
 
 // Strategy type mappings
 const STRATEGY_TYPES = [
@@ -2731,9 +2732,16 @@ const STRATEGY_TYPES = [
     { value: 'ZERO_DTE_SPX_IC', label: '0DTE SPX IC' }
 ]
 
+function toggleClosedOptions() {
+    includeClosedOptions = document.getElementById('include-closed-options').checked
+    loadOptions()
+}
+
 async function loadOptions() {
     try {
-        const response = await api.get('/api/options?open=true')
+        // Fetch based on toggle state
+        const endpoint = includeClosedOptions ? '/api/options' : '/api/options?open=true'
+        const response = await api.get(endpoint)
         const allOptions = response.data
         
         // Count options by strategy
