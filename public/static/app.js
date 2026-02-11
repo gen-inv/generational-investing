@@ -2716,20 +2716,75 @@ async function closeCoveredCall(ccId, stockId) {
 // OPTION TRADE FUNCTIONS
 // ============================================================================
 
+// Strategy filter state
+let currentStrategyFilter = 'ALL'
+
+// Strategy type mappings
+const STRATEGY_TYPES = [
+    { value: 'ALL', label: 'All Strategies' },
+    { value: 'SELLING_PUT', label: 'Selling Put (Stockpiling)' },
+    { value: 'SELLING_PUT_LONG_TERM', label: 'Selling Put (Long Term)' },
+    { value: 'BUYING_PUT', label: 'Buying Put' },
+    { value: 'COVERED_CALL', label: 'Covered Call' },
+    { value: 'CREDIT_SPREAD', label: 'Credit Spread' },
+    { value: 'DEBIT_SPREAD', label: 'Debit Spread' },
+    { value: 'IRON_CONDOR', label: 'Iron Condor' }
+]
+
 async function loadOptions() {
     try {
         const response = await api.get('/api/options?open=true')
-        const options = response.data
+        const allOptions = response.data
         
+        // Count options by strategy
+        const strategyCounts = {}
+        STRATEGY_TYPES.forEach(st => {
+            if (st.value === 'ALL') {
+                strategyCounts[st.value] = allOptions.length
+            } else {
+                strategyCounts[st.value] = allOptions.filter(o => o.strategy_type === st.value).length
+            }
+        })
+        
+        // Render tabs
+        const tabsContainer = document.getElementById('strategy-tabs')
+        tabsContainer.innerHTML = STRATEGY_TYPES.map(st => {
+            const count = strategyCounts[st.value]
+            const isActive = currentStrategyFilter === st.value
+            const countDisplay = count > 0 ? ` (${count})` : ''
+            
+            // Active tab: bold border, teal background, white text
+            // Inactive tab: gray border, white background, gray text
+            const activeClasses = isActive 
+                ? 'bg-gradient-to-r from-teal-600 to-teal-700 text-white border-teal-700 border-2 shadow-lg transform scale-105' 
+                : 'bg-white text-gray-700 border-gray-300 border hover:border-teal-500 hover:bg-teal-50'
+            
+            return `
+                <button 
+                    onclick="filterByStrategy('${st.value}')"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all duration-200 ${activeClasses}"
+                >
+                    ${st.label}${countDisplay}
+                </button>
+            `
+        }).join('')
+        
+        // Filter options by selected strategy
+        const filteredOptions = currentStrategyFilter === 'ALL' 
+            ? allOptions 
+            : allOptions.filter(o => o.strategy_type === currentStrategyFilter)
+        
+        // Render table
         const table = document.getElementById('options-table')
         table.innerHTML = ''
         
-        if (options.length === 0) {
-            table.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No open option trades found</td></tr>'
+        if (filteredOptions.length === 0) {
+            const strategyName = STRATEGY_TYPES.find(st => st.value === currentStrategyFilter)?.label || 'this strategy'
+            table.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-gray-500">No open option trades found for ${strategyName}</td></tr>`
             return
         }
         
-        options.forEach(option => {
+        filteredOptions.forEach(option => {
             table.innerHTML += `
                 <tr class="border-b border-gray-200 hover:bg-gray-50">
                     <td class="px-4 py-3">${option.trade_date}</td>
@@ -2757,6 +2812,11 @@ async function loadOptions() {
     } catch (error) {
         console.error('Error loading options:', error)
     }
+}
+
+function filterByStrategy(strategy) {
+    currentStrategyFilter = strategy
+    loadOptions()
 }
 
 async function showOptionForm(optionId = null) {
