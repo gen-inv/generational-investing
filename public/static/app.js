@@ -2717,18 +2717,18 @@ async function closeCoveredCall(ccId, stockId) {
 // ============================================================================
 
 // Strategy filter state
-let currentStrategyFilter = 'ALL'
+let currentStrategyFilter = 'SELLING_PUT'
 
 // Strategy type mappings
 const STRATEGY_TYPES = [
-    { value: 'ALL', label: 'All Strategies' },
     { value: 'SELLING_PUT', label: 'Selling Put (Stockpiling)' },
     { value: 'SELLING_PUT_LONG_TERM', label: 'Selling Put (Long Term)' },
     { value: 'BUYING_PUT', label: 'Buying Put' },
     { value: 'COVERED_CALL', label: 'Covered Call' },
     { value: 'CREDIT_SPREAD', label: 'Credit Spread' },
     { value: 'DEBIT_SPREAD', label: 'Debit Spread' },
-    { value: 'IRON_CONDOR', label: 'Iron Condor' }
+    { value: 'IRON_CONDOR', label: 'Iron Condor' },
+    { value: 'ZERO_DTE_SPX_IC', label: '0DTE SPX IC' }
 ]
 
 async function loadOptions() {
@@ -2739,11 +2739,7 @@ async function loadOptions() {
         // Count options by strategy
         const strategyCounts = {}
         STRATEGY_TYPES.forEach(st => {
-            if (st.value === 'ALL') {
-                strategyCounts[st.value] = allOptions.length
-            } else {
-                strategyCounts[st.value] = allOptions.filter(o => o.strategy_type === st.value).length
-            }
+            strategyCounts[st.value] = allOptions.filter(o => o.strategy_type === st.value).length
         })
         
         // Render tabs
@@ -2770,9 +2766,7 @@ async function loadOptions() {
         }).join('')
         
         // Filter options by selected strategy
-        const filteredOptions = currentStrategyFilter === 'ALL' 
-            ? allOptions 
-            : allOptions.filter(o => o.strategy_type === currentStrategyFilter)
+        const filteredOptions = allOptions.filter(o => o.strategy_type === currentStrategyFilter)
         
         // Render table
         const table = document.getElementById('options-table')
@@ -2883,6 +2877,7 @@ async function showOptionForm(optionId = null) {
                             <option value="CREDIT_SPREAD">Credit Spread</option>
                             <option value="DEBIT_SPREAD">Debit Spread</option>
                             <option value="IRON_CONDOR">Iron Condor</option>
+                            <option value="ZERO_DTE_SPX_IC">0DTE SPX IC</option>
                         </select>
                     </div>
                     <div>
