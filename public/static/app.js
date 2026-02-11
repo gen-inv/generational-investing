@@ -2815,7 +2815,9 @@ async function showOptionForm(optionId = null) {
                     <div>
                         <label class="block text-gray-700 mb-2 font-semibold">Strategy Type *</label>
                         <select name="strategy_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                            <option value="">Select Strategy...</option>
                             <option value="SELLING_PUT">Selling Put (Stockpiling)</option>
+                            <option value="SELLING_PUT_LONG_TERM">Selling Put (Long Term)</option>
                             <option value="BUYING_PUT">Buying Put</option>
                             <option value="COVERED_CALL">Covered Call</option>
                             <option value="CREDIT_SPREAD">Credit Spread</option>
