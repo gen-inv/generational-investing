@@ -404,6 +404,12 @@ async function loadDashboard() {
         document.getElementById('total-cash-cad').textContent = formatCurrency(totals.total_cash_cad, 'CAD')
         document.getElementById('total-cash-usd').textContent = formatCurrency(totals.total_cash_usd, 'USD')
         
+        // Display exchange rate
+        if (totals.exchange_rate) {
+            const rateText = `1 USD = ${totals.exchange_rate.usd_to_cad.toFixed(4)} CAD`
+            document.getElementById('exchange-rate-display').textContent = rateText
+        }
+        
         // Load open stock positions
         const stocksRes = await api.get('/api/stocks?open=true')
         const openStocksList = document.getElementById('open-stocks-list')

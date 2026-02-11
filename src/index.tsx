@@ -2483,6 +2483,7 @@ app.get('/', (c) => {
                             <div class="card">
                                 <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Portfolio (CAD)</h3>
                                 <p class="text-3xl font-bold text-brand-teal" id="total-cad">$0.00</p>
+                                <p class="text-xs text-gray-500 italic mt-1" id="exchange-rate-display"></p>
                             </div>
                             <div class="card">
                                 <h3 class="text-lg font-semibold text-gray-700 mb-2">Total Portfolio (USD)</h3>
