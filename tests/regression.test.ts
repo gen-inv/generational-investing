@@ -1519,3 +1519,263 @@ describe('Cost Basis Adjustment Tests', () => {
     expect(tslaStock.cost_basis).toBeCloseTo(247.55, 2)
   })
 })
+
+describe('Option Trade Tests', () => {
+  let optionToken: string = ''
+  let optionCompanyId: number = 0
+  let optionAccountId: number = 0
+  let optionTradeId: number = 0
+
+  it('should create user, company, and account for option tests', async () => {
+    // Register user
+    const email = generateEmail()
+    const registerRes = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Option Test User'
+      })
+    })
+    const registerData = await registerRes.json()
+    optionToken = registerData.token
+    expect(registerRes.status).toBe(200)
+
+    // Create company
+    const companyRes = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'NVDA',
+        company_name: 'NVIDIA Corporation',
+        buy_price: 120.00
+      })
+    })
+    const companyData = await companyRes.json()
+    optionCompanyId = companyData.id
+    expect(companyRes.status).toBe(201)
+
+    // Create account
+    const accountRes = await fetch(`${BASE_URL}/api/accounts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        account_name: 'Interactive Brokers',
+        account_type: 'Cash',
+        default_currency: 'USD',
+        balance_usd: 50000,
+        cash_balance_usd: 50000
+      })
+    })
+    const accountData = await accountRes.json()
+    optionAccountId = accountData.id
+    expect(accountRes.status).toBe(201)
+  })
+
+  it('should create a selling put option trade', async () => {
+    const response = await fetch(`${BASE_URL}/api/options`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        company_id: optionCompanyId,
+        ticker: 'NVDA',
+        strategy_type: 'SELLING_PUT',
+        strike_price: 100.00,
+        premium: 2.50,
+        quantity: 2,
+        expiration_date: '2024-03-15',
+        account_id: optionAccountId,
+        trade_date: '2024-02-01',
+        commission: 1.30,
+        is_open: true,
+        notes: 'Stockpiling position'
+      })
+    })
+
+    expect(response.status).toBe(201)
+    const data = await response.json()
+    expect(data.id).toBeDefined()
+    expect(data.ticker).toBe('NVDA')
+    expect(data.strategy_type).toBe('SELLING_PUT')
+    expect(data.account_type).toBe('Cash')
+    optionTradeId = data.id
+  })
+
+  it('should reject option trade without company_id', async () => {
+    const response = await fetch(`${BASE_URL}/api/options`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'AAPL',
+        strategy_type: 'SELLING_PUT',
+        strike_price: 150.00,
+        premium: 3.00,
+        quantity: 1,
+        expiration_date: '2024-03-15',
+        account_id: optionAccountId,
+        trade_date: '2024-02-01'
+      })
+    })
+
+    expect(response.status).toBe(400)
+    const data = await response.json()
+    expect(data.error).toBe('Company is required')
+  })
+
+  it('should reject option trade without account_id', async () => {
+    const response = await fetch(`${BASE_URL}/api/options`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        company_id: optionCompanyId,
+        ticker: 'NVDA',
+        strategy_type: 'SELLING_PUT',
+        strike_price: 100.00,
+        premium: 2.50,
+        quantity: 2,
+        expiration_date: '2024-03-15',
+        trade_date: '2024-02-01'
+      })
+    })
+
+    expect(response.status).toBe(400)
+    const data = await response.json()
+    expect(data.error).toBe('Account is required')
+  })
+
+  it('should reject option trade with non-existent company', async () => {
+    const response = await fetch(`${BASE_URL}/api/options`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        company_id: 999999,
+        ticker: 'FAKE',
+        strategy_type: 'SELLING_PUT',
+        strike_price: 100.00,
+        premium: 2.50,
+        quantity: 1,
+        expiration_date: '2024-03-15',
+        account_id: optionAccountId,
+        trade_date: '2024-02-01'
+      })
+    })
+
+    expect(response.status).toBe(404)
+    const data = await response.json()
+    expect(data.error).toBe('Company not found')
+  })
+
+  it('should reject option trade with non-existent account', async () => {
+    const response = await fetch(`${BASE_URL}/api/options`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        company_id: optionCompanyId,
+        ticker: 'NVDA',
+        strategy_type: 'SELLING_PUT',
+        strike_price: 100.00,
+        premium: 2.50,
+        quantity: 1,
+        expiration_date: '2024-03-15',
+        account_id: 999999,
+        trade_date: '2024-02-01'
+      })
+    })
+
+    expect(response.status).toBe(404)
+    const data = await response.json()
+    expect(data.error).toBe('Account not found')
+  })
+
+  it('should retrieve open option trades', async () => {
+    const response = await fetch(`${BASE_URL}/api/options?open=true`, {
+      headers: { 'Authorization': `Bearer ${optionToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(Array.isArray(data)).toBe(true)
+    expect(data.length).toBeGreaterThan(0)
+    
+    const nvdaOption = data.find((o: any) => o.ticker === 'NVDA')
+    expect(nvdaOption).toBeDefined()
+    expect(nvdaOption.strategy_type).toBe('SELLING_PUT')
+    expect(nvdaOption.is_open).toBe(1)
+  })
+
+  it('should create multiple option trade types', async () => {
+    // Covered Call
+    const ccResponse = await fetch(`${BASE_URL}/api/options`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        company_id: optionCompanyId,
+        ticker: 'NVDA',
+        strategy_type: 'COVERED_CALL',
+        strike_price: 130.00,
+        premium: 3.00,
+        quantity: 1,
+        expiration_date: '2024-04-19',
+        account_id: optionAccountId,
+        trade_date: '2024-02-15',
+        commission: 0.65
+      })
+    })
+    expect(ccResponse.status).toBe(201)
+
+    // Credit Spread
+    const csResponse = await fetch(`${BASE_URL}/api/options`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        company_id: optionCompanyId,
+        ticker: 'NVDA',
+        strategy_type: 'CREDIT_SPREAD',
+        strike_price: 110.00,
+        premium: 1.50,
+        quantity: 1,
+        expiration_date: '2024-05-17',
+        account_id: optionAccountId,
+        trade_date: '2024-03-01',
+        commission: 1.30
+      })
+    })
+    expect(csResponse.status).toBe(201)
+
+    // Verify all created
+    const listResponse = await fetch(`${BASE_URL}/api/options?open=true`, {
+      headers: { 'Authorization': `Bearer ${optionToken}` }
+    })
+    const data = await listResponse.json()
+    expect(data.length).toBeGreaterThanOrEqual(3)
+  })
+})
+

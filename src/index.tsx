@@ -2088,35 +2088,78 @@ app.get('/api/options', authMiddleware, async (c) => {
 })
 
 app.post('/api/options', authMiddleware, async (c) => {
-  const userId = c.get('userId')
-  const data = await c.req.json()
+  try {
+    const userId = c.get('userId')
+    const data = await c.req.json()
+    const { DB } = c.env
+    
+    // Validation
+    if (!data.company_id) {
+      return c.json({ error: 'Company is required' }, 400)
+    }
+    
+    if (!data.account_id) {
+      return c.json({ error: 'Account is required' }, 400)
+    }
+    
+    if (!data.ticker || !data.strategy_type || !data.strike_price || !data.premium || 
+        !data.quantity || !data.expiration_date || !data.trade_date) {
+      return c.json({ error: 'Missing required fields' }, 400)
+    }
+    
+    // Verify company belongs to user
+    const company = await DB.prepare(`
+      SELECT id FROM companies WHERE id = ? AND user_id = ?
+    `).bind(data.company_id, userId).first()
+    
+    if (!company) {
+      return c.json({ error: 'Company not found' }, 404)
+    }
+    
+    // Verify account belongs to user and get account_type
+    const account = await DB.prepare(`
+      SELECT id, account_type FROM accounts WHERE id = ? AND user_id = ?
+    `).bind(data.account_id, userId).first() as any
+    
+    if (!account) {
+      return c.json({ error: 'Account not found' }, 404)
+    }
   
-  const result = await c.env.DB.prepare(`
-    INSERT INTO option_trades (
-      user_id, company_id, ticker, strategy_type, strike_price,
-      strike_price_2, strike_price_3, strike_price_4, premium, quantity,
-      expiration_date, account_type, trade_date, commission, is_open, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    userId,
-    data.company_id || null,
-    data.ticker,
-    data.strategy_type,
-    data.strike_price,
-    data.strike_price_2 || null,
-    data.strike_price_3 || null,
-    data.strike_price_4 || null,
-    data.premium,
-    data.quantity,
-    data.expiration_date,
-    data.account_type,
-    data.trade_date,
-    data.commission || 0,
-    data.is_open !== undefined ? (data.is_open ? 1 : 0) : 1,
-    data.notes || null
-  ).run()
-  
-  return c.json({ id: result.meta.last_row_id, ...data })
+    const result = await DB.prepare(`
+      INSERT INTO option_trades (
+        user_id, company_id, ticker, strategy_type, strike_price,
+        strike_price_2, strike_price_3, strike_price_4, premium, quantity,
+        expiration_date, account_type, trade_date, commission, is_open, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      userId,
+      data.company_id,
+      data.ticker,
+      data.strategy_type,
+      data.strike_price,
+      data.strike_price_2 || null,
+      data.strike_price_3 || null,
+      data.strike_price_4 || null,
+      data.premium,
+      data.quantity,
+      data.expiration_date,
+      account.account_type,  // Get from accounts table
+      data.trade_date,
+      data.commission || 0,
+      data.is_open !== undefined ? (data.is_open ? 1 : 0) : 1,
+      data.notes || null
+    ).run()
+    
+    return c.json({ 
+      id: result.meta.last_row_id,
+      ...data,
+      account_type: account.account_type,
+      is_open: data.is_open !== undefined ? data.is_open : true
+    }, 201)
+  } catch (error) {
+    console.error('Create option trade error:', error)
+    return c.json({ error: 'Failed to create option trade' }, 500)
+  }
 })
 
 app.put('/api/options/:id', authMiddleware, async (c) => {
