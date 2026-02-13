@@ -3433,10 +3433,10 @@ async function showOptionForm(optionId = null) {
                     <!-- Dynamic Strategy Fields Container -->
                     <div id="strategy_fields_container"></div>
 
-                    <!-- Risk/Premium Display Section -->
+                    <!-- Trade Analysis Section -->
                     <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-3 rounded-lg border border-blue-300 mb-4">
                         <h4 class="text-xs font-bold text-blue-900 mb-2 flex items-center">
-                            <i class="fas fa-calculator mr-1"></i><span id="risk_label">Total Risk / Premium</span>
+                            <i class="fas fa-calculator mr-1"></i><span id="risk_label">Trade Analysis</span>
                         </h4>
                         <div id="risk_calculation_display" class="space-y-1 text-xs">
                             <p class="text-gray-500 text-center py-2">Select a strategy to see calculations</p>
@@ -3758,6 +3758,27 @@ async function showOptionForm(optionId = null) {
         
         const result = config.riskCalc(data)
         
+        // Calculate DTE (Days to Expiration)
+        const tradeDateInput = document.querySelector('[name="trade_date"]')?.value
+        const expirationDateInput = document.querySelector('[name="expiration_date"]')?.value
+        let dte = 0
+        let rorc = null
+        let arorc = null
+        
+        if (tradeDateInput && expirationDateInput) {
+            const tradeDate = new Date(tradeDateInput)
+            const expirationDate = new Date(expirationDateInput)
+            dte = Math.ceil((expirationDate - tradeDate) / (1000 * 60 * 60 * 24))
+            
+            // Calculate RORC and ARORC if we have both maxProfit and totalRisk
+            if (result.maxProfit !== null && result.totalRisk !== null && result.totalRisk > 0) {
+                rorc = (result.maxProfit / result.totalRisk) * 100
+                if (dte > 0) {
+                    arorc = rorc * (365 / dte)
+                }
+            }
+        }
+        
         let html = '<div class="space-y-1">'
         
         if (result.netCredit !== undefined) {
@@ -3794,12 +3815,42 @@ async function showOptionForm(optionId = null) {
             `
         }
         
+        // Show DTE, RORC, and ARORC if calculated
+        if (dte > 0) {
+            html += `
+                <div class="mt-2 pt-2 border-t border-blue-300">
+                    <div class="flex items-center justify-between">
+                        <span class="text-blue-800 text-xs">DTE (Days to Expiration):</span>
+                        <span class="font-semibold text-gray-700 text-xs">${dte} days</span>
+                    </div>
+            `
+            
+            if (rorc !== null) {
+                html += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-blue-900 text-xs font-semibold">RORC:</span>
+                        <span class="font-bold text-purple-700 text-xs">${rorc.toFixed(2)}%</span>
+                    </div>
+                `
+            }
+            
+            if (arorc !== null) {
+                html += `
+                    <div class="flex items-center justify-between">
+                        <span class="text-blue-900 text-xs font-semibold">ARORC:</span>
+                        <span class="font-bold text-purple-700 text-xs">${arorc.toFixed(2)}%</span>
+                    </div>
+                `
+            }
+            
+            html += `</div>`
+        }
+        
         html += '</div>'
         document.getElementById('risk_calculation_display').innerHTML = html
         
-        // Update risk label
-        const riskLabel = result.isPremiumCredit ? 'Premium & Risk' : 'Total Cost & Potential'
-        document.getElementById('risk_label').textContent = riskLabel
+        // Update risk label to Trade Analysis
+        document.getElementById('risk_label').textContent = 'Trade Analysis'
     }
     
     // Event listener for strategy change
@@ -3811,6 +3862,10 @@ async function showOptionForm(optionId = null) {
         // For covered calls, render fields immediately
         renderStrategyFields('COVERED_CALL')
     }
+    
+    // Add event listeners to date fields for DTE/RORC/ARORC calculations
+    document.querySelector('[name="trade_date"]').addEventListener('change', calculateRisk)
+    document.querySelector('[name="expiration_date"]').addEventListener('change', calculateRisk)
     
     // Auto-fill ticker and show buy price when company is selected
     document.getElementById('option_company_select').addEventListener('change', (e) => {
