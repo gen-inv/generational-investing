@@ -1745,8 +1745,10 @@ app.put('/api/stocks/:id', authMiddleware, async (c) => {
         account_id = ?,
         trade_date = ?,
         commission = ?,
-        notes = ?,
-        updated_at = CURRENT_TIMESTAMP
+        close_date = ?,
+        close_price = ?,
+        close_commission = ?,
+        notes = ?
       WHERE id = ? AND user_id = ?
     `).bind(
       data.company_id,
@@ -1757,6 +1759,40 @@ app.put('/api/stocks/:id', authMiddleware, async (c) => {
       data.account_id,
       data.trade_date,
       data.commission || 0,
+      data.close_date || null,
+      data.close_price || null,
+      data.close_commission || null,
+      data.notes || null,
+      tradeId,
+      userId
+    ).run()
+    
+    // Recalculate profit_loss and is_open if close fields are provided
+    if (data.close_date && data.close_price !== null && data.close_price !== undefined) {
+      const openCommission = data.commission || 0
+      const closeCommission = data.close_commission || 0
+      const totalShares = data.quantity
+      const openPrice = data.price
+      const closePrice = data.close_price
+      
+      // Calculate P/L: (Close Price - Open Price) * Shares - Commissions
+      const profitLoss = (closePrice - openPrice) * totalShares - openCommission - closeCommission
+      
+      await DB.prepare(`
+        UPDATE stock_trades SET
+          profit_loss = ?,
+          is_open = 0
+        WHERE id = ? AND user_id = ?
+      `).bind(profitLoss, tradeId, userId).run()
+    } else if (!data.close_date) {
+      // If close_date is removed, mark as open
+      await DB.prepare(`
+        UPDATE stock_trades SET
+          profit_loss = NULL,
+          is_open = 1
+        WHERE id = ? AND user_id = ?
+      `).bind(tradeId, userId).run()
+    }
       data.notes || null,
       tradeId,
       userId
@@ -2354,9 +2390,9 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
         ticker = ?, strategy_type = ?, strike_price = ?,
         strike_price_2 = ?, strike_price_3 = ?, strike_price_4 = ?,
         premium = ?, quantity = ?, expiration_date = ?,
-        account_type = ?, trade_date = ?, commission = ?, is_open = ?,
-        close_date = ?, close_price = ?, profit_loss = ?,
-        notes = ?, updated_at = CURRENT_TIMESTAMP
+        account_type = ?, trade_date = ?, commission = ?,
+        close_date = ?, close_price = ?, close_commission = ?,
+        notes = ?
       WHERE id = ? AND user_id = ?
     `).bind(
       data.ticker,
@@ -2371,14 +2407,40 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       accountType,
       data.trade_date,
       data.commission || 0,
-      data.is_open ? 1 : 0,
       data.close_date || null,
       data.close_price || null,
-      data.profit_loss || null,
+      data.close_commission || null,
       data.notes || null,
       tradeId,
       userId
     ).run()
+    
+    // Recalculate profit_loss and is_open if close fields are provided
+    if (data.close_date && data.close_price !== null && data.close_price !== undefined) {
+      const openCommission = data.commission || 0
+      const closeCommission = data.close_commission || 0
+      const contracts = data.quantity
+      const openPremium = data.premium
+      const closePremium = data.close_price
+      
+      // Calculate P/L: (Open Premium - Close Premium) * Contracts * 100 - Commissions
+      const profitLoss = (openPremium - closePremium) * contracts * 100 - openCommission - closeCommission
+      
+      await DB.prepare(`
+        UPDATE option_trades SET
+          profit_loss = ?,
+          is_open = 0
+        WHERE id = ? AND user_id = ?
+      `).bind(profitLoss, tradeId, userId).run()
+    } else if (!data.close_date) {
+      // If close_date is removed, mark as open
+      await DB.prepare(`
+        UPDATE option_trades SET
+          profit_loss = NULL,
+          is_open = 1
+        WHERE id = ? AND user_id = ?
+      `).bind(tradeId, userId).run()
+    }
     
     return c.json({ success: true })
   } catch (error) {
