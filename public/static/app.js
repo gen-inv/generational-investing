@@ -2724,7 +2724,8 @@ let includeClosedOptions = false
 const STRATEGY_TYPES = [
     { value: 'SELLING_PUT', label: 'Selling Put (Stockpiling)' },
     { value: 'SELLING_PUT_LONG_TERM', label: 'Selling Put (Long Term)' },
-    { value: 'BUYING_PUT', label: 'Buying Put' },
+    { value: 'BUYING_PUT', label: 'Long Put' },
+    { value: 'LONG_CALL', label: 'Long Call' },
     { value: 'COVERED_CALL', label: 'Covered Call' },
     { value: 'CREDIT_SPREAD', label: 'Credit Spread' },
     { value: 'DEBIT_SPREAD', label: 'Debit Spread' },
@@ -2880,8 +2881,8 @@ async function showOptionForm(optionId = null) {
                             <option value="">Select Strategy...</option>
                             <option value="SELLING_PUT">Selling Put (Stockpiling)</option>
                             <option value="SELLING_PUT_LONG_TERM">Selling Put (Long Term)</option>
-                            <option value="BUYING_PUT">Buying Put</option>
-                            <option value="COVERED_CALL">Covered Call</option>
+                            <option value="BUYING_PUT">Long Put</option>
+                            <option value="LONG_CALL">Long Call</option>
                             <option value="CREDIT_SPREAD">Credit Spread</option>
                             <option value="DEBIT_SPREAD">Debit Spread</option>
                             <option value="IRON_CONDOR">Iron Condor</option>
