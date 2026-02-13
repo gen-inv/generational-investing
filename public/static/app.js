@@ -1996,8 +1996,6 @@ async function showStockDetails(id) {
                                                 <th class="px-4 py-2 text-left">Expiration</th>
                                                 <th class="px-4 py-2 text-right">Credit Received</th>
                                                 <th class="px-4 py-2 text-center">Contracts</th>
-                                                <th class="px-4 py-2 text-right">Comm In</th>
-                                                <th class="px-4 py-2 text-right">Comm Out</th>
                                                 <th class="px-4 py-2 text-right">Closed P/L</th>
                                                 <th class="px-4 py-2 text-center">Status</th>
                                                 <th class="px-4 py-2 text-center">Actions</th>
@@ -2021,10 +2019,6 @@ async function showStockDetails(id) {
                                                     expirationWarning = ` <i class="fas fa-clock text-orange-600" title="Expires in ${daysUntil} days"></i>`
                                                 }
                                                 
-                                                // Format commissions
-                                                const commIn = cc.commission ? '$' + cc.commission.toFixed(2) : '$0.00'
-                                                const commOut = (!cc.is_open && cc.close_commission) ? '$' + cc.close_commission.toFixed(2) : '-'
-                                                
                                                 // Format closed P/L
                                                 let closedPL = '-'
                                                 let plClass = ''
@@ -2040,8 +2034,6 @@ async function showStockDetails(id) {
                                                     <td class="px-4 py-2 ${expirationClass}">${cc.expiration_date}${expirationWarning}</td>
                                                     <td class="px-4 py-2 text-right font-semibold text-green-600">$${cc.premium.toFixed(2)}</td>
                                                     <td class="px-4 py-2 text-center">${cc.quantity}</td>
-                                                    <td class="px-4 py-2 text-right text-red-600">${commIn}</td>
-                                                    <td class="px-4 py-2 text-right text-red-600">${commOut}</td>
                                                     <td class="px-4 py-2 text-right ${plClass}">${closedPL}</td>
                                                     <td class="px-4 py-2 text-center">
                                                         <span class="px-2 py-1 rounded text-xs ${cc.is_open ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
@@ -2566,7 +2558,7 @@ async function viewCoveredCallDetails(ccId) {
                             <h4 class="text-lg font-bold text-gray-800 mb-4">
                                 <i class="fas fa-chart-line mr-2"></i>Closing Details
                             </h4>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                 <div>
                                     <p class="text-sm text-gray-600 mb-1">Close Date</p>
                                     <p class="text-lg font-semibold text-gray-900">${cc.close_date || 'N/A'}</p>
@@ -2575,6 +2567,16 @@ async function viewCoveredCallDetails(ccId) {
                                     <p class="text-sm text-gray-600 mb-1">Close Price</p>
                                     <p class="text-lg font-semibold text-gray-900">$${(cc.close_price || 0).toFixed(2)}/share</p>
                                     <p class="text-xs text-gray-500">$${((cc.close_price || 0) * cc.quantity * 100).toFixed(2)} total</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1">Commission In</p>
+                                    <p class="text-lg font-semibold text-red-600">$${(cc.commission || 0).toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-600 mb-1">Commission Out</p>
+                                    <p class="text-lg font-semibold text-red-600">$${(cc.close_commission || 0).toFixed(2)}</p>
                                 </div>
                                 <div>
                                     <p class="text-sm text-gray-600 mb-1">Net Profit/Loss</p>
