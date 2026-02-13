@@ -1714,6 +1714,43 @@ app.put('/api/stocks/:id/close', authMiddleware, async (c) => {
   }
 })
 
+app.put('/api/stocks/:id/reopen', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Verify trade belongs to user
+    const trade = await DB.prepare(`
+      SELECT id, is_open FROM stock_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+    
+    if (!trade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+    
+    if (trade.is_open === 1) {
+      return c.json({ error: 'Trade is already open' }, 400)
+    }
+    
+    // Re-open the trade and clear closing data
+    await DB.prepare(`
+      UPDATE stock_trades SET
+        is_open = 1,
+        close_date = NULL,
+        close_price = NULL,
+        profit_loss = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).run()
+    
+    return c.json({ success: true, message: 'Trade re-opened successfully' })
+  } catch (error) {
+    console.error('Re-open stock trade error:', error)
+    return c.json({ error: 'Failed to re-open stock trade' }, 500)
+  }
+})
+
 app.delete('/api/stocks/:id', authMiddleware, async (c) => {
   const userId = c.get('userId')
   const tradeId = c.req.param('id')
@@ -2241,6 +2278,43 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
   } catch (error) {
     console.error('Update option trade error:', error)
     return c.json({ error: 'Failed to update option trade' }, 500)
+  }
+})
+
+app.put('/api/options/:id/reopen', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Verify trade belongs to user
+    const trade = await DB.prepare(`
+      SELECT id, is_open FROM option_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+    
+    if (!trade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+    
+    if (trade.is_open === 1) {
+      return c.json({ error: 'Trade is already open' }, 400)
+    }
+    
+    // Re-open the trade and clear closing data
+    await DB.prepare(`
+      UPDATE option_trades SET
+        is_open = 1,
+        close_date = NULL,
+        close_price = NULL,
+        profit_loss = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).run()
+    
+    return c.json({ success: true, message: 'Trade re-opened successfully' })
+  } catch (error) {
+    console.error('Re-open option trade error:', error)
+    return c.json({ error: 'Failed to re-open option trade' }, 500)
   }
 })
 

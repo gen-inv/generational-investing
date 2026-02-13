@@ -3297,6 +3297,9 @@ async function loadClosedTrades() {
                                 <button onclick="editClosedStock(${stock.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                <button onclick="reopenStock(${stock.id})" class="text-green-600 hover:text-green-800" title="Re-open Trade">
+                                    <i class="fas fa-undo"></i>
+                                </button>
                             </td>
                         </tr>
                     `
@@ -3337,6 +3340,9 @@ async function loadClosedTrades() {
                                 <button onclick="editClosedOption(${option.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
                                     <i class="fas fa-edit"></i>
                                 </button>
+                                <button onclick="reopenOption(${option.id})" class="text-green-600 hover:text-green-800" title="Re-open Trade">
+                                    <i class="fas fa-undo"></i>
+                                </button>
                             </td>
                         </tr>
                     `
@@ -3358,6 +3364,30 @@ function editClosedStock(id) {
 
 function editClosedOption(id) {
     showOptionForm(id)
+}
+
+async function reopenStock(id) {
+    if (!confirm('Re-open this stock trade? This will discard close date, close price, and P/L.')) return
+    
+    try {
+        await api.put(`/api/stocks/${id}/reopen`)
+        loadClosedTrades()
+        alert('Stock trade re-opened successfully!')
+    } catch (error) {
+        alert(error.response?.data?.error || 'Failed to re-open trade')
+    }
+}
+
+async function reopenOption(id) {
+    if (!confirm('Re-open this option trade? This will discard close date, close price, and P/L.')) return
+    
+    try {
+        await api.put(`/api/options/${id}/reopen`)
+        loadClosedTrades()
+        alert('Option trade re-opened successfully!')
+    } catch (error) {
+        alert(error.response?.data?.error || 'Failed to re-open trade')
+    }
 }
 
 // ============================================================================
