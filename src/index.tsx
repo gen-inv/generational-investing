@@ -1842,8 +1842,7 @@ app.put('/api/stocks/:id/reopen', authMiddleware, async (c) => {
         is_open = 1,
         close_date = NULL,
         close_price = NULL,
-        profit_loss = NULL,
-        updated_at = CURRENT_TIMESTAMP
+        profit_loss = NULL
       WHERE id = ? AND user_id = ?
     `).bind(tradeId, userId).run()
     
@@ -2409,8 +2408,7 @@ app.put('/api/options/:id/reopen', authMiddleware, async (c) => {
         is_open = 1,
         close_date = NULL,
         close_price = NULL,
-        profit_loss = NULL,
-        updated_at = CURRENT_TIMESTAMP
+        profit_loss = NULL
       WHERE id = ? AND user_id = ?
     `).bind(tradeId, userId).run()
     
