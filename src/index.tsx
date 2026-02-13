@@ -1396,6 +1396,8 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
       FROM accounts
       WHERE user_id = ?
     `).bind(userId).all();
+    
+    console.log('YTD Performance - User ID:', userId, 'Accounts found:', accounts?.length || 0);
 
     // Get exchange rate
     let rates = await DB.prepare(`
