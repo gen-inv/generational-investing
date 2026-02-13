@@ -1518,6 +1518,8 @@ async function showStockForm(stockId = null) {
             const response = await api.get(`/api/stocks`)
             stock = response.data.find(s => s.id === stockId)
         }
+        
+        const isClosed = stock && stock.is_open === 0
     
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
@@ -1556,7 +1558,7 @@ async function showStockForm(stockId = null) {
                         </select>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Trade Date *</label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Open Date *</label>
                         <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
@@ -1568,17 +1570,17 @@ async function showStockForm(stockId = null) {
                         <input type="number" step="0.01" name="price" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Commission</label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Open Commission</label>
                         <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                     </div>
-                    ${stock && stock.is_open === 0 ? `
+                    ${isClosed ? `
                     <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Close Date</label>
-                        <input type="date" name="close_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <label class="block text-gray-700 mb-2 font-semibold">Close Date *</label>
+                        <input type="date" name="close_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Close Price</label>
-                        <input type="number" step="0.01" name="close_price" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <label class="block text-gray-700 mb-2 font-semibold">Close Price *</label>
+                        <input type="number" step="0.01" name="close_price" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
                         <label class="block text-gray-700 mb-2 font-semibold">Close Commission</label>
@@ -3039,6 +3041,16 @@ async function showOptionForm(optionId = null) {
             showSection('accounts')
             return
         }
+        
+        // Load existing data if editing
+        let option = null
+        if (isEdit) {
+            const response = await api.get(`/api/options`)
+            option = response.data.find(o => o.id === optionId)
+        }
+        
+        const isClosed = option && option.is_open === 0
+        const isCoveredCall = option && option.strategy_type === 'COVERED_CALL'
     
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
@@ -3071,20 +3083,25 @@ async function showOptionForm(optionId = null) {
                     </div>
                     <div>
                         <label class="block text-gray-700 mb-2 font-semibold">Strategy Type *</label>
-                        <select name="strategy_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="">Select Strategy...</option>
-                            <option value="SELLING_PUT">Selling Put (Stockpiling)</option>
-                            <option value="SELLING_PUT_LONG_TERM">Selling Put (Long Term)</option>
-                            <option value="BUYING_PUT">Long Put</option>
-                            <option value="LONG_CALL">Long Call</option>
-                            <option value="CREDIT_SPREAD">Credit Spread</option>
-                            <option value="DEBIT_SPREAD">Debit Spread</option>
-                            <option value="IRON_CONDOR">Iron Condor</option>
-                            <option value="ZERO_DTE_SPX_IC">0DTE SPX IC</option>
-                        </select>
+                        ${isCoveredCall ? `
+                            <input type="text" value="Covered Call" class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100" disabled>
+                            <input type="hidden" name="strategy_type" value="COVERED_CALL">
+                        ` : `
+                            <select name="strategy_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                                <option value="">Select Strategy...</option>
+                                <option value="SELLING_PUT">Selling Put (Stockpiling)</option>
+                                <option value="SELLING_PUT_LONG_TERM">Selling Put (Long Term)</option>
+                                <option value="BUYING_PUT">Long Put</option>
+                                <option value="LONG_CALL">Long Call</option>
+                                <option value="CREDIT_SPREAD">Credit Spread</option>
+                                <option value="DEBIT_SPREAD">Debit Spread</option>
+                                <option value="IRON_CONDOR">Iron Condor</option>
+                                <option value="ZERO_DTE_SPX_IC">0DTE SPX IC</option>
+                            </select>
+                        `}
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Trade Date *</label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Open Date *</label>
                         <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
@@ -3104,9 +3121,23 @@ async function showOptionForm(optionId = null) {
                         <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
                     </div>
                     <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Commission</label>
+                        <label class="block text-gray-700 mb-2 font-semibold">Open Commission</label>
                         <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                     </div>
+                    ${isClosed ? `
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Close Date *</label>
+                        <input type="date" name="close_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Close Price *</label>
+                        <input type="number" step="0.01" name="close_price" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Close Commission</label>
+                        <input type="number" step="0.01" name="close_commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    ` : ''}
                     <div class="col-span-2">
                         <label class="block text-gray-700 mb-2 font-semibold">Notes</label>
                         <textarea name="notes" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
@@ -3162,6 +3193,13 @@ async function showOptionForm(optionId = null) {
             notes: formData.get('notes') || null
         }
         
+        // Include close fields if they exist (for closed trades)
+        if (formData.get('close_date')) {
+            data.close_date = formData.get('close_date')
+            data.close_price = parseFloat(formData.get('close_price')) || null
+            data.close_commission = parseFloat(formData.get('close_commission')) || 0
+        }
+        
         try {
             if (isEdit) {
                 await api.put(`/api/options/${optionId}`, data)
@@ -3171,6 +3209,7 @@ async function showOptionForm(optionId = null) {
             modal.remove()
             loadOptions()
             loadDashboard()
+            loadClosedTrades()
             alert(isEdit ? 'Option trade updated successfully!' : 'Option trade added successfully!')
         } catch (error) {
             alert(error.response?.data?.error || 'Operation failed')
@@ -3178,32 +3217,37 @@ async function showOptionForm(optionId = null) {
     })
     
     // Load existing data for edit
-    if (isEdit) {
-        const response = await api.get(`/api/options`)
-        const option = response.data.find(o => o.id === optionId)
-        if (option) {
-            const form = document.getElementById('optionForm')
-            form.company_id.value = option.company_id
-            
-            // Trigger company change to show buy price
-            const companySelect = document.getElementById('option_company_select')
-            companySelect.dispatchEvent(new Event('change'))
-            
+    if (isEdit && option) {
+        const form = document.getElementById('optionForm')
+        form.company_id.value = option.company_id
+        
+        // Trigger company change to show buy price
+        const companySelect = document.getElementById('option_company_select')
+        companySelect.dispatchEvent(new Event('change'))
+        
+        if (!isCoveredCall) {
             form.strategy_type.value = option.strategy_type
-            form.strike_price.value = option.strike_price
-            form.premium.value = option.premium
-            form.quantity.value = option.quantity
-            form.expiration_date.value = option.expiration_date
-            
-            // Find account_id from account_type (option only has account_type)
-            const matchingAccount = accounts.find(acc => acc.account_type === option.account_type)
-            if (matchingAccount) {
-                form.account_id.value = matchingAccount.id
-            }
-            
-            form.trade_date.value = option.trade_date
-            form.commission.value = option.commission || 0
-            form.notes.value = option.notes || ''
+        }
+        form.strike_price.value = option.strike_price
+        form.premium.value = option.premium
+        form.quantity.value = option.quantity
+        form.expiration_date.value = option.expiration_date
+        
+        // Find account_id from account_type (option only has account_type)
+        const matchingAccount = accounts.find(acc => acc.account_type === option.account_type)
+        if (matchingAccount) {
+            form.account_id.value = matchingAccount.id
+        }
+        
+        form.trade_date.value = option.trade_date
+        form.commission.value = option.commission || 0
+        form.notes.value = option.notes || ''
+        
+        // Populate close fields if trade is closed
+        if (isClosed && option.close_date) {
+            form.close_date.value = option.close_date
+            form.close_price.value = option.close_price || ''
+            form.close_commission.value = option.close_commission || 0
         }
     } else {
         const today = new Date().toISOString().split('T')[0]
