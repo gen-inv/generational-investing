@@ -1996,6 +1996,8 @@ async function showStockDetails(id) {
                                                 <th class="px-4 py-2 text-left">Expiration</th>
                                                 <th class="px-4 py-2 text-right">Credit Received</th>
                                                 <th class="px-4 py-2 text-center">Contracts</th>
+                                                <th class="px-4 py-2 text-right">Comm In</th>
+                                                <th class="px-4 py-2 text-right">Comm Out</th>
                                                 <th class="px-4 py-2 text-right">Closed P/L</th>
                                                 <th class="px-4 py-2 text-center">Status</th>
                                                 <th class="px-4 py-2 text-center">Actions</th>
@@ -2019,6 +2021,10 @@ async function showStockDetails(id) {
                                                     expirationWarning = ` <i class="fas fa-clock text-orange-600" title="Expires in ${daysUntil} days"></i>`
                                                 }
                                                 
+                                                // Format commissions
+                                                const commIn = cc.commission ? '$' + cc.commission.toFixed(2) : '$0.00'
+                                                const commOut = (!cc.is_open && cc.close_commission) ? '$' + cc.close_commission.toFixed(2) : '-'
+                                                
                                                 // Format closed P/L
                                                 let closedPL = '-'
                                                 let plClass = ''
@@ -2034,6 +2040,8 @@ async function showStockDetails(id) {
                                                     <td class="px-4 py-2 ${expirationClass}">${cc.expiration_date}${expirationWarning}</td>
                                                     <td class="px-4 py-2 text-right font-semibold text-green-600">$${cc.premium.toFixed(2)}</td>
                                                     <td class="px-4 py-2 text-center">${cc.quantity}</td>
+                                                    <td class="px-4 py-2 text-right text-red-600">${commIn}</td>
+                                                    <td class="px-4 py-2 text-right text-red-600">${commOut}</td>
                                                     <td class="px-4 py-2 text-right ${plClass}">${closedPL}</td>
                                                     <td class="px-4 py-2 text-center">
                                                         <span class="px-2 py-1 rounded text-xs ${cc.is_open ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
