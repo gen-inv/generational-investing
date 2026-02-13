@@ -1451,6 +1451,7 @@ app.get('/api/dashboard', authMiddleware, async (c) => {
 app.get('/api/stocks', authMiddleware, async (c) => {
   const userId = c.get('userId')
   const isOpen = c.req.query('open')
+  const isClosed = c.req.query('closed')
   const { DB } = c.env
   
   let query = `
@@ -1478,6 +1479,9 @@ app.get('/api/stocks', authMiddleware, async (c) => {
   if (isOpen !== undefined) {
     query += ' AND st.is_open = ?'
     params.push(isOpen === 'true' ? 1 : 0)
+  } else if (isClosed !== undefined) {
+    query += ' AND st.is_open = ?'
+    params.push(isClosed === 'true' ? 0 : 1)
   }
   
   query += ' ORDER BY st.trade_date DESC'
@@ -2070,6 +2074,7 @@ app.get('/api/covered-calls/:id', authMiddleware, async (c) => {
 app.get('/api/options', authMiddleware, async (c) => {
   const userId = c.get('userId')
   const isOpen = c.req.query('open')
+  const isClosed = c.req.query('closed')
   
   let query = 'SELECT * FROM option_trades WHERE user_id = ?'
   let params = [userId]
@@ -2077,6 +2082,9 @@ app.get('/api/options', authMiddleware, async (c) => {
   if (isOpen !== undefined) {
     query += ' AND is_open = ?'
     params.push(isOpen === 'true' ? 1 : 0)
+  } else if (isClosed !== undefined) {
+    query += ' AND is_open = ?'
+    params.push(isClosed === 'true' ? 0 : 1)
   }
   
   query += ' ORDER BY trade_date DESC'
@@ -2503,6 +2511,9 @@ app.get('/', (c) => {
                             <a href="#" onclick="showSection('reports')" class="nav-link" data-section="reports">
                                 <i class="fas fa-file-alt mr-2"></i>Reports
                             </a>
+                            <a href="#" onclick="showSection('closed-trades')" class="nav-link" data-section="closed-trades">
+                                <i class="fas fa-archive mr-2"></i>Closed Trades
+                            </a>
                             
                             <!-- User Profile Dropdown -->
                             <div class="relative" id="user-menu-container">
@@ -2773,6 +2784,82 @@ app.get('/', (c) => {
                         
                         <div id="report-results" class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <!-- Dynamic content -->
+                        </div>
+                    </div>
+                    
+                    <!-- Closed Trades Section -->
+                    <div id="closed-trades-section" class="section hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-3xl font-bold text-brand-teal">Closed Trades</h2>
+                            <div class="flex gap-4">
+                                <select id="closed-trade-type" class="px-4 py-2 border border-gray-300 rounded-lg">
+                                    <option value="all">All Trade Types</option>
+                                    <option value="stocks">Stock Trades</option>
+                                    <option value="options">Option Trades</option>
+                                </select>
+                                <button onclick="loadClosedTrades()" class="btn-primary">
+                                    <i class="fas fa-sync mr-2"></i>Refresh
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Closed Stock Trades -->
+                        <div id="closed-stocks-container" class="mb-8">
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                                    <i class="fas fa-chart-line text-brand-teal mr-2"></i>
+                                    Closed Stock Trades
+                                </h3>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead>
+                                            <tr class="bg-gray-100">
+                                                <th class="px-4 py-3 text-left">Trade Date</th>
+                                                <th class="px-4 py-3 text-left">Ticker</th>
+                                                <th class="px-4 py-3 text-left">Type</th>
+                                                <th class="px-4 py-3 text-right">Quantity</th>
+                                                <th class="px-4 py-3 text-right">Price</th>
+                                                <th class="px-4 py-3 text-left">Account</th>
+                                                <th class="px-4 py-3 text-right">P/L</th>
+                                                <th class="px-4 py-3 text-center">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="closed-stocks-table">
+                                            <!-- Dynamic content -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Closed Option Trades -->
+                        <div id="closed-options-container" class="mb-8">
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                                    <i class="fas fa-file-contract text-purple-600 mr-2"></i>
+                                    Closed Option Trades
+                                </h3>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead>
+                                            <tr class="bg-gray-100">
+                                                <th class="px-4 py-3 text-left">Trade Date</th>
+                                                <th class="px-4 py-3 text-left">Ticker</th>
+                                                <th class="px-4 py-3 text-left">Strategy</th>
+                                                <th class="px-4 py-3 text-right">Strike</th>
+                                                <th class="px-4 py-3 text-right">Premium</th>
+                                                <th class="px-4 py-3 text-left">Expiration</th>
+                                                <th class="px-4 py-3 text-left">Account</th>
+                                                <th class="px-4 py-3 text-right">P/L</th>
+                                                <th class="px-4 py-3 text-center">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="closed-options-table">
+                                            <!-- Dynamic content -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -372,6 +372,9 @@ function showSection(sectionName) {
             break
         case 'reports':
             break
+        case 'closed-trades':
+            loadClosedTrades()
+            break
     }
 }
 
@@ -3103,6 +3106,106 @@ async function exportData(type) {
     if (year) url += `&year=${year}`
     
     window.open(url, '_blank')
+}
+
+// ============================================================================
+// CLOSED TRADES FUNCTIONS
+// ============================================================================
+
+async function loadClosedTrades() {
+    try {
+        const tradeType = document.getElementById('closed-trade-type').value
+        
+        // Load closed stock trades
+        if (tradeType === 'all' || tradeType === 'stocks') {
+            const stocksResponse = await api.get('/api/stocks?closed=true')
+            const closedStocks = stocksResponse.data
+            
+            const stocksTable = document.getElementById('closed-stocks-table')
+            const stocksContainer = document.getElementById('closed-stocks-container')
+            
+            if (closedStocks.length === 0) {
+                stocksContainer.style.display = 'none'
+            } else {
+                stocksContainer.style.display = 'block'
+                stocksTable.innerHTML = closedStocks.map(stock => {
+                    const plClass = stock.profit_loss >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'
+                    return `
+                        <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <td class="px-4 py-3">${stock.trade_date}</td>
+                            <td class="px-4 py-3 font-semibold text-brand-teal">${stock.ticker}</td>
+                            <td class="px-4 py-3">${stock.trade_type}</td>
+                            <td class="px-4 py-3 text-right">${stock.quantity}</td>
+                            <td class="px-4 py-3 text-right">$${parseFloat(stock.price).toFixed(2)}</td>
+                            <td class="px-4 py-3">${stock.account_name || stock.account_type || 'N/A'}</td>
+                            <td class="px-4 py-3 text-right ${plClass}">
+                                ${stock.profit_loss !== null && stock.profit_loss !== undefined ? '$' + parseFloat(stock.profit_loss).toFixed(2) : '-'}
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <button onclick="editClosedStock(${stock.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `
+                }).join('')
+            }
+        } else {
+            document.getElementById('closed-stocks-container').style.display = 'none'
+        }
+        
+        // Load closed option trades
+        if (tradeType === 'all' || tradeType === 'options') {
+            const optionsResponse = await api.get('/api/options?closed=true')
+            const closedOptions = optionsResponse.data
+            
+            const optionsTable = document.getElementById('closed-options-table')
+            const optionsContainer = document.getElementById('closed-options-container')
+            
+            if (closedOptions.length === 0) {
+                optionsContainer.style.display = 'none'
+            } else {
+                optionsContainer.style.display = 'block'
+                optionsTable.innerHTML = closedOptions.map(option => {
+                    const plClass = option.profit_loss >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'
+                    const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
+                    return `
+                        <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <td class="px-4 py-3">${option.trade_date}</td>
+                            <td class="px-4 py-3 font-semibold text-brand-teal">${option.ticker}</td>
+                            <td class="px-4 py-3">${strategyLabel}</td>
+                            <td class="px-4 py-3 text-right">$${parseFloat(option.strike_price).toFixed(2)}</td>
+                            <td class="px-4 py-3 text-right">$${parseFloat(option.premium).toFixed(2)}</td>
+                            <td class="px-4 py-3">${option.expiration_date}</td>
+                            <td class="px-4 py-3">${option.account_type || 'N/A'}</td>
+                            <td class="px-4 py-3 text-right ${plClass}">
+                                ${option.profit_loss !== null && option.profit_loss !== undefined ? '$' + parseFloat(option.profit_loss).toFixed(2) : '-'}
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                <button onclick="editClosedOption(${option.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `
+                }).join('')
+            }
+        } else {
+            document.getElementById('closed-options-container').style.display = 'none'
+        }
+        
+    } catch (error) {
+        console.error('Error loading closed trades:', error)
+        alert('Failed to load closed trades')
+    }
+}
+
+function editClosedStock(id) {
+    showStockForm(id)
+}
+
+function editClosedOption(id) {
+    showOptionForm(id)
 }
 
 // ============================================================================
