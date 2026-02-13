@@ -2116,21 +2116,32 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
       return c.json({ error: 'Covered call is already closed' }, 400)
     }
     
+    // Calculate profit/loss
+    const openCommission = parseFloat(cc.commission) || 0
+    // Support both 'close_commission' and 'commission' in request body for backward compatibility
+    const closeCommission = parseFloat(data.close_commission || data.commission) || 0
+    const openPremium = parseFloat(cc.premium)
+    const closePremium = parseFloat(data.close_price) || 0
+    const contracts = parseInt(cc.quantity)
+    
+    // P/L = (Open Premium - Close Premium) * Contracts * 100 - Open Commission - Close Commission
+    const profitLoss = (openPremium - closePremium) * contracts * 100 - openCommission - closeCommission
+    
     // Close the covered call
     await DB.prepare(`
       UPDATE option_trades SET
         is_open = 0,
         close_date = ?,
         close_price = ?,
-        commission = ?,
+        close_commission = ?,
         profit_loss = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).bind(
       data.close_date || new Date().toISOString().split('T')[0],
       data.close_price || 0,
-      data.commission || 0,
-      data.profit_loss || 0,
+      closeCommission,
+      profitLoss,
       ccId,
       userId
     ).run()
@@ -2138,7 +2149,7 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
     // Update the existing cost basis adjustment with the net P/L
     // When the covered call was opened, we created an adjustment with the premium received
     // Now we need to update it to reflect the actual profit/loss after closing
-    if (cc.stock_trade_id && data.profit_loss !== undefined) {
+    if (cc.stock_trade_id && profitLoss !== undefined) {
       // Find the existing adjustment created when this covered call was opened
       const existingAdjustment = await DB.prepare(`
         SELECT id, amount FROM cost_basis_adjustments
@@ -2162,9 +2173,9 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).bind(
-          data.profit_loss, // Net P/L (premium - close cost - commission)
+          profitLoss, // Net P/L (premium - close cost - commission)
           data.close_date || new Date().toISOString().split('T')[0],
-          `Covered call closed - Net P/L: $${data.profit_loss.toFixed(2)} (${data.quantity} contracts @ $${cc.strike_price}, closed @ $${data.close_price})`,
+          `Covered call closed - Net P/L: $${profitLoss.toFixed(2)} (${cc.quantity} contracts @ $${cc.strike_price}, closed @ $${data.close_price})`,
           existingAdjustment.id
         ).run()
       } else {
@@ -2175,9 +2186,9 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
         `).bind(
           userId,
           cc.stock_trade_id,
-          data.profit_loss,
+          profitLoss,
           data.close_date || new Date().toISOString().split('T')[0],
-          `Covered call closed - P/L: $${data.profit_loss.toFixed(2)}`
+          `Covered call closed - P/L: $${profitLoss.toFixed(2)}`
         ).run()
       }
     }
@@ -2185,7 +2196,7 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
     return c.json({ 
       success: true, 
       message: 'Covered call closed successfully',
-      profit_loss: data.profit_loss 
+      profit_loss: profitLoss 
     })
   } catch (error) {
     console.error('Close covered call error:', error)
@@ -2219,6 +2230,10 @@ app.put('/api/covered-calls/:id', authMiddleware, async (c) => {
         quantity = ?,
         expiration_date = ?,
         trade_date = ?,
+        commission = ?,
+        close_date = ?,
+        close_price = ?,
+        close_commission = ?,
         notes = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
@@ -2228,10 +2243,41 @@ app.put('/api/covered-calls/:id', authMiddleware, async (c) => {
       data.quantity,
       data.expiration_date,
       data.trade_date,
+      data.commission || 0,
+      data.close_date || null,
+      data.close_price || null,
+      data.close_commission || null,
       data.notes || null,
       ccId,
       userId
     ).run()
+    
+    // Recalculate profit_loss and is_open if close fields are provided
+    if (data.close_date && data.close_price !== null && data.close_price !== undefined) {
+      const openCommission = parseFloat(data.commission) || 0
+      const closeCommission = parseFloat(data.close_commission) || 0
+      const openPremium = parseFloat(data.premium)
+      const closePremium = parseFloat(data.close_price)
+      const contracts = parseInt(data.quantity)
+      
+      // P/L = (Open Premium - Close Premium) * Contracts * 100 - Open Commission - Close Commission
+      const profitLoss = (openPremium - closePremium) * contracts * 100 - openCommission - closeCommission
+      
+      await DB.prepare(`
+        UPDATE option_trades SET
+          profit_loss = ?,
+          is_open = 0
+        WHERE id = ? AND user_id = ?
+      `).bind(profitLoss, ccId, userId).run()
+    } else if (!data.close_date) {
+      // If close_date is removed, mark as open and clear P/L
+      await DB.prepare(`
+        UPDATE option_trades SET
+          profit_loss = NULL,
+          is_open = 1
+        WHERE id = ? AND user_id = ?
+      `).bind(ccId, userId).run()
+    }
     
     return c.json({ success: true, message: 'Covered call updated successfully' })
   } catch (error) {
