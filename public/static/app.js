@@ -1524,87 +1524,234 @@ async function showStockForm(stockId = null) {
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
     modal.innerHTML = `
-        <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h3 class="text-2xl font-bold text-brand-teal mb-6">${title}</h3>
-            <form id="stockForm">
-                <div class="grid grid-cols-2 gap-4">
+        <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 sticky top-0 z-10">
+                <div class="flex items-center justify-between">
                     <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Company *</label>
-                        <select name="company_id" id="company_select" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="">Select company...</option>
-                            ${companies.map(c => `
-                                <option value="${c.id}" data-ticker="${c.ticker}" data-buy-price="${c.buy_price || ''}">${c.ticker} - ${c.company_name}</option>
-                            `).join('')}
-                        </select>
-                        <div id="buy-price-info" class="mt-2 text-sm hidden">
-                            <span class="text-gray-600">Target Buy Price: </span>
-                            <span class="font-semibold text-brand-gold"></span>
+                        <h3 class="text-2xl font-bold flex items-center">
+                            <i class="fas fa-chart-bar mr-2"></i>${title}
+                        </h3>
+                        <p class="text-blue-100 text-sm">Configure Stock Position</p>
+                    </div>
+                    <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-blue-200 text-xl">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-4">
+                <form id="stockForm">
+                    <!-- Basic Information Section -->
+                    <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-lg border border-gray-300 mb-4">
+                        <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center">
+                            <i class="fas fa-info-circle mr-1 text-blue-600"></i>Basic Information
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-building mr-1 text-blue-600"></i>Company *
+                                </label>
+                                <select name="company_id" id="company_select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm" required>
+                                    <option value="">Select company...</option>
+                                    ${companies.map(c => `
+                                        <option value="${c.id}" data-ticker="${c.ticker}" data-buy-price="${c.buy_price || ''}">${c.ticker} - ${c.company_name}</option>
+                                    `).join('')}
+                                </select>
+                                <div id="buy-price-info" class="mt-1 text-xs hidden">
+                                    <span class="text-gray-600">Target Buy Price: </span>
+                                    <span class="font-semibold text-brand-gold" id="target_buy_price"></span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-wallet mr-1 text-green-600"></i>Account *
+                                </label>
+                                <select name="account_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm" required>
+                                    <option value="">Select account...</option>
+                                    ${accounts.map(acc => `
+                                        <option value="${acc.id}">${acc.account_name}</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-exchange-alt mr-1 text-indigo-600"></i>Trade Type *
+                                </label>
+                                <select name="trade_type" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm" required>
+                                    <option value="BUY">BUY</option>
+                                    <option value="SELL">SELL</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-calendar mr-1 text-blue-600"></i>Open Date *
+                                </label>
+                                <input type="date" name="trade_date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm" required>
+                            </div>
                         </div>
                     </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Account *</label>
-                        <select name="account_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="">Select account...</option>
-                            ${accounts.map(acc => `
-                                <option value="${acc.id}">${acc.account_name}</option>
-                            `).join('')}
-                        </select>
+
+                    <!-- Trade Details Section -->
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-3 rounded-lg border border-blue-300 mb-4">
+                        <h4 class="text-sm font-bold text-blue-800 mb-3 flex items-center">
+                            <i class="fas fa-sliders-h mr-1"></i>Trade Details
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-hashtag mr-1 text-indigo-600"></i>Shares *
+                                </label>
+                                <input type="number" name="quantity" id="quantity_input" min="1" class="stock-field w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-dollar-sign mr-1 text-green-600"></i>Price per Share *
+                                </label>
+                                <input type="number" step="0.01" name="price" id="price_input" min="0.01" class="stock-field w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-receipt mr-1 text-purple-600"></i>Open Commission
+                                </label>
+                                <input type="number" step="0.01" name="commission" id="commission_input" value="0" min="0" class="stock-field w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm">
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Trade Type *</label>
-                        <select name="trade_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="BUY">BUY</option>
-                            <option value="SELL">SELL</option>
-                        </select>
+
+                    <!-- Risk/Profit Analysis Section -->
+                    <div class="bg-gradient-to-br from-green-50 to-green-100 p-3 rounded-lg border border-green-300 mb-4">
+                        <h4 class="text-xs font-bold text-green-900 mb-2 flex items-center">
+                            <i class="fas fa-calculator mr-1"></i>Risk & Profit Analysis
+                        </h4>
+                        <div id="stock_analysis_display" class="space-y-1 text-xs">
+                            <p class="text-gray-500 text-center py-2">Enter trade details to see analysis</p>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Open Date *</label>
-                        <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Shares *</label>
-                        <input type="number" name="quantity" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Price per Share *</label>
-                        <input type="number" step="0.01" name="price" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Open Commission</label>
-                        <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    </div>
+
+                    <!-- Close Fields (if editing closed trade) -->
                     ${isClosed ? `
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Close Date *</label>
-                        <input type="date" name="close_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Close Price *</label>
-                        <input type="number" step="0.01" name="close_price" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Close Commission</label>
-                        <input type="number" step="0.01" name="close_commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <div class="bg-gradient-to-br from-red-50 to-red-100 p-3 rounded-lg border border-red-300 mb-4">
+                        <h4 class="text-sm font-bold text-red-800 mb-3 flex items-center">
+                            <i class="fas fa-times-circle mr-1"></i>Closing Details
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">Close Date *</label>
+                                <input type="date" name="close_date" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">Close Price *</label>
+                                <input type="number" step="0.01" name="close_price" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">Close Commission</label>
+                                <input type="number" step="0.01" name="close_commission" value="0" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            </div>
+                        </div>
                     </div>
                     ` : ''}
-                    <div class="col-span-2">
-                        <label class="block text-gray-700 mb-2 font-semibold">Notes</label>
-                        <textarea name="notes" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+
+                    <!-- Notes Section -->
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                            <i class="fas fa-sticky-note mr-1 text-yellow-600"></i>Notes
+                        </label>
+                        <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm"></textarea>
                     </div>
-                </div>
-                <div class="flex gap-4 mt-6">
-                    <button type="submit" class="bg-brand-teal text-white px-6 py-2 rounded-lg hover:bg-opacity-90 flex-1">
-                        <i class="fas fa-save mr-2"></i>Save Trade
-                    </button>
-                    <button type="button" onclick="this.closest('.fixed').remove()" class="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 flex-1">
-                        Cancel
-                    </button>
-                </div>
-            </form>
+
+                    <!-- Action Buttons -->
+                    <div class="flex gap-2">
+                        <button type="submit" class="flex-1 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-3 px-6 rounded-lg transition shadow-lg hover:shadow-xl">
+                            <i class="fas fa-save mr-2"></i>Save Trade
+                        </button>
+                        <button type="button" onclick="this.closest('.fixed').remove()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-3 px-6 rounded-lg transition">
+                            <i class="fas fa-times mr-2"></i>Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     `
     
     document.body.appendChild(modal)
+    
+    // Store target buy price for calculations
+    let currentTargetBuyPrice = 0
+    
+    // Real-time risk/profit analysis
+    function calculateStockAnalysis() {
+        const quantity = parseInt(document.getElementById('quantity_input')?.value) || 0
+        const price = parseFloat(document.getElementById('price_input')?.value) || 0
+        const commission = parseFloat(document.getElementById('commission_input')?.value) || 0
+        
+        if (quantity === 0 || price === 0) {
+            document.getElementById('stock_analysis_display').innerHTML = '<p class="text-gray-500 text-center py-2">Enter trade details to see analysis</p>'
+            return
+        }
+        
+        // Calculate total risk (capital required)
+        const totalRisk = (price * quantity) + commission
+        
+        // Calculate potential profit at target price (buy_price × 2)
+        let html = '<div class="space-y-1">'
+        
+        html += `
+            <div class="flex items-center justify-between">
+                <span class="text-green-800 text-xs font-semibold">Total Capital Required:</span>
+                <span class="font-bold text-red-700 text-sm">$${totalRisk.toFixed(2)}</span>
+            </div>
+        `
+        
+        html += `
+            <div class="flex items-center justify-between">
+                <span class="text-green-800 text-xs">Purchase Cost:</span>
+                <span class="font-semibold text-gray-700 text-xs">$${(price * quantity).toFixed(2)}</span>
+            </div>
+        `
+        
+        html += `
+            <div class="flex items-center justify-between">
+                <span class="text-green-800 text-xs">Commission:</span>
+                <span class="font-semibold text-gray-700 text-xs">$${commission.toFixed(2)}</span>
+            </div>
+        `
+        
+        // Show target profit if we have a target buy price
+        if (currentTargetBuyPrice > 0) {
+            const targetSellPrice = currentTargetBuyPrice * 2
+            const saleProceeds = targetSellPrice * quantity
+            const costBasis = totalRisk // Price * quantity + commission
+            const potentialProfit = saleProceeds - costBasis
+            const potentialROI = ((potentialProfit / costBasis) * 100).toFixed(2)
+            
+            html += `
+                <div class="mt-2 pt-2 border-t border-green-300">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-green-900 text-xs font-semibold">Target Sell Price (Buy × 2):</span>
+                        <span class="font-bold text-blue-700 text-xs">$${targetSellPrice.toFixed(2)}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-green-900 text-xs font-semibold">Potential Profit:</span>
+                        <span class="font-bold text-green-600 text-sm">+$${potentialProfit.toFixed(2)}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-green-900 text-xs">Potential ROI:</span>
+                        <span class="font-semibold text-green-600 text-xs">${potentialROI}%</span>
+                    </div>
+                </div>
+            `
+        }
+        
+        html += '</div>'
+        document.getElementById('stock_analysis_display').innerHTML = html
+    }
+    
+    // Add input listeners for real-time calculation
+    document.querySelectorAll('.stock-field').forEach(input => {
+        input.addEventListener('input', calculateStockAnalysis)
+    })
     
     // Auto-fill ticker and show buy price when company is selected
     document.getElementById('company_select').addEventListener('change', (e) => {
@@ -1614,10 +1761,14 @@ async function showStockForm(stockId = null) {
         
         const buyPriceInfo = document.getElementById('buy-price-info')
         if (buyPrice && buyPrice !== '' && buyPrice !== 'null') {
+            currentTargetBuyPrice = parseFloat(buyPrice)
             buyPriceInfo.classList.remove('hidden')
-            buyPriceInfo.querySelector('.font-semibold').textContent = '$' + parseFloat(buyPrice).toFixed(2)
+            document.getElementById('target_buy_price').textContent = '$' + currentTargetBuyPrice.toFixed(2)
+            calculateStockAnalysis() // Recalculate with new target
         } else {
+            currentTargetBuyPrice = 0
             buyPriceInfo.classList.add('hidden')
+            calculateStockAnalysis()
         }
     })
     
