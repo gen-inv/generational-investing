@@ -1667,11 +1667,12 @@ app.put('/api/stocks/:id/close', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
     const tradeId = c.req.param('id')
+    const data = await c.req.json()
     const { DB } = c.env
     
     // Verify trade belongs to user and is open
     const trade = await DB.prepare(`
-      SELECT id, is_open FROM stock_trades WHERE id = ? AND user_id = ?
+      SELECT * FROM stock_trades WHERE id = ? AND user_id = ?
     `).bind(tradeId, userId).first()
     
     if (!trade) {
@@ -1682,15 +1683,31 @@ app.put('/api/stocks/:id/close', authMiddleware, async (c) => {
       return c.json({ error: 'Trade is already closed' }, 400)
     }
     
-    // Close the trade
+    // Calculate P/L
+    const saleProceeds = data.close_price * trade.quantity
+    const costBasis = trade.price * trade.quantity
+    const openingCommission = trade.commission || 0
+    const closingCommission = data.commission || 0
+    const profitLoss = saleProceeds - costBasis - openingCommission - closingCommission
+    
+    // Close the trade with data
     await DB.prepare(`
       UPDATE stock_trades SET
         is_open = 0,
+        close_date = ?,
+        close_price = ?,
+        profit_loss = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
-    `).bind(tradeId, userId).run()
+    `).bind(
+      data.close_date,
+      data.close_price,
+      profitLoss,
+      tradeId,
+      userId
+    ).run()
     
-    return c.json({ success: true, message: 'Trade closed successfully' })
+    return c.json({ success: true, message: 'Trade closed successfully', profit_loss: profitLoss })
   } catch (error) {
     console.error('Close stock trade error:', error)
     return c.json({ error: 'Failed to close stock trade' }, 500)

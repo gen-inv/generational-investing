@@ -1651,15 +1651,167 @@ async function showStockForm(stockId = null) {
 }
 
 async function closeStock(id) {
-    if (!confirm('Are you sure you want to close this position?')) return
-    
     try {
-        await api.put(`/api/stocks/${id}/close`)
-        loadStocks()
-        loadDashboard()
-        alert('Position closed successfully!')
+        // Fetch stock details
+        const response = await api.get('/api/stocks')
+        const stock = response.data.find(s => s.id === id)
+        
+        if (!stock) {
+            alert('Stock not found')
+            return
+        }
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'close-stock-modal'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-red-600 to-red-700 text-white p-4 sticky top-0 z-10">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-2xl font-bold flex items-center">
+                                <i class="fas fa-times-circle mr-2"></i>Close Stock Position
+                            </h3>
+                            <p class="text-red-100 text-sm">${stock.ticker} - Finalize Position</p>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-red-200 text-xl">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Content -->
+                <div class="p-4">
+                    <!-- Position Summary -->
+                    <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-lg border border-gray-300 mb-4">
+                        <h4 class="text-sm font-bold text-gray-800 mb-2 flex items-center">
+                            <i class="fas fa-info-circle mr-1 text-blue-600"></i>Position Summary
+                        </h4>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                            <div>
+                                <p class="text-xs text-gray-600">Shares</p>
+                                <p class="font-semibold text-gray-900">${stock.quantity}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-600">Avg Price</p>
+                                <p class="font-semibold text-gray-900">$${parseFloat(stock.price).toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-600">Account</p>
+                                <p class="font-semibold text-gray-900">${stock.account_name || stock.account_type || 'N/A'}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-600">Opened</p>
+                                <p class="font-semibold text-gray-900">${stock.trade_date}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Close Form -->
+                    <form id="closeStockForm">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                            <!-- Close Date -->
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-calendar mr-1 text-blue-600"></i>Close Date *
+                                </label>
+                                <input type="date" name="close_date" 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-1 focus:ring-brand-teal focus:outline-none transition text-sm" 
+                                    required value="${new Date().toISOString().split('T')[0]}">
+                            </div>
+                            
+                            <!-- Close Price -->
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-dollar-sign mr-1 text-green-600"></i>Close Price/Share *
+                                </label>
+                                <input type="number" step="0.01" name="close_price" 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-1 focus:ring-brand-teal focus:outline-none transition text-sm" 
+                                    required placeholder="0.00">
+                            </div>
+                            
+                            <!-- Commission -->
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-receipt mr-1 text-purple-600"></i>Commission *
+                                </label>
+                                <input type="number" step="0.01" name="commission" 
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-1 focus:ring-brand-teal focus:outline-none transition text-sm" 
+                                    required placeholder="0.00" value="0">
+                            </div>
+                        </div>
+                        
+                        <!-- P/L Calculation Info -->
+                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-3 rounded-lg border border-blue-300 mb-4">
+                            <h4 class="text-xs font-bold text-blue-900 mb-2 flex items-center">
+                                <i class="fas fa-calculator mr-1"></i>P/L Calculation
+                            </h4>
+                            <div class="space-y-1 text-xs">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-blue-800">Sale Proceeds:</span>
+                                    <span class="font-semibold text-green-700">(Close Price × ${stock.quantity})</span>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-blue-800">Cost Basis:</span>
+                                    <span class="font-semibold text-red-700">- $${(parseFloat(stock.price) * stock.quantity).toFixed(2)}</span>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-blue-800">Opening Commission:</span>
+                                    <span class="font-semibold text-red-700">- $${(stock.commission || 0).toFixed(2)}</span>
+                                </div>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-blue-800">Closing Commission:</span>
+                                    <span class="font-semibold text-red-700">- (form value)</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex gap-2">
+                            <button type="submit" class="flex-1 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white font-bold py-3 px-6 rounded-lg transition shadow-lg hover:shadow-xl">
+                                <i class="fas fa-check-circle mr-2"></i>Close Position
+                            </button>
+                            <button type="button" onclick="this.closest('.fixed').remove()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-3 px-6 rounded-lg transition">
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        // Handle form submission
+        document.getElementById('closeStockForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target)
+            
+            const data = {
+                close_date: formData.get('close_date'),
+                close_price: parseFloat(formData.get('close_price')),
+                commission: parseFloat(formData.get('commission'))
+            }
+            
+            try {
+                await api.put(`/api/stocks/${id}/close`, data)
+                modal.remove()
+                
+                // Close stock details modal if open
+                const detailsModal = document.getElementById('stock-details-modal')
+                if (detailsModal) detailsModal.remove()
+                
+                loadStocks()
+                loadDashboard()
+                alert('Position closed successfully!')
+            } catch (error) {
+                alert(error.response?.data?.error || 'Failed to close position')
+            }
+        })
     } catch (error) {
-        alert(error.response?.data?.error || 'Failed to close position')
+        console.error('Error loading stock for close:', error)
+        alert('Failed to load stock details')
     }
 }
 
