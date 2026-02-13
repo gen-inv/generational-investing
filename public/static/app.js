@@ -1511,6 +1511,13 @@ async function showStockForm(stockId = null) {
             showSection('accounts')
             return
         }
+        
+        // Load existing data if editing
+        let stock = null
+        if (isEdit) {
+            const response = await api.get(`/api/stocks`)
+            stock = response.data.find(s => s.id === stockId)
+        }
     
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
@@ -1564,6 +1571,20 @@ async function showStockForm(stockId = null) {
                         <label class="block text-gray-700 mb-2 font-semibold">Commission</label>
                         <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                     </div>
+                    ${stock && stock.is_open === 0 ? `
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Close Date</label>
+                        <input type="date" name="close_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Close Price</label>
+                        <input type="number" step="0.01" name="close_price" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 mb-2 font-semibold">Close Commission</label>
+                        <input type="number" step="0.01" name="close_commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    ` : ''}
                     <div class="col-span-2">
                         <label class="block text-gray-700 mb-2 font-semibold">Notes</label>
                         <textarea name="notes" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
@@ -1616,6 +1637,13 @@ async function showStockForm(stockId = null) {
             notes: formData.get('notes') || null
         }
         
+        // Include close fields if they exist (for closed trades)
+        if (formData.get('close_date')) {
+            data.close_date = formData.get('close_date')
+            data.close_price = parseFloat(formData.get('close_price')) || null
+            data.close_commission = parseFloat(formData.get('close_commission')) || 0
+        }
+        
         try {
             if (isEdit) {
                 await api.put(`/api/stocks/${stockId}`, data)
@@ -1625,6 +1653,7 @@ async function showStockForm(stockId = null) {
             modal.remove()
             loadStocks()
             loadDashboard()
+            loadClosedTrades()
             alert(isEdit ? 'Stock trade updated successfully!' : 'Stock trade added successfully!')
         } catch (error) {
             alert(error.response?.data?.error || 'Operation failed')
@@ -1632,19 +1661,22 @@ async function showStockForm(stockId = null) {
     })
     
     // Load existing data for edit
-    if (isEdit) {
-        const response = await api.get(`/api/stocks`)
-        const stock = response.data.find(s => s.id === stockId)
-        if (stock) {
-            const form = document.getElementById('stockForm')
-            form.company_id.value = stock.company_id
-            form.trade_type.value = stock.trade_type
-            form.quantity.value = stock.quantity
-            form.price.value = stock.price
-            form.account_id.value = stock.account_id
-            form.trade_date.value = stock.trade_date
-            form.commission.value = stock.commission || 0
-            form.notes.value = stock.notes || ''
+    if (isEdit && stock) {
+        const form = document.getElementById('stockForm')
+        form.company_id.value = stock.company_id
+        form.trade_type.value = stock.trade_type
+        form.quantity.value = stock.quantity
+        form.price.value = stock.price
+        form.account_id.value = stock.account_id
+        form.trade_date.value = stock.trade_date
+        form.commission.value = stock.commission || 0
+        form.notes.value = stock.notes || ''
+        
+        // Populate close fields if trade is closed
+        if (stock.is_open === 0 && stock.close_date) {
+            form.close_date.value = stock.close_date
+            form.close_price.value = stock.close_price || ''
+            form.close_commission.value = stock.close_commission || 0
         }
     } else {
         // Set default date to today
