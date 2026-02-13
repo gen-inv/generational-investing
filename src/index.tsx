@@ -1381,6 +1381,109 @@ app.get('/api/dashboard/totals', authMiddleware, async (c) => {
   }
 })
 
+// Get YTD performance for all accounts
+app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const { DB } = c.env;
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+
+    // Get all accounts
+    const { results: accounts } = await DB.prepare(`
+      SELECT id, account_name, account_type, balance_cad, balance_usd, 
+             cash_balance_cad, cash_balance_usd, default_currency
+      FROM accounts
+      WHERE user_id = ?
+    `).bind(userId).all();
+
+    // Get exchange rate
+    let rates = await DB.prepare(`
+      SELECT usd_to_cad, cad_to_usd FROM exchange_rates 
+      WHERE month = ? AND year = ?
+    `).bind(currentMonth, currentYear).first() as any;
+    
+    if (!rates) {
+      rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
+    }
+
+    const accountPerformance = [];
+    let totalYTDPL = 0;
+    let totalCurrentValue = 0;
+
+    for (const account of accounts as any[]) {
+      // Get YTD P/L from closed stock trades
+      const stockPL = await DB.prepare(`
+        SELECT COALESCE(SUM(profit_loss), 0) as total_pl
+        FROM stock_trades
+        WHERE user_id = ? 
+        AND account_type = ?
+        AND is_open = 0
+        AND strftime('%Y', close_date) = ?
+      `).bind(userId, account.account_type, String(currentYear)).first() as any;
+
+      // Get YTD P/L from closed option trades
+      const optionPL = await DB.prepare(`
+        SELECT COALESCE(SUM(profit_loss), 0) as total_pl
+        FROM option_trades
+        WHERE user_id = ?
+        AND account_type = ?
+        AND is_open = 0
+        AND strftime('%Y', close_date) = ?
+      `).bind(userId, account.account_type, String(currentYear)).first() as any;
+
+      const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0);
+      const currentValue = account.default_currency === 'CAD' 
+        ? (account.balance_cad || 0) 
+        : (account.balance_usd || 0);
+
+      // Calculate YTD RORC (Return on Risk Capital)
+      const ytdRORC = currentValue > 0 ? (ytdPL / currentValue) * 100 : 0;
+
+      // Calculate ARORC (Annualized RORC)
+      const arorc = currentMonth > 0 ? (ytdRORC * 12) / currentMonth : 0;
+
+      accountPerformance.push({
+        account_name: account.account_name,
+        account_type: account.account_type,
+        currency: account.default_currency,
+        current_value: currentValue,
+        ytd_pl: ytdPL,
+        ytd_rorc: ytdRORC,
+        arorc: arorc
+      });
+
+      // Convert to common currency for totals (USD)
+      const valueInUSD = account.default_currency === 'CAD' 
+        ? currentValue * rates.cad_to_usd 
+        : currentValue;
+      const plInUSD = account.default_currency === 'CAD' 
+        ? ytdPL * rates.cad_to_usd 
+        : ytdPL;
+
+      totalCurrentValue += valueInUSD;
+      totalYTDPL += plInUSD;
+    }
+
+    // Calculate portfolio-wide metrics
+    const totalYTDRORC = totalCurrentValue > 0 ? (totalYTDPL / totalCurrentValue) * 100 : 0;
+    const totalARORC = currentMonth > 0 ? (totalYTDRORC * 12) / currentMonth : 0;
+
+    return c.json({
+      accounts: accountPerformance,
+      totals: {
+        current_value: totalCurrentValue,
+        ytd_pl: totalYTDPL,
+        ytd_rorc: totalYTDRORC,
+        arorc: totalARORC
+      }
+    });
+  } catch (error: any) {
+    console.error('Get YTD performance error:', error);
+    return c.json({ error: 'Failed to get YTD performance' }, 500);
+  }
+})
+
 // Get dashboard with currency conversion
 app.get('/api/dashboard', authMiddleware, async (c) => {
   try {
@@ -2662,14 +2765,24 @@ app.get('/', (c) => {
                             </div>
                         </div>
                         
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div class="card">
-                                <h3 class="text-xl font-bold text-brand-teal mb-4">Open Stock Positions</h3>
-                                <div id="open-stocks-list" class="space-y-2"></div>
-                            </div>
-                            <div class="card">
-                                <h3 class="text-xl font-bold text-brand-teal mb-4">Open Option Trades</h3>
-                                <div id="open-options-list" class="space-y-2"></div>
+                        <div class="card">
+                            <h3 class="text-xl font-bold text-brand-teal mb-4">YTD Account Performance</h3>
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead>
+                                        <tr class="bg-gray-100">
+                                            <th class="px-4 py-3 text-left">Account Name</th>
+                                            <th class="px-4 py-3 text-left">Type</th>
+                                            <th class="px-4 py-3 text-right">Current Value</th>
+                                            <th class="px-4 py-3 text-right">YTD P/L</th>
+                                            <th class="px-4 py-3 text-right">YTD RORC</th>
+                                            <th class="px-4 py-3 text-right">ARORC</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ytd-performance-table">
+                                        <!-- Dynamic content -->
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

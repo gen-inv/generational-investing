@@ -413,46 +413,53 @@ async function loadDashboard() {
             document.getElementById('exchange-rate-display').textContent = rateText
         }
         
-        // Load open stock positions
-        const stocksRes = await api.get('/api/stocks?open=true')
-        const openStocksList = document.getElementById('open-stocks-list')
-        openStocksList.innerHTML = ''
+        // Load YTD account performance
+        const ytdRes = await api.get('/api/dashboard/ytd-performance')
+        const ytdData = ytdRes.data
         
-        if (stocksRes.data.length === 0) {
-            openStocksList.innerHTML = '<p class="text-gray-500">No open positions</p>'
+        const ytdTable = document.getElementById('ytd-performance-table')
+        ytdTable.innerHTML = ''
+        
+        if (ytdData.accounts.length === 0) {
+            ytdTable.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">No account data available</td></tr>'
         } else {
-            stocksRes.data.slice(0, 5).forEach(stock => {
-                openStocksList.innerHTML += `
-                    <div class="flex justify-between items-center border-b border-gray-200 pb-2">
-                        <div>
-                            <span class="font-semibold text-brand-teal">${stock.ticker}</span>
-                            <span class="text-gray-600 text-sm ml-2">${stock.quantity} shares @ $${stock.price}</span>
-                        </div>
-                        <span class="text-sm text-gray-500">${stock.account_type}</span>
-                    </div>
+            ytdData.accounts.forEach(account => {
+                const plClass = account.ytd_pl >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'
+                ytdTable.innerHTML += `
+                    <tr class="border-b border-gray-200 hover:bg-gray-50">
+                        <td class="px-4 py-3 font-semibold">${account.account_name}</td>
+                        <td class="px-4 py-3">${account.account_type}</td>
+                        <td class="px-4 py-3 text-right">${formatCurrency(account.current_value, account.currency)}</td>
+                        <td class="px-4 py-3 text-right ${plClass}">
+                            ${formatCurrency(account.ytd_pl, account.currency)}
+                        </td>
+                        <td class="px-4 py-3 text-right ${account.ytd_rorc >= 0 ? 'text-green-600' : 'text-red-600'}">
+                            ${account.ytd_rorc.toFixed(2)}%
+                        </td>
+                        <td class="px-4 py-3 text-right ${account.arorc >= 0 ? 'text-green-600' : 'text-red-600'}">
+                            ${account.arorc.toFixed(2)}%
+                        </td>
+                    </tr>
                 `
             })
-        }
-        
-        // Load open option trades
-        const optionsRes = await api.get('/api/options?open=true')
-        const openOptionsList = document.getElementById('open-options-list')
-        openOptionsList.innerHTML = ''
-        
-        if (optionsRes.data.length === 0) {
-            openOptionsList.innerHTML = '<p class="text-gray-500">No open positions</p>'
-        } else {
-            optionsRes.data.slice(0, 5).forEach(option => {
-                openOptionsList.innerHTML += `
-                    <div class="flex justify-between items-center border-b border-gray-200 pb-2">
-                        <div>
-                            <span class="font-semibold text-brand-teal">${option.ticker}</span>
-                            <span class="text-gray-600 text-sm ml-2">${option.strategy_type.replace('_', ' ')}</span>
-                        </div>
-                        <span class="text-sm text-gray-500">$${option.strike_price}</span>
-                    </div>
-                `
-            })
+            
+            // Add totals row
+            const totalPLClass = ytdData.totals.ytd_pl >= 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'
+            ytdTable.innerHTML += `
+                <tr class="border-t-2 border-gray-300 bg-gray-50">
+                    <td class="px-4 py-3 font-bold" colspan="2">Total Portfolio (USD)</td>
+                    <td class="px-4 py-3 text-right font-bold">${formatCurrency(ytdData.totals.current_value, 'USD')}</td>
+                    <td class="px-4 py-3 text-right ${totalPLClass}">
+                        ${formatCurrency(ytdData.totals.ytd_pl, 'CAD')}
+                    </td>
+                    <td class="px-4 py-3 text-right ${ytdData.totals.ytd_rorc >= 0 ? 'text-green-600' : 'text-red-600'}">
+                        ${ytdData.totals.ytd_rorc.toFixed(2)}%
+                    </td>
+                    <td class="px-4 py-3 text-right ${ytdData.totals.arorc >= 0 ? 'text-green-600' : 'text-red-600'}">
+                        ${ytdData.totals.arorc.toFixed(2)}%
+                    </td>
+                </tr>
+            `
         }
     } catch (error) {
         console.error('Error loading dashboard:', error)
