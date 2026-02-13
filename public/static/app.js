@@ -3697,31 +3697,88 @@ async function showOptionForm(optionId = null) {
         }
         
         const config = strategyConfigs[strategy]
+        
+        // Organize fields by leg
+        let legStructure = []
+        
+        if (config.legs === 1) {
+            // Single leg: strike, premium, commission all in one row
+            legStructure.push({
+                name: '',
+                fields: config.fields
+            })
+        } else if (config.legs === 2) {
+            // Two legs: short leg, then long leg, commission on long leg row
+            const fields = config.fields
+            legStructure.push({
+                name: 'Short Leg',
+                fields: fields.filter(f => f.includes('short'))
+            })
+            legStructure.push({
+                name: 'Long Leg',
+                fields: fields.filter(f => f.includes('long') || f === 'commission')
+            })
+        } else if (config.legs === 4) {
+            // Four legs: call spread (short, long), put spread (short, long), commission on last row
+            const fields = config.fields
+            legStructure.push({
+                name: 'Short Call',
+                fields: fields.filter(f => f.includes('short_call'))
+            })
+            legStructure.push({
+                name: 'Long Call',
+                fields: fields.filter(f => f.includes('long_call'))
+            })
+            legStructure.push({
+                name: 'Short Put',
+                fields: fields.filter(f => f.includes('short_put'))
+            })
+            legStructure.push({
+                name: 'Long Put',
+                fields: fields.filter(f => f.includes('long_put') || f === 'commission')
+            })
+        }
+        
         let html = `
             <div class="bg-gradient-to-br from-purple-50 to-purple-100 p-3 rounded-lg border border-purple-300 mb-4">
                 <h4 class="text-sm font-bold text-purple-800 mb-3 flex items-center">
                     <i class="fas fa-sliders-h mr-1"></i>Strategy Details (${config.legs} Leg${config.legs > 1 ? 's' : ''})
                 </h4>
-                <div class="grid grid-cols-1 md:grid-cols-${config.legs === 4 ? '2' : '3'} gap-3">
+                <div class="space-y-2">
         `
         
-        config.fields.forEach(field => {
-            const isCommission = field === 'commission'
-            html += `
-                <div>
-                    <label class="block text-gray-700 font-semibold mb-1 text-sm">
-                        <i class="fas fa-${isCommission ? 'receipt' : 'dollar-sign'} mr-1 text-${isCommission ? 'purple' : 'green'}-600"></i>${config.labels[field]} ${!isCommission ? '*' : ''}
-                    </label>
-                    <input type="number" 
-                           step="0.01" 
-                           name="${field}" 
-                           id="${field}_input"
-                           class="strategy-field w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" 
-                           ${!isCommission ? 'required' : ''} 
-                           ${isCommission ? 'value="0"' : ''} 
-                           min="0">
-                </div>
-            `
+        legStructure.forEach((leg, legIndex) => {
+            if (leg.name) {
+                html += `
+                    <div class="text-xs font-semibold text-purple-700 mb-1">${leg.name}</div>
+                `
+            }
+            
+            html += `<div class="flex flex-wrap gap-2 items-end">`
+            
+            leg.fields.forEach(field => {
+                const isCommission = field === 'commission'
+                const label = config.labels[field]
+                
+                html += `
+                    <div class="flex-shrink-0">
+                        <label class="block text-gray-700 font-semibold mb-1 text-xs">
+                            <i class="fas fa-${isCommission ? 'receipt' : 'dollar-sign'} mr-1 text-${isCommission ? 'purple' : 'green'}-600"></i>${label} ${!isCommission ? '*' : ''}
+                        </label>
+                        <input type="number" 
+                               step="0.01" 
+                               name="${field}" 
+                               id="${field}_input"
+                               class="strategy-field w-24 px-2 py-1.5 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" 
+                               ${!isCommission ? 'required' : ''} 
+                               ${isCommission ? 'value="0"' : ''} 
+                               placeholder="0.00"
+                               min="0">
+                    </div>
+                `
+            })
+            
+            html += `</div>`
         })
         
         html += `
