@@ -1413,14 +1413,15 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
 
     for (const account of accounts as any[]) {
       // Get YTD P/L from closed stock trades
+      // Use LIKE pattern for year matching since close_date is stored as DATE string
       const stockPL = await DB.prepare(`
         SELECT COALESCE(SUM(profit_loss), 0) as total_pl
         FROM stock_trades
         WHERE user_id = ? 
         AND account_type = ?
         AND is_open = 0
-        AND strftime('%Y', close_date) = ?
-      `).bind(userId, account.account_type, String(currentYear)).first() as any;
+        AND close_date LIKE ?
+      `).bind(userId, account.account_type, `${currentYear}%`).first() as any;
 
       // Get YTD P/L from closed option trades
       const optionPL = await DB.prepare(`
@@ -1429,8 +1430,8 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
         WHERE user_id = ?
         AND account_type = ?
         AND is_open = 0
-        AND strftime('%Y', close_date) = ?
-      `).bind(userId, account.account_type, String(currentYear)).first() as any;
+        AND close_date LIKE ?
+      `).bind(userId, account.account_type, `${currentYear}%`).first() as any;
 
       const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0);
       const currentValue = account.default_currency === 'CAD' 
