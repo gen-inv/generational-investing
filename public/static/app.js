@@ -3186,107 +3186,480 @@ async function showOptionForm(optionId = null) {
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
     modal.innerHTML = `
-        <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h3 class="text-2xl font-bold text-brand-teal mb-6">${title}</h3>
-            <form id="optionForm">
-                <div class="grid grid-cols-2 gap-4">
+        <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 sticky top-0 z-10">
+                <div class="flex items-center justify-between">
                     <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Company *</label>
-                        <select name="company_id" id="option_company_select" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="">Select company...</option>
-                            ${companies.map(c => `
-                                <option value="${c.id}" data-ticker="${c.ticker}" data-buy-price="${c.buy_price || ''}">${c.ticker} - ${c.company_name}</option>
-                            `).join('')}
-                        </select>
-                        <div id="option-buy-price-info" class="mt-2 text-sm hidden">
-                            <span class="text-gray-600">Target Buy Price: </span>
-                            <span class="font-semibold text-brand-gold"></span>
+                        <h3 class="text-2xl font-bold flex items-center">
+                            <i class="fas fa-chart-line mr-2"></i>${title}
+                        </h3>
+                        <p class="text-purple-100 text-sm">Configure Option Strategy</p>
+                    </div>
+                    <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-purple-200 text-xl">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-4">
+                <form id="optionForm">
+                    <!-- Basic Information Section -->
+                    <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-lg border border-gray-300 mb-4">
+                        <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center">
+                            <i class="fas fa-info-circle mr-1 text-blue-600"></i>Basic Information
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-building mr-1 text-blue-600"></i>Company *
+                                </label>
+                                <select name="company_id" id="option_company_select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" required>
+                                    <option value="">Select company...</option>
+                                    ${companies.map(c => `
+                                        <option value="${c.id}" data-ticker="${c.ticker}" data-buy-price="${c.buy_price || ''}">${c.ticker} - ${c.company_name}</option>
+                                    `).join('')}
+                                </select>
+                                <div id="option-buy-price-info" class="mt-1 text-xs hidden">
+                                    <span class="text-gray-600">Target Buy Price: </span>
+                                    <span class="font-semibold text-brand-gold"></span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-wallet mr-1 text-green-600"></i>Account *
+                                </label>
+                                <select name="account_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" required>
+                                    <option value="">Select account...</option>
+                                    ${accounts.map(acc => `
+                                        <option value="${acc.id}">${acc.account_name}</option>
+                                    `).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-chess mr-1 text-purple-600"></i>Strategy Type *
+                                </label>
+                                ${isCoveredCall ? `
+                                    <input type="text" value="Covered Call" class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-sm" disabled>
+                                    <input type="hidden" name="strategy_type" value="COVERED_CALL">
+                                ` : `
+                                    <select name="strategy_type" id="strategy_type_select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" required>
+                                        <option value="">Select Strategy...</option>
+                                        <option value="SELLING_PUT">Selling Put (Stockpiling)</option>
+                                        <option value="SELLING_PUT_LONG_TERM">Selling Put (Long Term)</option>
+                                        <option value="BUYING_PUT">Long Put</option>
+                                        <option value="LONG_CALL">Long Call</option>
+                                        <option value="CREDIT_SPREAD">Credit Spread</option>
+                                        <option value="DEBIT_SPREAD">Debit Spread</option>
+                                        <option value="IRON_CONDOR">Iron Condor</option>
+                                        <option value="ZERO_DTE_SPX_IC">0DTE SPX IC</option>
+                                    </select>
+                                `}
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-calendar mr-1 text-blue-600"></i>Open Date *
+                                </label>
+                                <input type="date" name="trade_date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-calendar-check mr-1 text-orange-600"></i>Expiration Date *
+                                </label>
+                                <input type="date" name="expiration_date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                    <i class="fas fa-hashtag mr-1 text-indigo-600"></i>Quantity (Contracts) *
+                                </label>
+                                <input type="number" name="quantity" id="quantity_input" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" required>
+                            </div>
                         </div>
                     </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Account *</label>
-                        <select name="account_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                            <option value="">Select account...</option>
-                            ${accounts.map(acc => `
-                                <option value="${acc.id}">${acc.account_name}</option>
-                            `).join('')}
-                        </select>
+
+                    <!-- Dynamic Strategy Fields Container -->
+                    <div id="strategy_fields_container"></div>
+
+                    <!-- Risk/Premium Display Section -->
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-3 rounded-lg border border-blue-300 mb-4">
+                        <h4 class="text-xs font-bold text-blue-900 mb-2 flex items-center">
+                            <i class="fas fa-calculator mr-1"></i><span id="risk_label">Total Risk / Premium</span>
+                        </h4>
+                        <div id="risk_calculation_display" class="space-y-1 text-xs">
+                            <p class="text-gray-500 text-center py-2">Select a strategy to see calculations</p>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Strategy Type *</label>
-                        ${isCoveredCall ? `
-                            <input type="text" value="Covered Call" class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100" disabled>
-                            <input type="hidden" name="strategy_type" value="COVERED_CALL">
-                        ` : `
-                            <select name="strategy_type" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                                <option value="">Select Strategy...</option>
-                                <option value="SELLING_PUT">Selling Put (Stockpiling)</option>
-                                <option value="SELLING_PUT_LONG_TERM">Selling Put (Long Term)</option>
-                                <option value="BUYING_PUT">Long Put</option>
-                                <option value="LONG_CALL">Long Call</option>
-                                <option value="CREDIT_SPREAD">Credit Spread</option>
-                                <option value="DEBIT_SPREAD">Debit Spread</option>
-                                <option value="IRON_CONDOR">Iron Condor</option>
-                                <option value="ZERO_DTE_SPX_IC">0DTE SPX IC</option>
-                            </select>
-                        `}
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Open Date *</label>
-                        <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Strike Price *</label>
-                        <input type="number" step="0.01" name="strike_price" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Premium per Share *</label>
-                        <input type="number" step="0.01" name="premium" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Quantity (Contracts) *</label>
-                        <input type="number" name="quantity" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Expiration Date *</label>
-                        <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Open Commission</label>
-                        <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    </div>
+
+                    <!-- Close Fields (if editing closed trade) -->
                     ${isClosed ? `
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Close Date *</label>
-                        <input type="date" name="close_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Close Price *</label>
-                        <input type="number" step="0.01" name="close_price" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                    </div>
-                    <div>
-                        <label class="block text-gray-700 mb-2 font-semibold">Close Commission</label>
-                        <input type="number" step="0.01" name="close_commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    <div class="bg-gradient-to-br from-red-50 to-red-100 p-3 rounded-lg border border-red-300 mb-4">
+                        <h4 class="text-sm font-bold text-red-800 mb-3 flex items-center">
+                            <i class="fas fa-times-circle mr-1"></i>Closing Details
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">Close Date *</label>
+                                <input type="date" name="close_date" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">Close Price *</label>
+                                <input type="number" step="0.01" name="close_price" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-1 text-sm">Close Commission</label>
+                                <input type="number" step="0.01" name="close_commission" value="0" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            </div>
+                        </div>
                     </div>
                     ` : ''}
-                    <div class="col-span-2">
-                        <label class="block text-gray-700 mb-2 font-semibold">Notes</label>
-                        <textarea name="notes" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+
+                    <!-- Notes Section -->
+                    <div class="mb-4">
+                        <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                            <i class="fas fa-sticky-note mr-1 text-yellow-600"></i>Notes
+                        </label>
+                        <textarea name="notes" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm"></textarea>
                     </div>
-                </div>
-                <div class="flex gap-4 mt-6">
-                    <button type="submit" class="bg-brand-teal text-white px-6 py-2 rounded-lg hover:bg-opacity-90 flex-1">
-                        <i class="fas fa-save mr-2"></i>Save Option Trade
-                    </button>
-                    <button type="button" onclick="this.closest('.fixed').remove()" class="bg-gray-300 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-400 flex-1">
-                        Cancel
-                    </button>
-                </div>
-            </form>
+
+                    <!-- Action Buttons -->
+                    <div class="flex gap-2">
+                        <button type="submit" class="flex-1 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold py-3 px-6 rounded-lg transition shadow-lg hover:shadow-xl">
+                            <i class="fas fa-save mr-2"></i>Save Option Trade
+                        </button>
+                        <button type="button" onclick="this.closest('.fixed').remove()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-3 px-6 rounded-lg transition">
+                            <i class="fas fa-times mr-2"></i>Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     `
     
     document.body.appendChild(modal)
+    
+    // Strategy field configurations
+    const strategyConfigs = {
+        'SELLING_PUT': {
+            legs: 1,
+            fields: ['strike_price', 'premium', 'commission'],
+            labels: { strike_price: 'Strike Price', premium: 'Premium/Share', commission: 'Open Commission' },
+            riskCalc: (data) => {
+                const strike = parseFloat(data.strike_price) || 0
+                const premium = parseFloat(data.premium) || 0
+                const quantity = parseInt(data.quantity) || 0
+                const commission = parseFloat(data.commission) || 0
+                const totalRisk = (strike * quantity * 100) - (premium * quantity * 100) + commission
+                const maxProfit = (premium * quantity * 100) - commission
+                return { totalRisk, maxProfit, isPremiumCredit: true }
+            }
+        },
+        'SELLING_PUT_LONG_TERM': {
+            legs: 1,
+            fields: ['strike_price', 'premium', 'commission'],
+            labels: { strike_price: 'Strike Price', premium: 'Premium/Share', commission: 'Open Commission' },
+            riskCalc: (data) => {
+                const strike = parseFloat(data.strike_price) || 0
+                const premium = parseFloat(data.premium) || 0
+                const quantity = parseInt(data.quantity) || 0
+                const commission = parseFloat(data.commission) || 0
+                const totalRisk = (strike * quantity * 100) - (premium * quantity * 100) + commission
+                const maxProfit = (premium * quantity * 100) - commission
+                return { totalRisk, maxProfit, isPremiumCredit: true }
+            }
+        },
+        'BUYING_PUT': {
+            legs: 1,
+            fields: ['strike_price', 'premium', 'commission'],
+            labels: { strike_price: 'Strike Price', premium: 'Premium/Share (Paid)', commission: 'Open Commission' },
+            riskCalc: (data) => {
+                const premium = parseFloat(data.premium) || 0
+                const quantity = parseInt(data.quantity) || 0
+                const commission = parseFloat(data.commission) || 0
+                const totalRisk = (premium * quantity * 100) + commission
+                return { totalRisk, maxProfit: null, isPremiumCredit: false }
+            }
+        },
+        'LONG_CALL': {
+            legs: 1,
+            fields: ['strike_price', 'premium', 'commission'],
+            labels: { strike_price: 'Strike Price', premium: 'Premium/Share (Paid)', commission: 'Open Commission' },
+            riskCalc: (data) => {
+                const premium = parseFloat(data.premium) || 0
+                const quantity = parseInt(data.quantity) || 0
+                const commission = parseFloat(data.commission) || 0
+                const totalRisk = (premium * quantity * 100) + commission
+                return { totalRisk, maxProfit: null, isPremiumCredit: false }
+            }
+        },
+        'CREDIT_SPREAD': {
+            legs: 2,
+            fields: ['short_strike', 'short_premium', 'long_strike', 'long_premium', 'commission'],
+            labels: {
+                short_strike: 'Short Strike', 
+                short_premium: 'Short Premium/Share', 
+                long_strike: 'Long Strike',
+                long_premium: 'Long Premium/Share (Paid)',
+                commission: 'Open Commission'
+            },
+            riskCalc: (data) => {
+                const shortStrike = parseFloat(data.short_strike) || 0
+                const longStrike = parseFloat(data.long_strike) || 0
+                const shortPremium = parseFloat(data.short_premium) || 0
+                const longPremium = parseFloat(data.long_premium) || 0
+                const quantity = parseInt(data.quantity) || 0
+                const commission = parseFloat(data.commission) || 0
+                const netCredit = (shortPremium - longPremium) * quantity * 100
+                const strikeWidth = Math.abs(shortStrike - longStrike) * quantity * 100
+                const totalRisk = strikeWidth - netCredit + commission
+                const maxProfit = netCredit - commission
+                return { totalRisk, maxProfit, isPremiumCredit: true, netCredit }
+            }
+        },
+        'DEBIT_SPREAD': {
+            legs: 2,
+            fields: ['long_strike', 'long_premium', 'short_strike', 'short_premium', 'commission'],
+            labels: {
+                long_strike: 'Long Strike', 
+                long_premium: 'Long Premium/Share (Paid)', 
+                short_strike: 'Short Strike',
+                short_premium: 'Short Premium/Share',
+                commission: 'Open Commission'
+            },
+            riskCalc: (data) => {
+                const longStrike = parseFloat(data.long_strike) || 0
+                const shortStrike = parseFloat(data.short_strike) || 0
+                const longPremium = parseFloat(data.long_premium) || 0
+                const shortPremium = parseFloat(data.short_premium) || 0
+                const quantity = parseInt(data.quantity) || 0
+                const commission = parseFloat(data.commission) || 0
+                const netDebit = (longPremium - shortPremium) * quantity * 100
+                const totalRisk = netDebit + commission
+                const strikeWidth = Math.abs(longStrike - shortStrike) * quantity * 100
+                const maxProfit = strikeWidth - netDebit - commission
+                return { totalRisk, maxProfit, isPremiumCredit: false, netDebit }
+            }
+        },
+        'IRON_CONDOR': {
+            legs: 4,
+            fields: ['short_call_strike', 'short_call_premium', 'long_call_strike', 'long_call_premium', 
+                     'short_put_strike', 'short_put_premium', 'long_put_strike', 'long_put_premium', 'commission'],
+            labels: {
+                short_call_strike: 'Short Call Strike',
+                short_call_premium: 'Short Call Premium/Share',
+                long_call_strike: 'Long Call Strike',
+                long_call_premium: 'Long Call Premium/Share (Paid)',
+                short_put_strike: 'Short Put Strike',
+                short_put_premium: 'Short Put Premium/Share',
+                long_put_strike: 'Long Put Strike',
+                long_put_premium: 'Long Put Premium/Share (Paid)',
+                commission: 'Open Commission'
+            },
+            riskCalc: (data) => {
+                const quantity = parseInt(data.quantity) || 0
+                const commission = parseFloat(data.commission) || 0
+                
+                const shortCallStrike = parseFloat(data.short_call_strike) || 0
+                const longCallStrike = parseFloat(data.long_call_strike) || 0
+                const shortCallPremium = parseFloat(data.short_call_premium) || 0
+                const longCallPremium = parseFloat(data.long_call_premium) || 0
+                const callCredit = (shortCallPremium - longCallPremium) * quantity * 100
+                const callWidth = Math.abs(longCallStrike - shortCallStrike) * quantity * 100
+                
+                const shortPutStrike = parseFloat(data.short_put_strike) || 0
+                const longPutStrike = parseFloat(data.long_put_strike) || 0
+                const shortPutPremium = parseFloat(data.short_put_premium) || 0
+                const longPutPremium = parseFloat(data.long_put_premium) || 0
+                const putCredit = (shortPutPremium - longPutPremium) * quantity * 100
+                const putWidth = Math.abs(shortPutStrike - longPutStrike) * quantity * 100
+                
+                const totalCredit = callCredit + putCredit
+                const maxRisk = Math.max(callWidth, putWidth)
+                const totalRisk = maxRisk - totalCredit + commission
+                const maxProfit = totalCredit - commission
+                
+                return { totalRisk, maxProfit, isPremiumCredit: true, netCredit: totalCredit }
+            }
+        },
+        'ZERO_DTE_SPX_IC': {
+            legs: 4,
+            fields: ['short_call_strike', 'short_call_premium', 'long_call_strike', 'long_call_premium', 
+                     'short_put_strike', 'short_put_premium', 'long_put_strike', 'long_put_premium', 'commission'],
+            labels: {
+                short_call_strike: 'Short Call Strike',
+                short_call_premium: 'Short Call Premium/Share',
+                long_call_strike: 'Long Call Strike',
+                long_call_premium: 'Long Call Premium/Share (Paid)',
+                short_put_strike: 'Short Put Strike',
+                short_put_premium: 'Short Put Premium/Share',
+                long_put_strike: 'Long Put Strike',
+                long_put_premium: 'Long Put Premium/Share (Paid)',
+                commission: 'Open Commission'
+            },
+            riskCalc: (data) => {
+                const quantity = parseInt(data.quantity) || 0
+                const commission = parseFloat(data.commission) || 0
+                
+                const shortCallStrike = parseFloat(data.short_call_strike) || 0
+                const longCallStrike = parseFloat(data.long_call_strike) || 0
+                const shortCallPremium = parseFloat(data.short_call_premium) || 0
+                const longCallPremium = parseFloat(data.long_call_premium) || 0
+                const callCredit = (shortCallPremium - longCallPremium) * quantity * 100
+                const callWidth = Math.abs(longCallStrike - shortCallStrike) * quantity * 100
+                
+                const shortPutStrike = parseFloat(data.short_put_strike) || 0
+                const longPutStrike = parseFloat(data.long_put_strike) || 0
+                const shortPutPremium = parseFloat(data.short_put_premium) || 0
+                const longPutPremium = parseFloat(data.long_put_premium) || 0
+                const putCredit = (shortPutPremium - longPutPremium) * quantity * 100
+                const putWidth = Math.abs(shortPutStrike - longPutStrike) * quantity * 100
+                
+                const totalCredit = callCredit + putCredit
+                const maxRisk = Math.max(callWidth, putWidth)
+                const totalRisk = maxRisk - totalCredit + commission
+                const maxProfit = totalCredit - commission
+                
+                return { totalRisk, maxProfit, isPremiumCredit: true, netCredit: totalCredit }
+            }
+        },
+        'COVERED_CALL': {
+            legs: 1,
+            fields: ['strike_price', 'premium', 'commission'],
+            labels: { strike_price: 'Strike Price', premium: 'Premium/Share', commission: 'Open Commission' },
+            riskCalc: (data) => {
+                const premium = parseFloat(data.premium) || 0
+                const quantity = parseInt(data.quantity) || 0
+                const commission = parseFloat(data.commission) || 0
+                const maxProfit = (premium * quantity * 100) - commission
+                return { totalRisk: null, maxProfit, isPremiumCredit: true }
+            }
+        }
+    }
+    
+    // Function to render strategy-specific fields
+    function renderStrategyFields(strategy) {
+        const container = document.getElementById('strategy_fields_container')
+        if (!strategy || !strategyConfigs[strategy]) {
+            container.innerHTML = ''
+            return
+        }
+        
+        const config = strategyConfigs[strategy]
+        let html = `
+            <div class="bg-gradient-to-br from-purple-50 to-purple-100 p-3 rounded-lg border border-purple-300 mb-4">
+                <h4 class="text-sm font-bold text-purple-800 mb-3 flex items-center">
+                    <i class="fas fa-sliders-h mr-1"></i>Strategy Details (${config.legs} Leg${config.legs > 1 ? 's' : ''})
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-${config.legs === 4 ? '2' : '3'} gap-3">
+        `
+        
+        config.fields.forEach(field => {
+            const isCommission = field === 'commission'
+            html += `
+                <div>
+                    <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                        <i class="fas fa-${isCommission ? 'receipt' : 'dollar-sign'} mr-1 text-${isCommission ? 'purple' : 'green'}-600"></i>${config.labels[field]} ${!isCommission ? '*' : ''}
+                    </label>
+                    <input type="number" 
+                           step="0.01" 
+                           name="${field}" 
+                           id="${field}_input"
+                           class="strategy-field w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" 
+                           ${!isCommission ? 'required' : ''} 
+                           ${isCommission ? 'value="0"' : ''} 
+                           min="0">
+                </div>
+            `
+        })
+        
+        html += `
+                </div>
+            </div>
+        `
+        
+        container.innerHTML = html
+        
+        // Add input listeners for real-time calculation
+        document.querySelectorAll('.strategy-field, #quantity_input').forEach(input => {
+            input.addEventListener('input', calculateRisk)
+        })
+        
+        // Calculate initial risk
+        calculateRisk()
+    }
+    
+    // Function to calculate and display risk
+    function calculateRisk() {
+        const strategy = document.querySelector('[name="strategy_type"]')?.value
+        if (!strategy || !strategyConfigs[strategy]) {
+            document.getElementById('risk_calculation_display').innerHTML = '<p class="text-gray-500 text-center py-2">Select a strategy to see calculations</p>'
+            return
+        }
+        
+        const config = strategyConfigs[strategy]
+        const data = { quantity: document.getElementById('quantity_input').value }
+        
+        config.fields.forEach(field => {
+            const input = document.getElementById(`${field}_input`)
+            if (input) data[field] = input.value
+        })
+        
+        const result = config.riskCalc(data)
+        
+        let html = '<div class="space-y-1">'
+        
+        if (result.netCredit !== undefined) {
+            html += `
+                <div class="flex items-center justify-between">
+                    <span class="text-blue-800 text-xs">Net ${result.netCredit >= 0 ? 'Credit' : 'Debit'}:</span>
+                    <span class="font-semibold ${result.netCredit >= 0 ? 'text-green-700' : 'text-red-700'} text-xs">${result.netCredit >= 0 ? '+' : ''}$${result.netCredit.toFixed(2)}</span>
+                </div>
+            `
+        } else if (result.netDebit !== undefined) {
+            html += `
+                <div class="flex items-center justify-between">
+                    <span class="text-blue-800 text-xs">Net Debit:</span>
+                    <span class="font-semibold text-red-700 text-xs">-$${result.netDebit.toFixed(2)}</span>
+                </div>
+            `
+        }
+        
+        if (result.totalRisk !== null) {
+            html += `
+                <div class="flex items-center justify-between">
+                    <span class="text-blue-800 text-xs">Total Risk:</span>
+                    <span class="font-semibold text-red-700 text-xs">$${result.totalRisk.toFixed(2)}</span>
+                </div>
+            `
+        }
+        
+        if (result.maxProfit !== null) {
+            html += `
+                <div class="flex items-center justify-between">
+                    <span class="text-blue-800 text-xs">Max Profit:</span>
+                    <span class="font-semibold text-green-700 text-xs">$${result.maxProfit.toFixed(2)}</span>
+                </div>
+            `
+        }
+        
+        html += '</div>'
+        document.getElementById('risk_calculation_display').innerHTML = html
+        
+        // Update risk label
+        const riskLabel = result.isPremiumCredit ? 'Premium & Risk' : 'Total Cost & Potential'
+        document.getElementById('risk_label').textContent = riskLabel
+    }
+    
+    // Event listener for strategy change
+    if (!isCoveredCall) {
+        document.getElementById('strategy_type_select').addEventListener('change', (e) => {
+            renderStrategyFields(e.target.value)
+        })
+    } else {
+        // For covered calls, render fields immediately
+        renderStrategyFields('COVERED_CALL')
+    }
     
     // Auto-fill ticker and show buy price when company is selected
     document.getElementById('option_company_select').addEventListener('change', (e) => {
