@@ -2649,37 +2649,66 @@ async function editCoveredCall(ccId) {
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
         modal.id = 'edit-covered-call-modal'
         modal.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+            <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
                 <h3 class="text-2xl font-bold text-brand-teal mb-6">
                     <i class="fas fa-edit mr-2"></i>Edit Covered Call - ${cc.ticker}
                 </h3>
                 
                 <form id="editCoveredCallForm">
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Strike Price *</label>
-                        <input type="number" step="0.01" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.strike_price}">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Strike Price *</label>
+                            <input type="number" step="0.01" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.strike_price}">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Premium Per Share *</label>
+                            <input type="number" step="0.01" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.premium}">
+                            <small class="text-gray-500">Premium per share (1 contract = 100 shares)</small>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Number of Contracts *</label>
+                            <input type="number" name="quantity" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.quantity}">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Expiration Date *</label>
+                            <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.expiration_date}">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Open Date *</label>
+                            <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.trade_date}">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 mb-2">Open Commission</label>
+                            <input type="number" step="0.01" name="commission" class="w-full px-4 py-2 border border-gray-300 rounded-lg" value="${cc.commission || 0}">
+                        </div>
                     </div>
                     
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Premium Per Share *</label>
-                        <input type="number" step="0.01" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.premium}">
-                        <small class="text-gray-500">Premium per share (1 contract = 100 shares)</small>
+                    ${!cc.is_open ? `
+                    <div class="border-t-2 border-gray-300 mt-6 pt-6">
+                        <h4 class="text-lg font-bold text-gray-800 mb-4">Closing Information</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Close Date ${!cc.is_open ? '*' : ''}</label>
+                                <input type="date" name="close_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" ${!cc.is_open ? 'required' : ''} value="${cc.close_date || ''}">
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Close Price (per share) ${!cc.is_open ? '*' : ''}</label>
+                                <input type="number" step="0.01" name="close_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" ${!cc.is_open ? 'required' : ''} value="${cc.close_price || ''}">
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-gray-700 mb-2">Close Commission</label>
+                                <input type="number" step="0.01" name="close_commission" class="w-full px-4 py-2 border border-gray-300 rounded-lg" value="${cc.close_commission || 0}">
+                            </div>
+                        </div>
                     </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Number of Contracts *</label>
-                        <input type="number" name="quantity" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.quantity}">
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Expiration Date *</label>
-                        <input type="date" name="expiration_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.expiration_date}">
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Trade Date *</label>
-                        <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.trade_date}">
-                    </div>
+                    ` : ''}
                     
                     <div class="mb-4">
                         <label class="block text-gray-700 mb-2">Notes</label>
@@ -2703,14 +2732,24 @@ async function editCoveredCall(ccId) {
             const formData = new FormData(e.target)
             
             try {
-                await api.put(`/api/covered-calls/${ccId}`, {
+                const data = {
                     strike_price: parseFloat(formData.get('strike_price')),
                     premium: parseFloat(formData.get('premium')),
                     quantity: parseInt(formData.get('quantity')),
                     expiration_date: formData.get('expiration_date'),
                     trade_date: formData.get('trade_date'),
+                    commission: parseFloat(formData.get('commission')) || 0,
                     notes: formData.get('notes') || null
-                })
+                }
+                
+                // Add close fields if present
+                if (formData.get('close_date')) {
+                    data.close_date = formData.get('close_date')
+                    data.close_price = parseFloat(formData.get('close_price'))
+                    data.close_commission = parseFloat(formData.get('close_commission')) || 0
+                }
+                
+                await api.put(`/api/covered-calls/${ccId}`, data)
                 
                 modal.remove()
                 alert('Covered call updated successfully!')
