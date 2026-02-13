@@ -1702,6 +1702,16 @@ async function closeStock(id) {
             return
         }
         
+        // Check for open covered calls on this position
+        const coveredCallsResponse = await api.get(`/api/stocks/${id}/covered-calls`)
+        const coveredCalls = coveredCallsResponse.data || []
+        const openCoveredCalls = coveredCalls.filter(cc => cc.is_open === 1)
+        
+        if (openCoveredCalls.length > 0) {
+            alert('Cannot close stock position while open covered calls exist. Please close the covered call(s) first.')
+            return
+        }
+        
         const modal = document.createElement('div')
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
         modal.id = 'close-stock-modal'
@@ -1791,7 +1801,7 @@ async function closeStock(id) {
                             <div class="space-y-1 text-xs">
                                 <div class="flex items-center justify-between">
                                     <span class="text-blue-800">Sale Proceeds:</span>
-                                    <span class="font-semibold text-green-700">(Close Price × ${stock.quantity})</span>
+                                    <span class="font-semibold text-green-700" id="saleProceeds">$0.00</span>
                                 </div>
                                 <div class="flex items-center justify-between">
                                     <span class="text-blue-800">Cost Basis:</span>
@@ -1803,7 +1813,11 @@ async function closeStock(id) {
                                 </div>
                                 <div class="flex items-center justify-between">
                                     <span class="text-blue-800">Closing Commission:</span>
-                                    <span class="font-semibold text-red-700">- (form value)</span>
+                                    <span class="font-semibold text-red-700" id="closingCommDisplay">- $0.00</span>
+                                </div>
+                                <div class="flex items-center justify-between pt-2 mt-2 border-t border-blue-300">
+                                    <span class="text-blue-900 font-bold">Net Profit/Loss:</span>
+                                    <span class="font-bold text-lg" id="stockProfitLoss">$0.00</span>
                                 </div>
                             </div>
                         </div>
@@ -1823,6 +1837,38 @@ async function closeStock(id) {
         `
         
         document.body.appendChild(modal)
+        
+        // Real-time P/L calculation
+        const closePriceInput = modal.querySelector('input[name="close_price"]')
+        const closeCommissionInput = modal.querySelector('input[name="commission"]')
+        const saleProceedsDisplay = document.getElementById('saleProceeds')
+        const closingCommDisplay = document.getElementById('closingCommDisplay')
+        const profitLossDisplay = document.getElementById('stockProfitLoss')
+        
+        function calculateStockProfitLoss() {
+            const closePrice = parseFloat(closePriceInput.value) || 0
+            const closeCommission = parseFloat(closeCommissionInput.value) || 0
+            
+            const saleProceeds = closePrice * stock.quantity
+            const costBasis = parseFloat(stock.price) * stock.quantity
+            const openCommission = stock.commission || 0
+            
+            const profitLoss = saleProceeds - costBasis - openCommission - closeCommission
+            
+            // Update displays
+            saleProceedsDisplay.textContent = `$${saleProceeds.toFixed(2)}`
+            closingCommDisplay.textContent = `- $${closeCommission.toFixed(2)}`
+            
+            const sign = profitLoss >= 0 ? '+' : ''
+            profitLossDisplay.textContent = `${sign}$${profitLoss.toFixed(2)}`
+            profitLossDisplay.className = `font-bold text-lg ${profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`
+        }
+        
+        closePriceInput.addEventListener('input', calculateStockProfitLoss)
+        closeCommissionInput.addEventListener('input', calculateStockProfitLoss)
+        
+        // Calculate initially
+        calculateStockProfitLoss()
         
         // Handle form submission
         document.getElementById('closeStockForm').addEventListener('submit', async (e) => {
@@ -2876,7 +2922,7 @@ async function closeCoveredCall(ccId, stockId) {
                                 </div>
                                 <div class="flex items-center justify-between">
                                     <span class="text-blue-800">Close Cost:</span>
-                                    <span class="font-semibold text-red-700">- (Price × ${cc.quantity} × 100)</span>
+                                    <span class="font-semibold text-red-700" id="closeCost">- $0.00</span>
                                 </div>
                                 <div class="flex items-center justify-between">
                                     <span class="text-blue-800">Opening Commission:</span>
@@ -2884,7 +2930,11 @@ async function closeCoveredCall(ccId, stockId) {
                                 </div>
                                 <div class="flex items-center justify-between">
                                     <span class="text-blue-800">Closing Commission:</span>
-                                    <span class="font-semibold text-red-700">- (form value)</span>
+                                    <span class="font-semibold text-red-700" id="closeCommDisplay">- $0.00</span>
+                                </div>
+                                <div class="flex items-center justify-between pt-2 mt-2 border-t border-blue-300">
+                                    <span class="text-blue-900 font-bold">Net Profit/Loss:</span>
+                                    <span class="font-bold text-lg" id="ccProfitLoss">$0.00</span>
                                 </div>
                             </div>
                             <p class="text-xs text-blue-700 mt-2 bg-blue-200 p-2 rounded">
@@ -2907,6 +2957,38 @@ async function closeCoveredCall(ccId, stockId) {
         `
         
         document.body.appendChild(modal)
+        
+        // Real-time P/L calculation
+        const closePriceInput = modal.querySelector('input[name="close_price"]')
+        const closeCommissionInput = modal.querySelector('input[name="commission"]')
+        const closeCostDisplay = document.getElementById('closeCost')
+        const closeCommDisplayCC = document.getElementById('closeCommDisplay')
+        const profitLossDisplayCC = document.getElementById('ccProfitLoss')
+        
+        function calculateCCProfitLoss() {
+            const closePrice = parseFloat(closePriceInput.value) || 0
+            const closeCommission = parseFloat(closeCommissionInput.value) || 0
+            
+            const premiumReceived = cc.premium * cc.quantity * 100
+            const closeCost = closePrice * cc.quantity * 100
+            const openCommission = cc.commission || 0
+            
+            const profitLoss = premiumReceived - closeCost - openCommission - closeCommission
+            
+            // Update displays
+            closeCostDisplay.textContent = `- $${closeCost.toFixed(2)}`
+            closeCommDisplayCC.textContent = `- $${closeCommission.toFixed(2)}`
+            
+            const sign = profitLoss >= 0 ? '+' : ''
+            profitLossDisplayCC.textContent = `${sign}$${profitLoss.toFixed(2)}`
+            profitLossDisplayCC.className = `font-bold text-lg ${profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`
+        }
+        
+        closePriceInput.addEventListener('input', calculateCCProfitLoss)
+        closeCommissionInput.addEventListener('input', calculateCCProfitLoss)
+        
+        // Calculate initially
+        calculateCCProfitLoss()
         
         document.getElementById('closeCoveredCallForm').addEventListener('submit', async (e) => {
             e.preventDefault()
