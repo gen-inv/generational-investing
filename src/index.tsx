@@ -1792,11 +1792,13 @@ app.put('/api/stocks/:id', authMiddleware, async (c) => {
           is_open = 1
         WHERE id = ? AND user_id = ?
       `).bind(tradeId, userId).run()
+      await DB.prepare(`
+        UPDATE stock_trades SET
+          profit_loss = NULL,
+          is_open = 1
+        WHERE id = ? AND user_id = ?
+      `).bind(tradeId, userId).run()
     }
-      data.notes || null,
-      tradeId,
-      userId
-    ).run()
     
     return c.json({ success: true })
   } catch (error) {
