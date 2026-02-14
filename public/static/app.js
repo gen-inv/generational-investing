@@ -4144,10 +4144,16 @@ async function showOptionDetails(id) {
         const accountsResponse = await api.get('/api/accounts')
         const accounts = accountsResponse.data.accounts || accountsResponse.data
         
-        // Find account name - try account_id first, then fall back to account_type
+        // Find account name - try account_id first, then fall back to account_type matching
         let accountDisplay = option.account_type || 'N/A'
         if (option.account_id) {
             const account = accounts.find(a => a.id === option.account_id)
+            if (account) {
+                accountDisplay = `${account.account_name} (${account.account_type})`
+            }
+        } else if (option.account_type) {
+            // Try to match by account_type if account_id doesn't exist
+            const account = accounts.find(a => a.account_type === option.account_type)
             if (account) {
                 accountDisplay = `${account.account_name} (${account.account_type})`
             }
