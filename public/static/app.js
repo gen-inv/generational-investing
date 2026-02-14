@@ -3282,10 +3282,20 @@ async function loadOptions() {
                     <td class="px-4 py-3 text-center">
                         ${option.strategy_type === 'COVERED_CALL' ? 
                             '<span class="text-gray-400 text-sm italic">Managed in Stock Details</span>' :
-                            `<button onclick="editOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2">
+                            option.is_open ? 
+                            `<button onclick="closeOption(${option.id})" class="text-green-600 hover:text-green-800 mr-2" title="Close Trade">
+                                <i class="fas fa-check-circle"></i>
+                            </button>
+                            <button onclick="editOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </button>
-                            <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800">
+                            <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>` :
+                            `<button onclick="editOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800" title="Delete">
                                 <i class="fas fa-trash"></i>
                             </button>`
                         }
@@ -4044,6 +4054,508 @@ async function deleteOption(id) {
         alert('Delete failed')
     }
 }
+
+async function closeOption(optionId) {
+    try {
+        // Fetch the option details
+        const response = await api.get(`/api/options/${optionId}`)
+        const option = response.data
+        
+        if (!option) {
+            alert('Option trade not found')
+            return
+        }
+        
+        // Get strategy configuration
+        const strategyConfig = getStrategyConfig(option.strategy_type)
+        const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
+        
+        // Create modal
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6 rounded-t-lg">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-2xl font-bold flex items-center">
+                                <i class="fas fa-check-circle mr-3"></i>
+                                Close Option Trade
+                            </h3>
+                            <p class="text-purple-100 mt-1">${option.ticker} - ${strategyLabel}</p>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-purple-200 text-2xl">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Body -->
+                <div class="p-6">
+                    <!-- Position Summary -->
+                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+                        <h4 class="font-semibold text-purple-900 mb-3 flex items-center">
+                            <i class="fas fa-info-circle mr-2"></i>
+                            Position Summary
+                        </h4>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                                <span class="text-gray-600">Trade Date:</span>
+                                <div class="font-semibold text-gray-900">${option.trade_date}</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-600">Expiration:</span>
+                                <div class="font-semibold text-gray-900">${option.expiration_date}</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-600">Contracts:</span>
+                                <div class="font-semibold text-gray-900">${option.quantity}</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-600">Open Commission:</span>
+                                <div class="font-semibold text-gray-900">$${parseFloat(option.commission || 0).toFixed(2)}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Close Trade Form -->
+                    <form id="closeOptionForm">
+                        <div class="space-y-6">
+                            <!-- Close Date -->
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <i class="fas fa-calendar mr-2 text-purple-600"></i>
+                                    Close Date *
+                                </label>
+                                <input 
+                                    type="date" 
+                                    id="close_date" 
+                                    name="close_date"
+                                    value="${new Date().toISOString().split('T')[0]}"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-600"
+                                    required
+                                >
+                            </div>
+                            
+                            <!-- Strategy-specific close fields -->
+                            <div id="close-legs-container">
+                                ${renderCloseLegFields(option, strategyConfig)}
+                            </div>
+                            
+                            <!-- Close Commission -->
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <i class="fas fa-dollar-sign mr-2 text-purple-600"></i>
+                                    Close Commission
+                                </label>
+                                <input 
+                                    type="number" 
+                                    id="close_commission" 
+                                    name="close_commission"
+                                    step="0.01"
+                                    value="0.00"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-600"
+                                    placeholder="0.00"
+                                >
+                            </div>
+                            
+                            <!-- Trade Analysis -->
+                            <div class="bg-gradient-to-br from-purple-50 to-indigo-50 border-2 border-purple-200 rounded-lg p-5">
+                                <h4 class="font-bold text-purple-900 mb-4 flex items-center text-lg">
+                                    <i class="fas fa-calculator mr-2"></i>
+                                    Trade Analysis
+                                </h4>
+                                <div id="close-analysis" class="space-y-3">
+                                    <!-- Dynamic P/L calculation -->
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex gap-3 mt-6 pt-6 border-t border-gray-200">
+                            <button 
+                                type="submit" 
+                                class="flex-1 bg-gradient-to-r from-green-600 to-green-700 text-white px-6 py-3 rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition-all transform hover:scale-[1.02] shadow-md"
+                            >
+                                <i class="fas fa-check-circle mr-2"></i>
+                                Close Position
+                            </button>
+                            <button 
+                                type="button" 
+                                onclick="this.closest('.fixed').remove()"
+                                class="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        // Calculate P/L on input change
+        const form = document.getElementById('closeOptionForm')
+        form.addEventListener('input', () => updateCloseAnalysis(option, strategyConfig))
+        
+        // Initial calculation
+        updateCloseAnalysis(option, strategyConfig)
+        
+        // Handle form submission
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault()
+            
+            const closeData = {
+                close_date: document.getElementById('close_date').value,
+                close_commission: parseFloat(document.getElementById('close_commission').value) || 0,
+                is_open: false
+            }
+            
+            // Add leg-specific close prices based on strategy
+            if (strategyConfig.legs === 1) {
+                closeData.close_price = parseFloat(document.getElementById('close_price').value) || 0
+            } else if (strategyConfig.legs === 2) {
+                closeData.short_close_price = parseFloat(document.getElementById('short_close_price').value) || 0
+                closeData.long_close_price = parseFloat(document.getElementById('long_close_price').value) || 0
+            } else if (strategyConfig.legs === 4) {
+                closeData.short_call_close = parseFloat(document.getElementById('short_call_close').value) || 0
+                closeData.long_call_close = parseFloat(document.getElementById('long_call_close').value) || 0
+                closeData.short_put_close = parseFloat(document.getElementById('short_put_close').value) || 0
+                closeData.long_put_close = parseFloat(document.getElementById('long_put_close').value) || 0
+            }
+            
+            try {
+                await api.put(`/api/options/${optionId}`, closeData)
+                modal.remove()
+                
+                // Show success message with P/L
+                const analysis = calculateOptionPL(option, strategyConfig, closeData)
+                alert(`Option closed successfully!\n\nNet P/L: $${analysis.netPL.toFixed(2)}\n${analysis.netPL >= 0 ? '✅ Profitable trade' : '⚠️ Loss on trade'}`)
+                
+                loadOptions()
+                loadDashboard()
+            } catch (error) {
+                console.error('Error closing option:', error)
+                alert('Failed to close option trade. Please try again.')
+            }
+        })
+        
+    } catch (error) {
+        console.error('Error loading option:', error)
+        alert('Failed to load option details')
+    }
+}
+
+function renderCloseLegFields(option, strategyConfig) {
+    const contracts = option.quantity
+    
+    if (strategyConfig.legs === 1) {
+        // Single leg (Selling Put, Long Put, Long Call)
+        return `
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                    <i class="fas fa-tag mr-2 text-purple-600"></i>
+                    Close Price per Share *
+                </label>
+                <input 
+                    type="number" 
+                    id="close_price" 
+                    name="close_price"
+                    step="0.01"
+                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-purple-600"
+                    placeholder="0.00"
+                    required
+                >
+                <p class="text-xs text-gray-500 mt-1">Original Premium: $${parseFloat(option.premium).toFixed(2)}/share (${contracts} contracts)</p>
+            </div>
+        `
+    } else if (strategyConfig.legs === 2) {
+        // Two legs (Credit Spread, Debit Spread)
+        return `
+            <div class="space-y-4">
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h5 class="font-semibold text-red-900 mb-3 flex items-center">
+                        <i class="fas fa-arrow-down mr-2"></i>
+                        Short Leg Close
+                    </h5>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Strike</label>
+                            <div class="font-semibold">$${parseFloat(option.short_strike).toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Original Premium</label>
+                            <div class="font-semibold">$${parseFloat(option.short_premium).toFixed(2)}</div>
+                        </div>
+                    </div>
+                    <label class="block text-sm font-semibold text-gray-700 mt-3 mb-2">
+                        Close Price per Share *
+                    </label>
+                    <input 
+                        type="number" 
+                        id="short_close_price" 
+                        name="short_close_price"
+                        step="0.01"
+                        class="w-full px-4 py-2 border border-red-300 rounded-lg focus:outline-none focus:border-red-600"
+                        placeholder="0.00"
+                        required
+                    >
+                </div>
+                
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h5 class="font-semibold text-green-900 mb-3 flex items-center">
+                        <i class="fas fa-arrow-up mr-2"></i>
+                        Long Leg Close
+                    </h5>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Strike</label>
+                            <div class="font-semibold">$${parseFloat(option.long_strike).toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-600 mb-1">Original Premium</label>
+                            <div class="font-semibold">$${parseFloat(option.long_premium).toFixed(2)}</div>
+                        </div>
+                    </div>
+                    <label class="block text-sm font-semibold text-gray-700 mt-3 mb-2">
+                        Close Price per Share *
+                    </label>
+                    <input 
+                        type="number" 
+                        id="long_close_price" 
+                        name="long_close_price"
+                        step="0.01"
+                        class="w-full px-4 py-2 border border-green-300 rounded-lg focus:outline-none focus:border-green-600"
+                        placeholder="0.00"
+                        required
+                    >
+                </div>
+            </div>
+        `
+    } else if (strategyConfig.legs === 4) {
+        // Four legs (Iron Condor)
+        return `
+            <div class="space-y-4">
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h5 class="font-semibold text-red-900 mb-3 flex items-center">
+                        <i class="fas fa-phone mr-2"></i>
+                        Call Spread
+                    </h5>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <div class="flex items-center gap-2 mb-2">
+                                <i class="fas fa-arrow-down text-red-600"></i>
+                                <span class="text-sm font-semibold text-gray-700">Short Call</span>
+                            </div>
+                            <div class="text-xs text-gray-600 mb-1">Strike: $${parseFloat(option.short_call_strike).toFixed(2)}</div>
+                            <div class="text-xs text-gray-600 mb-2">Premium: $${parseFloat(option.short_call_premium).toFixed(2)}</div>
+                            <input 
+                                type="number" 
+                                id="short_call_close" 
+                                name="short_call_close"
+                                step="0.01"
+                                class="w-full px-3 py-2 text-sm border border-red-300 rounded-lg focus:outline-none focus:border-red-600"
+                                placeholder="Close price"
+                                required
+                            >
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2 mb-2">
+                                <i class="fas fa-arrow-up text-green-600"></i>
+                                <span class="text-sm font-semibold text-gray-700">Long Call</span>
+                            </div>
+                            <div class="text-xs text-gray-600 mb-1">Strike: $${parseFloat(option.long_call_strike).toFixed(2)}</div>
+                            <div class="text-xs text-gray-600 mb-2">Premium: $${parseFloat(option.long_call_premium).toFixed(2)}</div>
+                            <input 
+                                type="number" 
+                                id="long_call_close" 
+                                name="long_call_close"
+                                step="0.01"
+                                class="w-full px-3 py-2 text-sm border border-green-300 rounded-lg focus:outline-none focus:border-green-600"
+                                placeholder="Close price"
+                                required
+                            >
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h5 class="font-semibold text-blue-900 mb-3 flex items-center">
+                        <i class="fas fa-hand-paper mr-2"></i>
+                        Put Spread
+                    </h5>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <div class="flex items-center gap-2 mb-2">
+                                <i class="fas fa-arrow-down text-red-600"></i>
+                                <span class="text-sm font-semibold text-gray-700">Short Put</span>
+                            </div>
+                            <div class="text-xs text-gray-600 mb-1">Strike: $${parseFloat(option.short_put_strike).toFixed(2)}</div>
+                            <div class="text-xs text-gray-600 mb-2">Premium: $${parseFloat(option.short_put_premium).toFixed(2)}</div>
+                            <input 
+                                type="number" 
+                                id="short_put_close" 
+                                name="short_put_close"
+                                step="0.01"
+                                class="w-full px-3 py-2 text-sm border border-red-300 rounded-lg focus:outline-none focus:border-red-600"
+                                placeholder="Close price"
+                                required
+                            >
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2 mb-2">
+                                <i class="fas fa-arrow-up text-green-600"></i>
+                                <span class="text-sm font-semibold text-gray-700">Long Put</span>
+                            </div>
+                            <div class="text-xs text-gray-600 mb-1">Strike: $${parseFloat(option.long_put_strike).toFixed(2)}</div>
+                            <div class="text-xs text-gray-600 mb-2">Premium: $${parseFloat(option.long_put_premium).toFixed(2)}</div>
+                            <input 
+                                type="number" 
+                                id="long_put_close" 
+                                name="long_put_close"
+                                step="0.01"
+                                class="w-full px-3 py-2 text-sm border border-green-300 rounded-lg focus:outline-none focus:border-green-600"
+                                placeholder="Close price"
+                                required
+                            >
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `
+    }
+    
+    return ''
+}
+
+function updateCloseAnalysis(option, strategyConfig) {
+    const closeCommission = parseFloat(document.getElementById('close_commission').value) || 0
+    
+    const closeData = {
+        close_commission: closeCommission
+    }
+    
+    // Get close prices based on strategy
+    if (strategyConfig.legs === 1) {
+        closeData.close_price = parseFloat(document.getElementById('close_price')?.value) || 0
+    } else if (strategyConfig.legs === 2) {
+        closeData.short_close_price = parseFloat(document.getElementById('short_close_price')?.value) || 0
+        closeData.long_close_price = parseFloat(document.getElementById('long_close_price')?.value) || 0
+    } else if (strategyConfig.legs === 4) {
+        closeData.short_call_close = parseFloat(document.getElementById('short_call_close')?.value) || 0
+        closeData.long_call_close = parseFloat(document.getElementById('long_call_close')?.value) || 0
+        closeData.short_put_close = parseFloat(document.getElementById('short_put_close')?.value) || 0
+        closeData.long_put_close = parseFloat(document.getElementById('long_put_close')?.value) || 0
+    }
+    
+    const analysis = calculateOptionPL(option, strategyConfig, closeData)
+    
+    const analysisDiv = document.getElementById('close-analysis')
+    analysisDiv.innerHTML = `
+        <div class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+                <span class="text-gray-600">Opening Premium:</span>
+                <div class="font-bold text-lg ${analysis.openingCredit >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${analysis.openingCredit >= 0 ? '+' : ''}$${analysis.openingCredit.toFixed(2)}
+                </div>
+            </div>
+            <div>
+                <span class="text-gray-600">Closing Cost:</span>
+                <div class="font-bold text-lg ${analysis.closingCost <= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${analysis.closingCost >= 0 ? '-' : '+'}$${Math.abs(analysis.closingCost).toFixed(2)}
+                </div>
+            </div>
+            <div>
+                <span class="text-gray-600">Opening Commission:</span>
+                <div class="font-semibold text-red-600">-$${analysis.openCommission.toFixed(2)}</div>
+            </div>
+            <div>
+                <span class="text-gray-600">Closing Commission:</span>
+                <div class="font-semibold text-red-600">-$${analysis.closeCommission.toFixed(2)}</div>
+            </div>
+        </div>
+        
+        <div class="border-t-2 border-purple-300 pt-3 mt-3">
+            <div class="flex justify-between items-center">
+                <span class="text-gray-700 font-semibold text-lg">Net Profit/Loss:</span>
+                <div class="text-2xl font-bold ${analysis.netPL >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${analysis.netPL >= 0 ? '+' : ''}$${analysis.netPL.toFixed(2)}
+                </div>
+            </div>
+            ${analysis.netPL >= 0 ? 
+                '<p class="text-xs text-green-600 mt-1 flex items-center"><i class="fas fa-check-circle mr-1"></i>Profitable trade</p>' : 
+                '<p class="text-xs text-red-600 mt-1 flex items-center"><i class="fas fa-exclamation-triangle mr-1"></i>Loss on trade</p>'
+            }
+        </div>
+    `
+}
+
+function calculateOptionPL(option, strategyConfig, closeData) {
+    const contracts = option.quantity
+    const openCommission = parseFloat(option.commission || 0)
+    const closeCommission = closeData.close_commission
+    
+    let openingCredit = 0
+    let closingCost = 0
+    
+    if (strategyConfig.legs === 1) {
+        // Single leg
+        const openPremium = parseFloat(option.premium)
+        const closePremium = closeData.close_price || 0
+        
+        if (strategyConfig.isPremiumCredit) {
+            // Selling put - we receive premium opening, pay to close
+            openingCredit = openPremium * contracts * 100
+            closingCost = closePremium * contracts * 100
+        } else {
+            // Long put/call - we pay premium opening, receive when closing
+            openingCredit = -(openPremium * contracts * 100)
+            closingCost = -(closePremium * contracts * 100)
+        }
+    } else if (strategyConfig.legs === 2) {
+        // Two legs
+        const shortOpen = parseFloat(option.short_premium)
+        const longOpen = parseFloat(option.long_premium)
+        const shortClose = closeData.short_close_price || 0
+        const longClose = closeData.long_close_price || 0
+        
+        // Net opening credit
+        openingCredit = (shortOpen - longOpen) * contracts * 100
+        
+        // Net closing cost
+        closingCost = (shortClose - longClose) * contracts * 100
+    } else if (strategyConfig.legs === 4) {
+        // Iron Condor
+        const shortCallOpen = parseFloat(option.short_call_premium)
+        const longCallOpen = parseFloat(option.long_call_premium)
+        const shortPutOpen = parseFloat(option.short_put_premium)
+        const longPutOpen = parseFloat(option.long_put_premium)
+        
+        const shortCallClose = closeData.short_call_close || 0
+        const longCallClose = closeData.long_call_close || 0
+        const shortPutClose = closeData.short_put_close || 0
+        const longPutClose = closeData.long_put_close || 0
+        
+        // Net opening credit (receive short premiums, pay long premiums)
+        openingCredit = ((shortCallOpen - longCallOpen) + (shortPutOpen - longPutOpen)) * contracts * 100
+        
+        // Net closing cost (pay to close shorts, receive from closing longs)
+        closingCost = ((shortCallClose - longCallClose) + (shortPutClose - longPutClose)) * contracts * 100
+    }
+    
+    const netPL = openingCredit - closingCost - openCommission - closeCommission
+    
+    return {
+        openingCredit,
+        closingCost,
+        openCommission,
+        closeCommission,
+        netPL
+    }
+}
+
 
 // ============================================================================
 // REPORT FUNCTIONS
