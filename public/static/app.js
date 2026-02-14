@@ -4048,8 +4048,9 @@ async function deleteOption(id) {
 
 async function showOptionDetails(id) {
     try {
-        const response = await api.get(`/api/options/${id}`)
-        const option = response.data
+        // Fetch all options and find the one we need
+        const response = await api.get('/api/options')
+        const option = response.data.find(o => o.id === id)
         
         if (!option) {
             alert('Option trade not found')
@@ -4323,9 +4324,9 @@ function renderLegDetails(option, strategyConfig) {
 
 async function closeOption(optionId) {
     try {
-        // Fetch the option details
-        const response = await api.get(`/api/options/${optionId}`)
-        const option = response.data
+        // Fetch all options and find the one we need
+        const response = await api.get('/api/options')
+        const option = response.data.find(o => o.id === optionId)
         
         if (!option) {
             alert('Option trade not found')
