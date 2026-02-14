@@ -2813,7 +2813,7 @@ app.get('/', (c) => {
                                 <i class="fas fa-chart-bar mr-2"></i>Stock Trades
                             </a>
                             <a href="#" onclick="showSection('options')" class="nav-link" data-section="options">
-                                <i class="fas fa-layer-group mr-2"></i>Options
+                                <i class="fas fa-layer-group mr-2"></i>Options Trades
                             </a>
                             <a href="#" onclick="showSection('reports')" class="nav-link" data-section="reports">
                                 <i class="fas fa-file-alt mr-2"></i>Reports
