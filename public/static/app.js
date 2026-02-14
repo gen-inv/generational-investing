@@ -4009,30 +4009,96 @@ async function showOptionForm(optionId = null) {
         const companySelect = document.getElementById('option_company_select')
         companySelect.dispatchEvent(new Event('change'))
         
+        // Set strategy type and trigger field rendering BEFORE setting field values
         if (!isCoveredCall) {
             form.strategy_type.value = option.strategy_type
-        }
-        form.strike_price.value = option.strike_price
-        form.premium.value = option.premium
-        form.quantity.value = option.quantity
-        form.expiration_date.value = option.expiration_date
-        
-        // Find account_id from account_type (option only has account_type)
-        const matchingAccount = accounts.find(acc => acc.account_type === option.account_type)
-        if (matchingAccount) {
-            form.account_id.value = matchingAccount.id
+            const strategySelect = document.getElementById('strategy_type_select')
+            strategySelect.dispatchEvent(new Event('change'))
+        } else {
+            // For covered calls, trigger the rendering manually
+            renderStrategyFields('COVERED_CALL')
         }
         
-        form.trade_date.value = option.trade_date
-        form.commission.value = option.commission || 0
-        form.notes.value = option.notes || ''
-        
-        // Populate close fields if trade is closed
-        if (isClosed && option.close_date) {
-            form.close_date.value = option.close_date
-            form.close_price.value = option.close_price || ''
-            form.close_commission.value = option.close_commission || 0
-        }
+        // Wait a moment for fields to be rendered
+        setTimeout(() => {
+            // Now set the strategy field values
+            if (document.getElementById('strike_price_input')) {
+                document.getElementById('strike_price_input').value = option.strike_price || ''
+            }
+            if (document.getElementById('premium_input')) {
+                document.getElementById('premium_input').value = option.premium || ''
+            }
+            if (document.getElementById('commission_input')) {
+                document.getElementById('commission_input').value = option.commission || 0
+            }
+            
+            // For two-leg strategies
+            if (document.getElementById('short_strike_input')) {
+                document.getElementById('short_strike_input').value = option.short_strike || ''
+            }
+            if (document.getElementById('long_strike_input')) {
+                document.getElementById('long_strike_input').value = option.long_strike || ''
+            }
+            if (document.getElementById('short_premium_input')) {
+                document.getElementById('short_premium_input').value = option.short_premium || ''
+            }
+            if (document.getElementById('long_premium_input')) {
+                document.getElementById('long_premium_input').value = option.long_premium || ''
+            }
+            
+            // For iron condor
+            if (document.getElementById('short_call_strike_input')) {
+                document.getElementById('short_call_strike_input').value = option.short_call_strike || ''
+            }
+            if (document.getElementById('long_call_strike_input')) {
+                document.getElementById('long_call_strike_input').value = option.long_call_strike || ''
+            }
+            if (document.getElementById('short_call_premium_input')) {
+                document.getElementById('short_call_premium_input').value = option.short_call_premium || ''
+            }
+            if (document.getElementById('long_call_premium_input')) {
+                document.getElementById('long_call_premium_input').value = option.long_call_premium || ''
+            }
+            if (document.getElementById('short_put_strike_input')) {
+                document.getElementById('short_put_strike_input').value = option.short_put_strike || ''
+            }
+            if (document.getElementById('long_put_strike_input')) {
+                document.getElementById('long_put_strike_input').value = option.long_put_strike || ''
+            }
+            if (document.getElementById('short_put_premium_input')) {
+                document.getElementById('short_put_premium_input').value = option.short_put_premium || ''
+            }
+            if (document.getElementById('long_put_premium_input')) {
+                document.getElementById('long_put_premium_input').value = option.long_put_premium || ''
+            }
+            
+            // Set other basic fields
+            form.quantity.value = option.quantity
+            form.expiration_date.value = option.expiration_date
+            
+            // Find account_id from account_type or use existing account_id
+            if (option.account_id) {
+                form.account_id.value = option.account_id
+            } else {
+                const matchingAccount = accounts.find(acc => acc.account_type === option.account_type)
+                if (matchingAccount) {
+                    form.account_id.value = matchingAccount.id
+                }
+            }
+            
+            form.trade_date.value = option.trade_date
+            form.notes.value = option.notes || ''
+            
+            // Populate close fields if trade is closed
+            if (isClosed && option.close_date) {
+                form.close_date.value = option.close_date
+                form.close_price.value = option.close_price || ''
+                form.close_commission.value = option.close_commission || 0
+            }
+            
+            // Trigger the input event to update analysis
+            form.dispatchEvent(new Event('input', { bubbles: true }))
+        }, 100)
     } else {
         const today = new Date().toISOString().split('T')[0]
         document.querySelector('[name="trade_date"]').value = today
