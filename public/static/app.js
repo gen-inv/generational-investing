@@ -2821,6 +2821,7 @@ async function editCoveredCall(ccId) {
         // First get all stocks to find the one with this covered call
         const stocksResponse = await api.get('/api/stocks')
         let cc = null
+        let stockId = null
         
         // Find the stock that has this covered call
         for (const stock of stocksResponse.data) {
@@ -2828,6 +2829,7 @@ async function editCoveredCall(ccId) {
             const foundCC = ccResponse.data.find(o => o.id === ccId)
             if (foundCC) {
                 cc = foundCC
+                stockId = stock.id
                 break
             }
         }
@@ -2836,6 +2838,10 @@ async function editCoveredCall(ccId) {
             alert('Covered call not found')
             return
         }
+        
+        // Close the stock details modal
+        const detailsModal = document.getElementById('stock-details-modal')
+        if (detailsModal) detailsModal.remove()
         
         const modal = document.createElement('div')
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
@@ -2911,7 +2917,7 @@ async function editCoveredCall(ccId) {
                         <button type="submit" class="btn-primary flex-1">
                             <i class="fas fa-save mr-2"></i>Save Changes
                         </button>
-                        <button type="button" onclick="this.closest('.fixed').remove()" class="btn-secondary flex-1">Cancel</button>
+                        <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="btn-secondary flex-1">Cancel</button>
                     </div>
                 </form>
             </div>
@@ -2947,6 +2953,9 @@ async function editCoveredCall(ccId) {
                 alert('Covered call updated successfully!')
                 
                 // Reload stock details to reflect changes
+                if (stockId) {
+                    showStockDetails(stockId)
+                }
                 loadStocks()
                 loadDashboard()
             } catch (error) {
@@ -2972,6 +2981,10 @@ async function closeCoveredCall(ccId, stockId) {
             return
         }
         
+        // Close the stock details modal
+        const detailsModal = document.getElementById('stock-details-modal')
+        if (detailsModal) detailsModal.remove()
+        
         const modal = document.createElement('div')
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
         modal.id = 'close-covered-call-modal'
@@ -2986,7 +2999,7 @@ async function closeCoveredCall(ccId, stockId) {
                             </h3>
                             <p class="text-yellow-100 text-sm">${cc.ticker} - Finalize Position</p>
                         </div>
-                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-yellow-200 text-xl">
+                        <button onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="text-white hover:text-yellow-200 text-xl">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -3093,7 +3106,7 @@ async function closeCoveredCall(ccId, stockId) {
                             <button type="submit" class="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold py-3 px-4 rounded-lg transition shadow-lg hover:shadow-xl transform hover:scale-105">
                                 <i class="fas fa-check-circle mr-2"></i>Close Position
                             </button>
-                            <button type="button" onclick="this.closest('.fixed').remove()" class="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-bold py-3 px-4 rounded-lg transition shadow-lg hover:shadow-xl transform hover:scale-105">
+                            <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="w-full bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white font-bold py-3 px-4 rounded-lg transition shadow-lg hover:shadow-xl transform hover:scale-105">
                                 <i class="fas fa-times mr-2"></i>Cancel
                             </button>
                         </div>
