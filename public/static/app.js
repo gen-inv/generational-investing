@@ -371,8 +371,6 @@ function showSection(sectionName) {
             loadOptions()
             break
         case 'reports':
-            break
-        case 'closed-trades':
             loadClosedTrades()
             break
     }
