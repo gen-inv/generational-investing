@@ -3085,6 +3085,7 @@ app.get('/', (c) => {
                                             <th class="px-4 py-3 text-left">Strategy</th>
                                             <th class="px-4 py-3 text-right">Strike</th>
                                             <th class="px-4 py-3 text-right">Premium</th>
+                                            <th class="px-4 py-3 text-center">Contracts</th>
                                             <th class="px-4 py-3 text-left">Expiration</th>
                                             <th class="px-4 py-3 text-center">Status</th>
                                             <th class="px-4 py-3 text-center">Actions</th>

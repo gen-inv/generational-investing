@@ -3286,7 +3286,7 @@ async function loadOptions() {
         
         if (filteredOptions.length === 0) {
             const strategyName = STRATEGY_TYPES.find(st => st.value === currentStrategyFilter)?.label || 'this strategy'
-            table.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-gray-500">No open option trades found for ${strategyName}</td></tr>`
+            table.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-gray-500">No open option trades found for ${strategyName}</td></tr>`
             return
         }
         
@@ -3299,6 +3299,7 @@ async function loadOptions() {
                     <td class="px-4 py-3">${strategyLabel}</td>
                     <td class="px-4 py-3 text-right">$${parseFloat(option.strike_price).toFixed(2)}</td>
                     <td class="px-4 py-3 text-right">$${parseFloat(option.premium).toFixed(2)}</td>
+                    <td class="px-4 py-3 text-center font-semibold">${option.quantity}</td>
                     <td class="px-4 py-3">${option.expiration_date}</td>
                     <td class="px-4 py-3 text-center">
                         <span class="px-2 py-1 rounded ${option.is_open ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}">
