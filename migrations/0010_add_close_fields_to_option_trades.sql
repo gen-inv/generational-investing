@@ -1,8 +1,6 @@
--- Migration: Add close_commission and multi-leg close price fields to option_trades
+-- Migration: Add multi-leg close price fields to option_trades
 -- Date: 2026-02-14
-
--- Add close_commission column for commission paid when closing the option trade
-ALTER TABLE option_trades ADD COLUMN close_commission REAL DEFAULT 0;
+-- Note: close_commission already exists in production, only adding multi-leg close prices
 
 -- Add close price fields for multi-leg strategies
 -- close_price already exists for single-leg strategies
