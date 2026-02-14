@@ -3278,7 +3278,14 @@ async function loadOptions() {
         }).join('')
         
         // Filter options by selected strategy
-        const filteredOptions = allOptions.filter(o => o.strategy_type === currentStrategyFilter)
+        const filteredOptions = allOptions
+            .filter(o => o.strategy_type === currentStrategyFilter)
+            .sort((a, b) => {
+                // Sort by expiration date ascending (earliest first)
+                const dateA = new Date(a.expiration_date)
+                const dateB = new Date(b.expiration_date)
+                return dateA - dateB
+            })
         
         // Render table
         const table = document.getElementById('options-table')
