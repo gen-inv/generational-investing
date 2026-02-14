@@ -3197,8 +3197,8 @@ let includeClosedOptions = false
 
 // Strategy type mappings
 const STRATEGY_TYPES = [
-    { value: 'SELLING_PUT', label: 'Selling Put (Stockpiling)' },
-    { value: 'SELLING_PUT_LONG_TERM', label: 'Selling Put (Long Term)' },
+    { value: 'SELLING_PUT', label: 'Short Put (Stockpiling)' },
+    { value: 'SELLING_PUT_LONG_TERM', label: 'Short Put (Long Term)' },
     { value: 'BUYING_PUT', label: 'Long Put' },
     { value: 'LONG_CALL', label: 'Long Call' },
     { value: 'COVERED_CALL', label: 'Covered Call' },
@@ -4074,6 +4074,19 @@ async function showOptionDetails(id) {
             return
         }
         
+        // Fetch accounts to get account name
+        const accountsResponse = await api.get('/api/accounts')
+        const accounts = accountsResponse.data.accounts || accountsResponse.data
+        
+        // Find account name - try account_id first, then fall back to account_type
+        let accountDisplay = option.account_type || 'N/A'
+        if (option.account_id) {
+            const account = accounts.find(a => a.id === option.account_id)
+            if (account) {
+                accountDisplay = `${account.account_name} (${account.account_type})`
+            }
+        }
+        
         const strategyConfig = getStrategyConfig(option.strategy_type)
         const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
         
@@ -4127,7 +4140,7 @@ async function showOptionDetails(id) {
                                 <div>
                                     <h4 class="text-2xl font-bold mb-1">${option.ticker}</h4>
                                     <p class="text-sm opacity-90">${strategyLabel}</p>
-                                    <p class="text-sm opacity-90 mt-1">${option.account_type || 'N/A'} • Opened ${option.trade_date}</p>
+                                    <p class="text-sm opacity-90 mt-1">${accountDisplay} • Opened ${option.trade_date}</p>
                                 </div>
                                 <div class="text-right">
                                     <span class="px-4 py-2 rounded-full ${option.is_open ? 'bg-green-500' : 'bg-gray-500'} text-white font-semibold text-sm">
@@ -4159,7 +4172,7 @@ async function showOptionDetails(id) {
                             <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20">
                                 <div>
                                     <p class="text-xs opacity-75">Account</p>
-                                    <p class="text-lg font-semibold">${option.account_type || 'N/A'}</p>
+                                    <p class="text-lg font-semibold">${accountDisplay}</p>
                                 </div>
                                 <div>
                                     <p class="text-xs opacity-75">Open Commission</p>
