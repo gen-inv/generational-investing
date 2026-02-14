@@ -3208,6 +3208,23 @@ const STRATEGY_TYPES = [
     { value: 'ZERO_DTE_SPX_IC', label: '0DTE SPX IC' }
 ]
 
+// Helper function to get strategy configuration
+function getStrategyConfig(strategyType) {
+    const configs = {
+        'SELLING_PUT': { legs: 1, isPremiumCredit: true },
+        'SELLING_PUT_LONG_TERM': { legs: 1, isPremiumCredit: true },
+        'BUYING_PUT': { legs: 1, isPremiumCredit: false },
+        'LONG_CALL': { legs: 1, isPremiumCredit: false },
+        'COVERED_CALL': { legs: 1, isPremiumCredit: true },
+        'CREDIT_SPREAD': { legs: 2, isPremiumCredit: true },
+        'DEBIT_SPREAD': { legs: 2, isPremiumCredit: false },
+        'IRON_CONDOR': { legs: 4, isPremiumCredit: true },
+        'ZERO_DTE_SPX_IC': { legs: 4, isPremiumCredit: true }
+    }
+    
+    return configs[strategyType] || { legs: 1, isPremiumCredit: true }
+}
+
 function toggleClosedOptions() {
     includeClosedOptions = document.getElementById('include-closed-options').checked
     loadOptions()
