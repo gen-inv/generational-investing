@@ -3280,12 +3280,15 @@ async function loadOptions() {
                         </span>
                     </td>
                     <td class="px-4 py-3 text-center">
-                        <button onclick="editOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                        ${option.strategy_type === 'COVERED_CALL' ? 
+                            '<span class="text-gray-400 text-sm italic">Managed in Stock Details</span>' :
+                            `<button onclick="editOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800">
+                                <i class="fas fa-trash"></i>
+                            </button>`
+                        }
                     </td>
                 </tr>
             `
