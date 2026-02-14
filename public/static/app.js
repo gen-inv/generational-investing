@@ -3280,11 +3280,12 @@ async function loadOptions() {
         }
         
         filteredOptions.forEach(option => {
+            const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
             table.innerHTML += `
                 <tr class="border-b border-gray-200 hover:bg-gray-50">
                     <td class="px-4 py-3">${option.trade_date}</td>
                     <td class="px-4 py-3 font-semibold text-brand-teal">${option.ticker}</td>
-                    <td class="px-4 py-3">${option.strategy_type.replace(/_/g, ' ')}</td>
+                    <td class="px-4 py-3">${strategyLabel}</td>
                     <td class="px-4 py-3 text-right">$${parseFloat(option.strike_price).toFixed(2)}</td>
                     <td class="px-4 py-3 text-right">$${parseFloat(option.premium).toFixed(2)}</td>
                     <td class="px-4 py-3">${option.expiration_date}</td>
@@ -3415,8 +3416,8 @@ async function showOptionForm(optionId = null) {
                                 ` : `
                                     <select name="strategy_type" id="strategy_type_select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" required>
                                         <option value="">Select Strategy...</option>
-                                        <option value="SELLING_PUT">Selling Put (Stockpiling)</option>
-                                        <option value="SELLING_PUT_LONG_TERM">Selling Put (Long Term)</option>
+                                        <option value="SELLING_PUT">Short Put (Stockpiling)</option>
+                                        <option value="SELLING_PUT_LONG_TERM">Short Put (Long Term)</option>
                                         <option value="BUYING_PUT">Long Put</option>
                                         <option value="LONG_CALL">Long Call</option>
                                         <option value="CREDIT_SPREAD">Credit Spread</option>
@@ -4653,7 +4654,7 @@ function renderCloseLegFields(option, strategyConfig) {
     const contracts = option.quantity
     
     if (strategyConfig.legs === 1) {
-        // Single leg (Selling Put, Long Put, Long Call)
+        // Single leg (Short Put, Long Put, Long Call)
         return `
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-2">
@@ -4997,18 +4998,21 @@ async function loadReport() {
                 <h3 class="text-xl font-bold text-brand-teal mb-4">Option Trades P/L</h3>
                 <div class="space-y-2">
                     ${data.options.length === 0 ? '<p class="text-gray-500">No data</p>' : ''}
-                    ${data.options.map(item => `
+                    ${data.options.map(item => {
+                        const strategyLabel = STRATEGY_TYPES.find(st => st.value === item.strategy_type)?.label || item.strategy_type.replace(/_/g, ' ')
+                        return `
                         <div class="flex justify-between border-b border-gray-200 pb-2">
                             <div>
                                 <div>${item.year}-${item.month} (${item.account_type})</div>
-                                <div class="text-sm text-gray-500">${item.strategy_type.replace(/_/g, ' ')}</div>
+                                <div class="text-sm text-gray-500">${strategyLabel}</div>
                             </div>
                             <div class="text-right">
                                 <div class="text-green-600 font-semibold">${formatCurrency(item.total_premium, 'USD')}</div>
                                 ${item.realized_pl ? `<div class="text-sm ${item.realized_pl >= 0 ? 'text-green-600' : 'text-red-600'}">${formatCurrency(item.realized_pl, 'USD')}</div>` : ''}
                             </div>
                         </div>
-                    `).join('')}
+                        `
+                    }).join('')}
                 </div>
             </div>
         `
