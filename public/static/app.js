@@ -4607,23 +4607,43 @@ async function closeOption(optionId) {
         form.addEventListener('submit', async (e) => {
             e.preventDefault()
             
+            // Build close data with all required fields from the original option
             const closeData = {
+                // Original option data (required for backend update)
+                ticker: option.ticker,
+                strategy_type: option.strategy_type,
+                strike_price: option.strike_price,
+                strike_price_2: option.strike_price_2,
+                strike_price_3: option.strike_price_3,
+                strike_price_4: option.strike_price_4,
+                premium: option.premium,
+                quantity: option.quantity,
+                expiration_date: option.expiration_date,
+                account_type: option.account_type,
+                account_id: option.account_id,
+                trade_date: option.trade_date,
+                commission: option.commission || 0,
+                notes: option.notes,
+                // Close data
                 close_date: document.getElementById('close_date').value,
                 close_commission: parseFloat(document.getElementById('close_commission').value) || 0,
                 is_open: false
             }
             
             // Add leg-specific close prices based on strategy
+            // Map frontend field names to backend schema
             if (strategyConfig.legs === 1) {
                 closeData.close_price = parseFloat(document.getElementById('close_price').value) || 0
             } else if (strategyConfig.legs === 2) {
-                closeData.short_close_price = parseFloat(document.getElementById('short_close_price').value) || 0
-                closeData.long_close_price = parseFloat(document.getElementById('long_close_price').value) || 0
+                // Two-leg: short = close_price, long = close_price_2
+                closeData.close_price = parseFloat(document.getElementById('short_close_price').value) || 0
+                closeData.close_price_2 = parseFloat(document.getElementById('long_close_price').value) || 0
             } else if (strategyConfig.legs === 4) {
-                closeData.short_call_close = parseFloat(document.getElementById('short_call_close').value) || 0
-                closeData.long_call_close = parseFloat(document.getElementById('long_call_close').value) || 0
-                closeData.short_put_close = parseFloat(document.getElementById('short_put_close').value) || 0
-                closeData.long_put_close = parseFloat(document.getElementById('long_put_close').value) || 0
+                // Four-leg: SC = close_price, LC = close_price_2, SP = close_price_3, LP = close_price_4
+                closeData.close_price = parseFloat(document.getElementById('short_call_close').value) || 0
+                closeData.close_price_2 = parseFloat(document.getElementById('long_call_close').value) || 0
+                closeData.close_price_3 = parseFloat(document.getElementById('short_put_close').value) || 0
+                closeData.close_price_4 = parseFloat(document.getElementById('long_put_close').value) || 0
             }
             
             try {

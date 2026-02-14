@@ -2439,7 +2439,8 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
         strike_price_2 = ?, strike_price_3 = ?, strike_price_4 = ?,
         premium = ?, quantity = ?, expiration_date = ?,
         account_type = ?, trade_date = ?, commission = ?,
-        close_date = ?, close_price = ?, close_commission = ?,
+        close_date = ?, close_price = ?, close_price_2 = ?, close_price_3 = ?, close_price_4 = ?,
+        close_commission = ?,
         notes = ?
       WHERE id = ? AND user_id = ?
     `).bind(
@@ -2457,6 +2458,9 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       data.commission || 0,
       data.close_date || null,
       data.close_price || null,
+      data.close_price_2 || null,
+      data.close_price_3 || null,
+      data.close_price_4 || null,
       data.close_commission || null,
       data.notes || null,
       tradeId,
@@ -2468,11 +2472,51 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       const openCommission = data.commission || 0
       const closeCommission = data.close_commission || 0
       const contracts = data.quantity
-      const openPremium = data.premium
-      const closePremium = data.close_price
+      const strategyType = data.strategy_type
       
-      // Calculate P/L: (Open Premium - Close Premium) * Contracts * 100 - Commissions
-      const profitLoss = (openPremium - closePremium) * contracts * 100 - openCommission - closeCommission
+      let profitLoss = 0
+      
+      // Calculate P/L based on strategy type
+      if (strategyType === 'CREDIT_SPREAD' || strategyType === 'DEBIT_SPREAD') {
+        // Two-leg spread
+        const shortOpenPremium = data.premium  // strike_price (short leg)
+        const longOpenPremium = data.strike_price_2 || 0  // strike_price_2 (long leg)
+        const shortClosePremium = data.close_price || 0
+        const longClosePremium = data.close_price_2 || 0
+        
+        const openCredit = (shortOpenPremium - longOpenPremium) * contracts * 100
+        const closeDebit = (shortClosePremium - longClosePremium) * contracts * 100
+        profitLoss = openCredit - closeDebit - openCommission - closeCommission
+        
+      } else if (strategyType === 'IRON_CONDOR' || strategyType === 'ZERO_DTE_SPX_IC') {
+        // Four-leg iron condor
+        const scOpen = data.premium || 0  // Short Call
+        const lcOpen = data.strike_price_2 || 0  // Long Call
+        const spOpen = data.strike_price_3 || 0  // Short Put
+        const lpOpen = data.strike_price_4 || 0  // Long Put
+        
+        const scClose = data.close_price || 0
+        const lcClose = data.close_price_2 || 0
+        const spClose = data.close_price_3 || 0
+        const lpClose = data.close_price_4 || 0
+        
+        const openCredit = ((scOpen - lcOpen) + (spOpen - lpOpen)) * contracts * 100
+        const closeDebit = ((scClose - lcClose) + (spClose - lpClose)) * contracts * 100
+        profitLoss = openCredit - closeDebit - openCommission - closeCommission
+        
+      } else {
+        // Single-leg (SELLING_PUT, SELLING_PUT_LONG_TERM, BUYING_PUT, LONG_CALL, COVERED_CALL)
+        const openPremium = data.premium
+        const closePremium = data.close_price
+        
+        if (strategyType === 'BUYING_PUT' || strategyType === 'LONG_CALL') {
+          // Debit strategies: profit when close > open
+          profitLoss = (closePremium - openPremium) * contracts * 100 - openCommission - closeCommission
+        } else {
+          // Credit strategies: profit when open > close
+          profitLoss = (openPremium - closePremium) * contracts * 100 - openCommission - closeCommission
+        }
+      }
       
       await DB.prepare(`
         UPDATE option_trades SET
@@ -2522,6 +2566,9 @@ app.put('/api/options/:id/reopen', authMiddleware, async (c) => {
         is_open = 1,
         close_date = NULL,
         close_price = NULL,
+        close_price_2 = NULL,
+        close_price_3 = NULL,
+        close_price_4 = NULL,
         close_commission = NULL,
         profit_loss = NULL
       WHERE id = ? AND user_id = ?
