@@ -4136,7 +4136,11 @@ async function showOptionDetails(id) {
                                 </div>
                             </div>
                             
-                            <div class="grid grid-cols-4 gap-4 pt-4 border-t border-white/20">
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-white/20">
+                                <div>
+                                    <p class="text-xs opacity-75">Trade Date</p>
+                                    <p class="text-lg font-semibold">${option.trade_date}</p>
+                                </div>
                                 <div>
                                     <p class="text-xs opacity-75">Contracts</p>
                                     <p class="text-xl font-bold">${option.quantity}</p>
@@ -4144,21 +4148,49 @@ async function showOptionDetails(id) {
                                 <div>
                                     <p class="text-xs opacity-75">Expiration</p>
                                     <p class="text-lg font-semibold">${option.expiration_date}</p>
-                                    <p class="text-xs opacity-90">${dte > 0 ? dte + ' DTE' : 'Expired'}</p>
+                                    <p class="text-xs opacity-90 mt-0.5">${dte > 0 ? dte + ' DTE' : dte === 0 ? 'Expires today' : 'Expired ' + Math.abs(dte) + ' days ago'}</p>
                                 </div>
                                 <div>
-                                    <p class="text-xs opacity-75">Commission</p>
+                                    <p class="text-xs opacity-75">Original DTE</p>
+                                    <p class="text-lg font-semibold">${originalDTE} days</p>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4 pt-4 border-t border-white/20">
+                                <div>
+                                    <p class="text-xs opacity-75">Account</p>
+                                    <p class="text-lg font-semibold">${option.account_type || 'N/A'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs opacity-75">Open Commission</p>
                                     <p class="text-lg font-semibold">$${parseFloat(option.commission || 0).toFixed(2)}</p>
                                 </div>
                                 <div>
-                                    <p class="text-xs opacity-75">P/L</p>
+                                    <p class="text-xs opacity-75">Profit/Loss</p>
                                     <p class="text-xl font-bold ${option.profit_loss >= 0 ? 'text-green-300' : 'text-red-300'}">
                                         ${option.profit_loss !== null && option.profit_loss !== undefined ? 
                                             (option.profit_loss >= 0 ? '+' : '') + '$' + parseFloat(option.profit_loss).toFixed(2) : 
-                                            '-'}
+                                            'Not closed'}
                                     </p>
                                 </div>
                             </div>
+                            
+                            ${option.close_date ? `
+                                <div class="mt-4 pt-4 border-t border-white/20">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <p class="text-xs opacity-75">Close Date</p>
+                                            <p class="text-sm font-semibold">${option.close_date}</p>
+                                        </div>
+                                        ${option.close_commission !== null && option.close_commission !== undefined ? `
+                                        <div>
+                                            <p class="text-xs opacity-75">Close Commission</p>
+                                            <p class="text-sm font-semibold">$${parseFloat(option.close_commission).toFixed(2)}</p>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                </div>
+                            ` : ''}
                             
                             ${option.notes ? `
                                 <div class="mt-4 pt-4 border-t border-white/20">
