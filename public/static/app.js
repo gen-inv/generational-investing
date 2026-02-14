@@ -1468,14 +1468,11 @@ async function loadStocks() {
                     <td class="px-4 py-3 text-right">$${parseFloat(avgPrice).toFixed(2)}</td>
                     <td class="px-4 py-3 text-right">$${parseFloat(costBasis).toFixed(2)}</td>
                     <td class="px-4 py-3 text-center">
-                        <button onclick="showStockDetails(${stock.id})" class="text-brand-teal hover:text-brand-gold mr-2" title="Details">
-                            <i class="fas fa-info-circle"></i>
+                        <button onclick="manageStock(${stock.id})" class="text-brand-teal hover:text-brand-gold mr-2 font-semibold" title="Manage Trade">
+                            <i class="fas fa-cog mr-1"></i>Manage
                         </button>
-                        <button onclick="editStock(${stock.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button onclick="closeStock(${stock.id})" class="text-yellow-600 hover:text-yellow-800" title="Close">
-                            <i class="fas fa-check-circle"></i>
+                        <button onclick="deleteStock(${stock.id})" class="text-red-600 hover:text-red-800 font-semibold" title="Delete Trade">
+                            <i class="fas fa-trash mr-1"></i>Delete
                         </button>
                     </td>
                 </tr>
@@ -3282,21 +3279,11 @@ async function loadOptions() {
                     <td class="px-4 py-3 text-center">
                         ${option.strategy_type === 'COVERED_CALL' ? 
                             '<span class="text-gray-400 text-sm italic">Managed in Stock Details</span>' :
-                            option.is_open ? 
-                            `<button onclick="closeOption(${option.id})" class="text-green-600 hover:text-green-800 mr-2" title="Close Trade">
-                                <i class="fas fa-check-circle"></i>
+                            `<button onclick="manageOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2 font-semibold" title="Manage Trade">
+                                <i class="fas fa-cog mr-1"></i>Manage
                             </button>
-                            <button onclick="editOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2" title="Edit">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800" title="Delete">
-                                <i class="fas fa-trash"></i>
-                            </button>` :
-                            `<button onclick="editOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2" title="Edit">
-                                <i class="fas fa-edit"></i>
-                            </button>
-                            <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800" title="Delete">
-                                <i class="fas fa-trash"></i>
+                            <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800 font-semibold" title="Delete Trade">
+                                <i class="fas fa-trash mr-1"></i>Delete
                             </button>`
                         }
                     </td>
@@ -4043,6 +4030,10 @@ async function editOption(id) {
     showOptionForm(id)
 }
 
+async function manageOption(id) {
+    showOptionDetails(id)
+}
+
 async function deleteOption(id) {
     if (!confirm('Are you sure you want to delete this option trade?')) return
     
@@ -4053,6 +4044,281 @@ async function deleteOption(id) {
     } catch (error) {
         alert('Delete failed')
     }
+}
+
+async function showOptionDetails(id) {
+    try {
+        const response = await api.get(`/api/options/${id}`)
+        const option = response.data
+        
+        if (!option) {
+            alert('Option trade not found')
+            return
+        }
+        
+        const strategyConfig = getStrategyConfig(option.strategy_type)
+        const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
+        
+        // Calculate DTE
+        const expirationDate = new Date(option.expiration_date)
+        const tradeDate = new Date(option.trade_date)
+        const today = new Date()
+        const dte = Math.ceil((expirationDate - today) / (1000 * 60 * 60 * 24))
+        const originalDTE = Math.ceil((expirationDate - tradeDate) / (1000 * 60 * 60 * 24))
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'option-details-modal'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-0 max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                <!-- Header -->
+                <div class="flex justify-between items-center p-6 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700">
+                    <h3 class="text-2xl font-bold text-white">
+                        <i class="fas fa-layer-group mr-2"></i>${option.ticker} - ${strategyLabel}
+                    </h3>
+                    <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-purple-200">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+                
+                <!-- Content: Sidebar + Main -->
+                <div class="flex flex-1 overflow-hidden">
+                    <!-- Left Sidebar - Actions -->
+                    <div class="w-64 bg-gray-50 p-4 border-r border-gray-200 overflow-y-auto">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Actions</h4>
+                        <div class="space-y-2">
+                            <button onclick="editOption(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-purple-600 hover:text-white rounded-lg border border-gray-200 transition-colors group">
+                                <i class="fas fa-edit mr-2 text-blue-600 group-hover:text-white"></i>
+                                <span class="font-medium">Edit Trade</span>
+                            </button>
+                            
+                            ${option.is_open ? `
+                            <button onclick="closeOption(${id}); document.getElementById('option-details-modal').remove();" class="w-full text-left px-4 py-3 bg-white hover:bg-green-600 hover:text-white rounded-lg border border-gray-200 transition-colors group">
+                                <i class="fas fa-check-circle mr-2 text-green-600 group-hover:text-white"></i>
+                                <span class="font-medium">Close Position</span>
+                            </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    
+                    <!-- Main Content Area -->
+                    <div class="flex-1 p-6 overflow-y-auto">
+                        <!-- Position Summary -->
+                        <div class="mb-6 text-white rounded-lg p-5 shadow-md" style="background: linear-gradient(to right, #7c3aed, #9333ea);">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <h4 class="text-2xl font-bold mb-1">${option.ticker}</h4>
+                                    <p class="text-sm opacity-90">${strategyLabel}</p>
+                                    <p class="text-sm opacity-90 mt-1">${option.account_type || 'N/A'} • Opened ${option.trade_date}</p>
+                                </div>
+                                <div class="text-right">
+                                    <span class="px-4 py-2 rounded-full ${option.is_open ? 'bg-green-500' : 'bg-gray-500'} text-white font-semibold text-sm">
+                                        ${option.is_open ? 'OPEN' : 'CLOSED'}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-4 gap-4 pt-4 border-t border-white/20">
+                                <div>
+                                    <p class="text-xs opacity-75">Contracts</p>
+                                    <p class="text-xl font-bold">${option.quantity}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs opacity-75">Expiration</p>
+                                    <p class="text-lg font-semibold">${option.expiration_date}</p>
+                                    <p class="text-xs opacity-90">${dte > 0 ? dte + ' DTE' : 'Expired'}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs opacity-75">Commission</p>
+                                    <p class="text-lg font-semibold">$${parseFloat(option.commission || 0).toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs opacity-75">P/L</p>
+                                    <p class="text-xl font-bold ${option.profit_loss >= 0 ? 'text-green-300' : 'text-red-300'}">
+                                        ${option.profit_loss !== null && option.profit_loss !== undefined ? 
+                                            (option.profit_loss >= 0 ? '+' : '') + '$' + parseFloat(option.profit_loss).toFixed(2) : 
+                                            '-'}
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            ${option.notes ? `
+                                <div class="mt-4 pt-4 border-t border-white/20">
+                                    <p class="text-xs opacity-75"><i class="fas fa-sticky-note mr-1"></i>Notes</p>
+                                    <p class="text-sm mt-1">${option.notes}</p>
+                                </div>
+                            ` : ''}
+                        </div>
+                        
+                        <!-- Leg Details -->
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <i class="fas fa-list mr-2 text-purple-600"></i>
+                                Position Details
+                            </h4>
+                            ${renderLegDetails(option, strategyConfig)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+    } catch (error) {
+        console.error('Error loading option details:', error)
+        alert('Failed to load option details')
+    }
+}
+
+function renderLegDetails(option, strategyConfig) {
+    if (strategyConfig.legs === 1) {
+        // Single leg
+        return `
+            <div class="bg-white border border-gray-200 rounded-lg p-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <span class="text-sm text-gray-600">Strike Price</span>
+                        <div class="text-xl font-bold text-gray-900">$${parseFloat(option.strike_price).toFixed(2)}</div>
+                    </div>
+                    <div>
+                        <span class="text-sm text-gray-600">Premium per Share</span>
+                        <div class="text-xl font-bold ${strategyConfig.isPremiumCredit ? 'text-green-600' : 'text-red-600'}">
+                            ${strategyConfig.isPremiumCredit ? '+' : '-'}$${parseFloat(option.premium).toFixed(2)}
+                        </div>
+                    </div>
+                    <div>
+                        <span class="text-sm text-gray-600">Total Premium</span>
+                        <div class="text-lg font-semibold ${strategyConfig.isPremiumCredit ? 'text-green-600' : 'text-red-600'}">
+                            ${strategyConfig.isPremiumCredit ? '+' : '-'}$${(parseFloat(option.premium) * option.quantity * 100).toFixed(2)}
+                        </div>
+                    </div>
+                    ${option.close_price !== null && option.close_price !== undefined ? `
+                    <div>
+                        <span class="text-sm text-gray-600">Close Price</span>
+                        <div class="text-lg font-semibold text-gray-900">$${parseFloat(option.close_price).toFixed(2)}</div>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `
+    } else if (strategyConfig.legs === 2) {
+        // Two legs
+        return `
+            <div class="space-y-3">
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h5 class="font-semibold text-red-900 mb-3 flex items-center">
+                        <i class="fas fa-arrow-down mr-2"></i>
+                        Short Leg
+                    </h5>
+                    <div class="grid grid-cols-3 gap-3 text-sm">
+                        <div>
+                            <span class="text-gray-600">Strike</span>
+                            <div class="font-bold text-gray-900 text-lg">$${parseFloat(option.short_strike).toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Premium</span>
+                            <div class="font-bold text-green-600 text-lg">+$${parseFloat(option.short_premium).toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Total</span>
+                            <div class="font-semibold text-green-600">+$${(parseFloat(option.short_premium) * option.quantity * 100).toFixed(2)}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <h5 class="font-semibold text-green-900 mb-3 flex items-center">
+                        <i class="fas fa-arrow-up mr-2"></i>
+                        Long Leg
+                    </h5>
+                    <div class="grid grid-cols-3 gap-3 text-sm">
+                        <div>
+                            <span class="text-gray-600">Strike</span>
+                            <div class="font-bold text-gray-900 text-lg">$${parseFloat(option.long_strike).toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Premium</span>
+                            <div class="font-bold text-red-600 text-lg">-$${parseFloat(option.long_premium).toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Total</span>
+                            <div class="font-semibold text-red-600">-$${(parseFloat(option.long_premium) * option.quantity * 100).toFixed(2)}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <div class="flex justify-between items-center">
+                        <span class="font-semibold text-gray-700">Net Credit:</span>
+                        <span class="text-xl font-bold text-purple-600">
+                            +$${((parseFloat(option.short_premium) - parseFloat(option.long_premium)) * option.quantity * 100).toFixed(2)}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        `
+    } else if (strategyConfig.legs === 4) {
+        // Iron Condor
+        const netCredit = ((parseFloat(option.short_call_premium) - parseFloat(option.long_call_premium)) +
+                          (parseFloat(option.short_put_premium) - parseFloat(option.long_put_premium))) * option.quantity * 100
+        
+        return `
+            <div class="space-y-3">
+                <!-- Call Spread -->
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h5 class="font-semibold text-red-900 mb-3 flex items-center">
+                        <i class="fas fa-phone mr-2"></i>
+                        Call Spread
+                    </h5>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-xs text-gray-600 mb-1">Short Call</p>
+                            <div class="text-sm font-semibold">Strike: $${parseFloat(option.short_call_strike).toFixed(2)}</div>
+                            <div class="text-sm text-green-600">Premium: +$${parseFloat(option.short_call_premium).toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-600 mb-1">Long Call</p>
+                            <div class="text-sm font-semibold">Strike: $${parseFloat(option.long_call_strike).toFixed(2)}</div>
+                            <div class="text-sm text-red-600">Premium: -$${parseFloat(option.long_call_premium).toFixed(2)}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Put Spread -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h5 class="font-semibold text-blue-900 mb-3 flex items-center">
+                        <i class="fas fa-hand-paper mr-2"></i>
+                        Put Spread
+                    </h5>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-xs text-gray-600 mb-1">Short Put</p>
+                            <div class="text-sm font-semibold">Strike: $${parseFloat(option.short_put_strike).toFixed(2)}</div>
+                            <div class="text-sm text-green-600">Premium: +$${parseFloat(option.short_put_premium).toFixed(2)}</div>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-600 mb-1">Long Put</p>
+                            <div class="text-sm font-semibold">Strike: $${parseFloat(option.long_put_strike).toFixed(2)}</div>
+                            <div class="text-sm text-red-600">Premium: -$${parseFloat(option.long_put_premium).toFixed(2)}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Net Credit -->
+                <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <div class="flex justify-between items-center">
+                        <span class="font-semibold text-gray-700">Total Net Credit:</span>
+                        <span class="text-xl font-bold text-purple-600">
+                            +$${netCredit.toFixed(2)}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        `
+    }
+    
+    return '<p class="text-gray-500">No leg details available</p>'
 }
 
 async function closeOption(optionId) {
@@ -4768,6 +5034,10 @@ function formatCurrency(value, currency = 'USD') {
 
 async function editStock(id) {
     showStockForm(id)
+}
+
+async function manageStock(id) {
+    showStockDetails(id)
 }
 
 async function deleteStock(id) {
