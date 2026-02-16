@@ -51,6 +51,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadAccountsList()
         loadDashboard()
     }
+    
+    // Initialize Daily Trade calculations
+    initializeDailyTradeCalculations()
 })
 
 // ============================================================================
@@ -428,6 +431,99 @@ function updateRollingWindowLabels() {
     const chartTitle = document.getElementById('dt-chart-title')
     if (chartTitle) {
         chartTitle.textContent = `P/L Trend (Last ${rollingWindow} Trades)`
+    }
+}
+
+// Initialize Daily Trade spread calculations
+function initializeDailyTradeCalculations() {
+    // Get input elements
+    const callShortStrike = document.getElementById('call-short-strike')
+    const callTotalCredit = document.getElementById('call-total-credit')
+    const putShortStrike = document.getElementById('put-short-strike')
+    const putTotalCredit = document.getElementById('put-total-credit')
+    
+    // Add event listeners for real-time calculations
+    if (callShortStrike) callShortStrike.addEventListener('input', updateCallSpreadCalculations)
+    if (callTotalCredit) callTotalCredit.addEventListener('input', updateCallSpreadCalculations)
+    if (putShortStrike) putShortStrike.addEventListener('input', updatePutSpreadCalculations)
+    if (putTotalCredit) putTotalCredit.addEventListener('input', updatePutSpreadCalculations)
+    
+    // Initial calculation
+    updateCallSpreadCalculations()
+    updatePutSpreadCalculations()
+}
+
+// Update Call Spread calculations
+function updateCallSpreadCalculations() {
+    const strikeWidth = 5 // TODO: Get from configuration
+    const spxPrice = 4856.20 // TODO: Get from live data
+    
+    const shortStrike = parseFloat(document.getElementById('call-short-strike')?.value || 0)
+    const totalCredit = parseFloat(document.getElementById('call-total-credit')?.value || 0)
+    
+    // Calculate total risk: (strike width - credit) * 100
+    const totalRisk = ((strikeWidth - totalCredit) * 100).toFixed(2)
+    
+    // Calculate distance from SPX
+    const distancePoints = (shortStrike - spxPrice).toFixed(2)
+    const distancePercent = ((distancePoints / spxPrice) * 100).toFixed(2)
+    
+    // Update display
+    const totalRiskEl = document.getElementById('call-total-risk')
+    const distanceEl = document.getElementById('call-distance')
+    
+    if (totalRiskEl) {
+        totalRiskEl.textContent = `$${totalRisk}`
+    }
+    
+    if (distanceEl) {
+        const sign = distancePoints >= 0 ? '+' : ''
+        distanceEl.textContent = `${sign}${distancePoints} pts (${distancePercent}%)`
+        // Color code based on distance
+        if (Math.abs(distancePoints) < 20) {
+            distanceEl.className = 'font-semibold text-red-600'
+        } else if (Math.abs(distancePoints) < 40) {
+            distanceEl.className = 'font-semibold text-yellow-600'
+        } else {
+            distanceEl.className = 'font-semibold text-green-600'
+        }
+    }
+}
+
+// Update Put Spread calculations
+function updatePutSpreadCalculations() {
+    const strikeWidth = 5 // TODO: Get from configuration
+    const spxPrice = 4856.20 // TODO: Get from live data
+    
+    const shortStrike = parseFloat(document.getElementById('put-short-strike')?.value || 0)
+    const totalCredit = parseFloat(document.getElementById('put-total-credit')?.value || 0)
+    
+    // Calculate total risk: (strike width - credit) * 100
+    const totalRisk = ((strikeWidth - totalCredit) * 100).toFixed(2)
+    
+    // Calculate distance from SPX
+    const distancePoints = (shortStrike - spxPrice).toFixed(2)
+    const distancePercent = ((distancePoints / spxPrice) * 100).toFixed(2)
+    
+    // Update display
+    const totalRiskEl = document.getElementById('put-total-risk')
+    const distanceEl = document.getElementById('put-distance')
+    
+    if (totalRiskEl) {
+        totalRiskEl.textContent = `$${totalRisk}`
+    }
+    
+    if (distanceEl) {
+        const sign = distancePoints >= 0 ? '+' : ''
+        distanceEl.textContent = `${sign}${distancePoints} pts (${distancePercent}%)`
+        // Color code based on distance
+        if (Math.abs(distancePoints) < 20) {
+            distanceEl.className = 'font-semibold text-red-600'
+        } else if (Math.abs(distancePoints) < 40) {
+            distanceEl.className = 'font-semibold text-yellow-600'
+        } else {
+            distanceEl.className = 'font-semibold text-green-600'
+        }
     }
 }
 

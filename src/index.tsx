@@ -3462,9 +3462,9 @@ app.get('/', (c) => {
                                     <!-- Call Spread -->
                                     <div class="border-2 border-red-200 rounded-lg p-4 bg-red-50">
                                         <div class="flex items-center justify-between mb-3">
-                                            <h4 class="font-bold text-gray-800">Call Spread</h4>
+                                            <h4 class="font-bold text-gray-800">Call Spread <span class="text-sm font-normal text-gray-600">(5 pts)</span></h4>
                                             <label class="flex items-center">
-                                                <input type="checkbox" checked class="mr-2">
+                                                <input type="checkbox" checked class="mr-2" id="enable-call-spread">
                                                 <span class="text-sm">Enable</span>
                                             </label>
                                         </div>
@@ -3472,31 +3472,21 @@ app.get('/', (c) => {
                                             <div class="grid grid-cols-2 gap-2">
                                                 <div>
                                                     <label class="block text-xs text-gray-600 mb-1">Short Call Strike</label>
-                                                    <input type="number" step="0.01" value="4870" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                    <input type="number" step="0.01" value="4870" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="call-short-strike">
                                                 </div>
                                                 <div>
-                                                    <label class="block text-xs text-gray-600 mb-1">Premium</label>
-                                                    <input type="number" step="0.01" value="1.50" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                                                </div>
-                                            </div>
-                                            <div class="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <label class="block text-xs text-gray-600 mb-1">Long Call Strike</label>
-                                                    <input type="number" step="0.01" value="4875" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                                                </div>
-                                                <div>
-                                                    <label class="block text-xs text-gray-600 mb-1">Premium</label>
-                                                    <input type="number" step="0.01" value="0.80" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                    <label class="block text-xs text-gray-600 mb-1">Total Credit ($)</label>
+                                                    <input type="number" step="0.01" value="0.70" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="call-total-credit">
                                                 </div>
                                             </div>
                                             <div class="bg-white rounded p-2 text-sm">
-                                                <div class="flex justify-between">
-                                                    <span class="text-gray-600">Width:</span>
-                                                    <span class="font-semibold">5 pts</span>
+                                                <div class="flex justify-between mb-1">
+                                                    <span class="text-gray-600">Total Risk:</span>
+                                                    <span class="font-semibold text-red-600" id="call-total-risk">$430.00</span>
                                                 </div>
                                                 <div class="flex justify-between">
-                                                    <span class="text-gray-600">Net Credit:</span>
-                                                    <span class="font-semibold text-green-600">$0.70</span>
+                                                    <span class="text-gray-600">Distance from SPX:</span>
+                                                    <span class="font-semibold text-blue-600" id="call-distance">+13.80 pts (0.28%)</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -3505,9 +3495,9 @@ app.get('/', (c) => {
                                     <!-- Put Spread -->
                                     <div class="border-2 border-green-200 rounded-lg p-4 bg-green-50">
                                         <div class="flex items-center justify-between mb-3">
-                                            <h4 class="font-bold text-gray-800">Put Spread</h4>
+                                            <h4 class="font-bold text-gray-800">Put Spread <span class="text-sm font-normal text-gray-600">(5 pts)</span></h4>
                                             <label class="flex items-center">
-                                                <input type="checkbox" checked class="mr-2">
+                                                <input type="checkbox" checked class="mr-2" id="enable-put-spread">
                                                 <span class="text-sm">Enable</span>
                                             </label>
                                         </div>
@@ -3515,31 +3505,21 @@ app.get('/', (c) => {
                                             <div class="grid grid-cols-2 gap-2">
                                                 <div>
                                                     <label class="block text-xs text-gray-600 mb-1">Short Put Strike</label>
-                                                    <input type="number" step="0.01" value="4840" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                    <input type="number" step="0.01" value="4840" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="put-short-strike">
                                                 </div>
                                                 <div>
-                                                    <label class="block text-xs text-gray-600 mb-1">Premium</label>
-                                                    <input type="number" step="0.01" value="2.00" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                                                </div>
-                                            </div>
-                                            <div class="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <label class="block text-xs text-gray-600 mb-1">Long Put Strike</label>
-                                                    <input type="number" step="0.01" value="4835" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                                                </div>
-                                                <div>
-                                                    <label class="block text-xs text-gray-600 mb-1">Premium</label>
-                                                    <input type="number" step="0.01" value="1.20" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                    <label class="block text-xs text-gray-600 mb-1">Total Credit ($)</label>
+                                                    <input type="number" step="0.01" value="0.80" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="put-total-credit">
                                                 </div>
                                             </div>
                                             <div class="bg-white rounded p-2 text-sm">
-                                                <div class="flex justify-between">
-                                                    <span class="text-gray-600">Width:</span>
-                                                    <span class="font-semibold">5 pts</span>
+                                                <div class="flex justify-between mb-1">
+                                                    <span class="text-gray-600">Total Risk:</span>
+                                                    <span class="font-semibold text-red-600" id="put-total-risk">$420.00</span>
                                                 </div>
                                                 <div class="flex justify-between">
-                                                    <span class="text-gray-600">Net Credit:</span>
-                                                    <span class="font-semibold text-green-600">$0.80</span>
+                                                    <span class="text-gray-600">Distance from SPX:</span>
+                                                    <span class="font-semibold text-blue-600" id="put-distance">-16.20 pts (0.33%)</span>
                                                 </div>
                                             </div>
                                         </div>
