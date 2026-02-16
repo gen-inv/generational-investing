@@ -3231,7 +3231,7 @@ app.get('/', (c) => {
                             <!-- Filter Buttons -->
                             <div class="mb-6 flex gap-2">
                                 <button class="px-4 py-2 bg-orange-600 text-white rounded-lg font-semibold">All Time</button>
-                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">Last 50 Trades</button>
+                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300" id="dt-rolling-window-filter">Last 50 Trades</button>
                                 <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">This Month</button>
                                 <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">This Year</button>
                             </div>
@@ -3279,7 +3279,7 @@ app.get('/', (c) => {
                             
                             <!-- P/L Chart Placeholder -->
                             <div class="card mb-6">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4">P/L Trend (Last 50 Trades)</h3>
+                                <h3 class="text-xl font-bold text-gray-800 mb-4" id="dt-chart-title">P/L Trend (Last 50 Trades)</h3>
                                 <div class="bg-gray-50 rounded-lg p-8 text-center text-gray-500">
                                     <i class="fas fa-chart-line text-6xl mb-4"></i>
                                     <p>Chart visualization will be added when data is available</p>

@@ -405,6 +405,30 @@ function showDailyTradeTab(tabName) {
         activeTab.classList.add('active', 'text-orange-600', 'border-b-2', 'border-orange-600')
         activeTab.classList.remove('text-gray-600')
     }
+    
+    // Update rolling window labels when showing performance tab
+    if (tabName === 'performance') {
+        updateRollingWindowLabels()
+    }
+}
+
+// Update Performance tab labels with configured rolling window value
+function updateRollingWindowLabels() {
+    // Get rolling window value from configuration (default 50)
+    // TODO: This should be loaded from saved configuration when backend is implemented
+    const rollingWindow = 50
+    
+    // Update filter button text
+    const filterButton = document.getElementById('dt-rolling-window-filter')
+    if (filterButton) {
+        filterButton.textContent = `Last ${rollingWindow} Trades`
+    }
+    
+    // Update chart title
+    const chartTitle = document.getElementById('dt-chart-title')
+    if (chartTitle) {
+        chartTitle.textContent = `P/L Trend (Last ${rollingWindow} Trades)`
+    }
 }
 
 // ============================================================================
