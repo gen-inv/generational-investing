@@ -2593,6 +2593,154 @@ app.delete('/api/options/:id', authMiddleware, async (c) => {
 })
 
 // ============================================================================
+// DAILY TRADE CONFIG ROUTES
+// ============================================================================
+
+// Get user's daily trade configuration
+app.get('/api/daily-trade/config', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+
+    const result = await env.DB.prepare(`
+      SELECT * FROM daily_trade_config WHERE user_id = ?
+    `).bind(userId).first()
+
+    if (!result) {
+      // Return default configuration if none exists
+      return c.json({
+        max_contract_limit: 25,
+        rolling_profit_window: 50,
+        target_premium_min: 10.00,
+        target_premium_max: 15.00,
+        strike_width: 5,
+        default_contracts: 1,
+        profit_target_percent: 50,
+        atm_proximity_limit: 30,
+        time_exit: '14:00:00',
+        default_account_id: null
+      })
+    }
+
+    return c.json(result)
+  } catch (error) {
+    console.error('Error fetching daily trade config:', error)
+    return c.json({ error: 'Failed to fetch configuration' }, 500)
+  }
+})
+
+// Save or update user's daily trade configuration
+app.post('/api/daily-trade/config', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+    const data = await c.req.json()
+
+    // Check if config exists
+    const existing = await env.DB.prepare(`
+      SELECT id FROM daily_trade_config WHERE user_id = ?
+    `).bind(userId).first()
+
+    if (existing) {
+      // Update existing config
+      await env.DB.prepare(`
+        UPDATE daily_trade_config SET
+          max_contract_limit = ?,
+          rolling_profit_window = ?,
+          target_premium_min = ?,
+          target_premium_max = ?,
+          strike_width = ?,
+          default_contracts = ?,
+          profit_target_percent = ?,
+          atm_proximity_limit = ?,
+          time_exit = ?,
+          default_account_id = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
+      `).bind(
+        data.max_contract_limit,
+        data.rolling_profit_window,
+        data.target_premium_min,
+        data.target_premium_max,
+        data.strike_width,
+        data.default_contracts,
+        data.profit_target_percent,
+        data.atm_proximity_limit,
+        data.time_exit,
+        data.default_account_id || null,
+        userId
+      ).run()
+    } else {
+      // Insert new config
+      await env.DB.prepare(`
+        INSERT INTO daily_trade_config (
+          user_id,
+          max_contract_limit,
+          rolling_profit_window,
+          target_premium_min,
+          target_premium_max,
+          strike_width,
+          default_contracts,
+          profit_target_percent,
+          atm_proximity_limit,
+          time_exit,
+          default_account_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        userId,
+        data.max_contract_limit,
+        data.rolling_profit_window,
+        data.target_premium_min,
+        data.target_premium_max,
+        data.strike_width,
+        data.default_contracts,
+        data.profit_target_percent,
+        data.atm_proximity_limit,
+        data.time_exit,
+        data.default_account_id || null
+      ).run()
+    }
+
+    return c.json({ success: true, message: 'Configuration saved successfully' })
+  } catch (error) {
+    console.error('Error saving daily trade config:', error)
+    return c.json({ error: 'Failed to save configuration' }, 500)
+  }
+})
+
+// Reset configuration to defaults
+app.post('/api/daily-trade/config/reset', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+
+    await env.DB.prepare(`
+      DELETE FROM daily_trade_config WHERE user_id = ?
+    `).bind(userId).run()
+
+    return c.json({ 
+      success: true, 
+      message: 'Configuration reset to defaults',
+      config: {
+        max_contract_limit: 25,
+        rolling_profit_window: 50,
+        target_premium_min: 10.00,
+        target_premium_max: 15.00,
+        strike_width: 5,
+        default_contracts: 1,
+        profit_target_percent: 50,
+        atm_proximity_limit: 30,
+        time_exit: '14:00:00',
+        default_account_id: null
+      }
+    })
+  } catch (error) {
+    console.error('Error resetting daily trade config:', error)
+    return c.json({ error: 'Failed to reset configuration' }, 500)
+  }
+})
+
+// ============================================================================
 // P/L REPORTING ROUTES
 // ============================================================================
 
@@ -3134,12 +3282,12 @@ app.get('/', (c) => {
                                     <div class="space-y-4">
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Max Contract Limit (Absolute)</label>
-                                            <input type="number" value="25" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="25">
+                                            <input type="number" id="dt-max-contract-limit" value="25" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="25">
                                             <small class="text-gray-500">Maximum contracts allowed regardless of profit</small>
                                         </div>
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Rolling Profit Window (Number of Trades)</label>
-                                            <input type="number" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
+                                            <input type="number" id="dt-rolling-profit-window" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
                                             <small class="text-gray-500">Number of recent trades to calculate profit-based contract sizing</small>
                                         </div>
                                         <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -3162,17 +3310,17 @@ app.get('/', (c) => {
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Target Premium Credit Range ($)</label>
                                             <div class="grid grid-cols-2 gap-2">
-                                                <input type="number" step="0.01" value="10.00" class="px-4 py-2 border border-gray-300 rounded-lg" placeholder="Min">
-                                                <input type="number" step="0.01" value="15.00" class="px-4 py-2 border border-gray-300 rounded-lg" placeholder="Max">
+                                                <input type="number" step="0.01" id="dt-target-premium-min" value="10.00" class="px-4 py-2 border border-gray-300 rounded-lg" placeholder="Min">
+                                                <input type="number" step="0.01" id="dt-target-premium-max" value="15.00" class="px-4 py-2 border border-gray-300 rounded-lg" placeholder="Max">
                                             </div>
                                         </div>
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Strike Width (Points)</label>
-                                            <input type="number" value="5" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="5">
+                                            <input type="number" id="dt-strike-width" value="5" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="5">
                                         </div>
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Default Contracts</label>
-                                            <input type="number" value="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="1">
+                                            <input type="number" id="dt-default-contracts" value="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="1">
                                         </div>
                                     </div>
                                 </div>
@@ -3185,16 +3333,16 @@ app.get('/', (c) => {
                                     <div class="space-y-4">
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Profit Target (% of max profit)</label>
-                                            <input type="number" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
+                                            <input type="number" id="dt-profit-target-percent" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
                                         </div>
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">ATM Proximity Limit (Points from SPX)</label>
-                                            <input type="number" step="1" value="30" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="30">
+                                            <input type="number" step="1" id="dt-atm-proximity-limit" value="30" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="30">
                                             <small class="text-gray-500">Exit if SPX moves within this distance from your short strikes</small>
                                         </div>
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Time-based Exit (HH:MM MT)</label>
-                                            <input type="time" value="14:00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                            <input type="time" id="dt-time-exit" value="14:00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                                             <small class="text-gray-500">MT - Exit if no Profit Target/Proximity Limit hit</small>
                                         </div>
                                     </div>
@@ -3208,8 +3356,8 @@ app.get('/', (c) => {
                                     <div class="space-y-4">
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Default Account</label>
-                                            <select class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                                                <option>Select account...</option>
+                                            <select id="dt-default-account" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                                <option value="">Select account...</option>
                                             </select>
                                         </div>
                                     </div>
@@ -3217,10 +3365,10 @@ app.get('/', (c) => {
                             </div>
                             
                             <div class="mt-6 flex gap-4">
-                                <button class="btn-primary bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800">
+                                <button onclick="saveDailyTradeConfig()" class="btn-primary bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800">
                                     <i class="fas fa-save mr-2"></i>Save Configuration
                                 </button>
-                                <button class="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50">
+                                <button onclick="resetDailyTradeConfig()" class="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50">
                                     <i class="fas fa-undo mr-2"></i>Reset to Defaults
                                 </button>
                             </div>

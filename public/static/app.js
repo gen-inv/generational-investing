@@ -377,8 +377,9 @@ function showSection(sectionName) {
             loadClosedTrades()
             break
         case 'daily-trade':
-            // Show default tab (configuration)
+            // Show default tab (configuration) and load config
             showDailyTradeTab('config')
+            loadDailyTradeConfig()
             break
     }
 }
@@ -417,9 +418,9 @@ function showDailyTradeTab(tabName) {
 
 // Update Performance tab labels with configured rolling window value
 function updateRollingWindowLabels() {
-    // Get rolling window value from configuration (default 50)
-    // TODO: This should be loaded from saved configuration when backend is implemented
-    const rollingWindow = 50
+    // Get rolling window value from configuration form
+    const rollingWindowInput = document.getElementById('dt-rolling-profit-window')
+    const rollingWindow = rollingWindowInput ? parseInt(rollingWindowInput.value) : 50
     
     // Update filter button text
     const filterButton = document.getElementById('dt-rolling-window-filter')
@@ -524,6 +525,99 @@ function updatePutSpreadCalculations() {
         } else {
             distanceEl.className = 'font-semibold text-green-600'
         }
+    }
+}
+
+// ============================================================================
+// DAILY TRADE CONFIGURATION FUNCTIONS
+// ============================================================================
+
+// Load Daily Trade configuration
+async function loadDailyTradeConfig() {
+    try {
+        const response = await api.get('/api/daily-trade/config')
+        const config = response.data
+        
+        // Populate form fields
+        document.getElementById('dt-max-contract-limit').value = config.max_contract_limit || 25
+        document.getElementById('dt-rolling-profit-window').value = config.rolling_profit_window || 50
+        document.getElementById('dt-target-premium-min').value = config.target_premium_min || 10.00
+        document.getElementById('dt-target-premium-max').value = config.target_premium_max || 15.00
+        document.getElementById('dt-strike-width').value = config.strike_width || 5
+        document.getElementById('dt-default-contracts').value = config.default_contracts || 1
+        document.getElementById('dt-profit-target-percent').value = config.profit_target_percent || 50
+        document.getElementById('dt-atm-proximity-limit').value = config.atm_proximity_limit || 30
+        document.getElementById('dt-time-exit').value = config.time_exit ? config.time_exit.substring(0, 5) : '14:00'
+        
+        // Load account select
+        const accountSelect = document.getElementById('dt-default-account')
+        if (accountSelect && accountsList.length > 0) {
+            accountSelect.innerHTML = '<option value="">Select account...</option>' +
+                accountsList.map(acc => 
+                    `<option value="${acc.id}" ${acc.id === config.default_account_id ? 'selected' : ''}>${acc.account_name}</option>`
+                ).join('')
+        }
+        
+        // Update rolling window labels in Performance tab
+        updateRollingWindowLabels()
+        
+        console.log('Daily Trade config loaded successfully')
+    } catch (error) {
+        console.error('Error loading Daily Trade config:', error)
+        alert('Failed to load configuration. Using defaults.')
+    }
+}
+
+// Save Daily Trade configuration
+async function saveDailyTradeConfig() {
+    try {
+        const config = {
+            max_contract_limit: parseInt(document.getElementById('dt-max-contract-limit').value),
+            rolling_profit_window: parseInt(document.getElementById('dt-rolling-profit-window').value),
+            target_premium_min: parseFloat(document.getElementById('dt-target-premium-min').value),
+            target_premium_max: parseFloat(document.getElementById('dt-target-premium-max').value),
+            strike_width: parseInt(document.getElementById('dt-strike-width').value),
+            default_contracts: parseInt(document.getElementById('dt-default-contracts').value),
+            profit_target_percent: parseInt(document.getElementById('dt-profit-target-percent').value),
+            atm_proximity_limit: parseInt(document.getElementById('dt-atm-proximity-limit').value),
+            time_exit: document.getElementById('dt-time-exit').value + ':00',
+            default_account_id: document.getElementById('dt-default-account').value || null
+        }
+        
+        const response = await api.post('/api/daily-trade/config', config)
+        
+        if (response.data.success) {
+            alert('✅ Configuration saved successfully!')
+            // Update rolling window labels
+            updateRollingWindowLabels()
+        } else {
+            alert('Failed to save configuration')
+        }
+    } catch (error) {
+        console.error('Error saving Daily Trade config:', error)
+        alert('❌ Failed to save configuration. Please try again.')
+    }
+}
+
+// Reset Daily Trade configuration to defaults
+async function resetDailyTradeConfig() {
+    if (!confirm('Are you sure you want to reset all configuration to default values?')) {
+        return
+    }
+    
+    try {
+        const response = await api.post('/api/daily-trade/config/reset')
+        
+        if (response.data.success) {
+            // Reload the configuration
+            await loadDailyTradeConfig()
+            alert('✅ Configuration reset to defaults successfully!')
+        } else {
+            alert('Failed to reset configuration')
+        }
+    } catch (error) {
+        console.error('Error resetting Daily Trade config:', error)
+        alert('❌ Failed to reset configuration. Please try again.')
     }
 }
 
