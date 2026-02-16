@@ -373,6 +373,37 @@ function showSection(sectionName) {
         case 'reports':
             loadClosedTrades()
             break
+        case 'daily-trade':
+            // Show default tab (configuration)
+            showDailyTradeTab('config')
+            break
+    }
+}
+
+// ============================================================================
+// DAILY TRADE (0DTE) FUNCTIONS
+// ============================================================================
+
+function showDailyTradeTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.daily-trade-tab-content').forEach(content => {
+        content.classList.add('hidden')
+    })
+    
+    // Remove active class from all tab buttons
+    document.querySelectorAll('.daily-trade-tab').forEach(tab => {
+        tab.classList.remove('active', 'text-orange-600', 'border-b-2', 'border-orange-600')
+        tab.classList.add('text-gray-600')
+    })
+    
+    // Show selected tab content
+    document.getElementById(`dt-${tabName}-tab`).classList.remove('hidden')
+    
+    // Add active class to selected tab button
+    const activeTab = document.querySelector(`[data-tab="${tabName}"]`)
+    if (activeTab) {
+        activeTab.classList.add('active', 'text-orange-600', 'border-b-2', 'border-orange-600')
+        activeTab.classList.remove('text-gray-600')
     }
 }
 

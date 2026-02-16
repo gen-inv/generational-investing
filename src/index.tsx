@@ -2862,6 +2862,9 @@ app.get('/', (c) => {
                             <a href="#" onclick="showSection('options')" class="nav-link" data-section="options">
                                 <i class="fas fa-layer-group mr-2"></i>Options Trades
                             </a>
+                            <a href="#" onclick="showSection('daily-trade')" class="nav-link" data-section="daily-trade">
+                                <i class="fas fa-chart-line mr-2 text-orange-400"></i>Daily Trade
+                            </a>
                             <a href="#" onclick="showSection('reports')" class="nav-link" data-section="reports">
                                 <i class="fas fa-file-alt mr-2"></i>Reports
                             </a>
@@ -3095,6 +3098,578 @@ app.get('/', (c) => {
                                         <!-- Dynamic content -->
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Daily Trade Section (0DTE Trading) -->
+                    <div id="daily-trade-section" class="section hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-3xl font-bold text-orange-600">0DTE SPX Trading</h2>
+                        </div>
+                        
+                        <!-- Sub-tabs -->
+                        <div class="mb-6 border-b border-gray-200">
+                            <nav class="flex gap-4">
+                                <button onclick="showDailyTradeTab('config')" class="daily-trade-tab active px-6 py-3 font-semibold text-orange-600 border-b-2 border-orange-600" data-tab="config">
+                                    <i class="fas fa-cog mr-2"></i>Configuration
+                                </button>
+                                <button onclick="showDailyTradeTab('performance')" class="daily-trade-tab px-6 py-3 font-semibold text-gray-600 hover:text-orange-600" data-tab="performance">
+                                    <i class="fas fa-chart-bar mr-2"></i>Performance
+                                </button>
+                                <button onclick="showDailyTradeTab('today')" class="daily-trade-tab px-6 py-3 font-semibold text-gray-600 hover:text-orange-600" data-tab="today">
+                                    <i class="fas fa-bullseye mr-2"></i>Today's Trading
+                                </button>
+                            </nav>
+                        </div>
+                        
+                        <!-- Configuration Tab -->
+                        <div id="dt-config-tab" class="daily-trade-tab-content">
+                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <!-- Trading Rules & Risk Management -->
+                                <div class="card">
+                                    <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-shield-alt text-orange-600 mr-2"></i>Trading Rules & Risk Management
+                                    </h3>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Max Daily Trades</label>
+                                            <input type="number" value="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="3">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Max Contracts Per Trade</label>
+                                            <input type="number" value="2" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="2">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Max Daily Loss Limit ($)</label>
+                                            <input type="number" value="500" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="500">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Max Risk Per Trade ($)</label>
+                                            <input type="number" value="400" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="400">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Default Entry Parameters -->
+                                <div class="card">
+                                    <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-sliders-h text-orange-600 mr-2"></i>Default Entry Parameters
+                                    </h3>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Target Premium Credit Range ($)</label>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <input type="number" step="0.01" value="10.00" class="px-4 py-2 border border-gray-300 rounded-lg" placeholder="Min">
+                                                <input type="number" step="0.01" value="15.00" class="px-4 py-2 border border-gray-300 rounded-lg" placeholder="Max">
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Strike Width (Points)</label>
+                                            <input type="number" value="5" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="5">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Default Contracts</label>
+                                            <input type="number" value="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="1">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Commission Per Contract ($)</label>
+                                            <input type="number" step="0.01" value="0.65" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="0.65">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Exit Rules -->
+                                <div class="card">
+                                    <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-sign-out-alt text-orange-600 mr-2"></i>Exit Rules
+                                    </h3>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Profit Target (% of max profit)</label>
+                                            <input type="number" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Stop Loss (multiplier of credit)</label>
+                                            <input type="number" step="0.1" value="2.0" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="2.0">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Time-based Exit (HH:MM)</label>
+                                            <input type="time" value="14:00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                            <small class="text-gray-500">ET - Exit if no target/stop hit</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Account Settings -->
+                                <div class="card">
+                                    <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-wallet text-orange-600 mr-2"></i>Account Settings
+                                    </h3>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Default Account</label>
+                                            <select class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                                <option>Select account...</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mt-6 flex gap-4">
+                                <button class="btn-primary bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-700 hover:to-orange-800">
+                                    <i class="fas fa-save mr-2"></i>Save Configuration
+                                </button>
+                                <button class="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50">
+                                    <i class="fas fa-undo mr-2"></i>Reset to Defaults
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Performance Tab -->
+                        <div id="dt-performance-tab" class="daily-trade-tab-content hidden">
+                            <!-- Filter Buttons -->
+                            <div class="mb-6 flex gap-2">
+                                <button class="px-4 py-2 bg-orange-600 text-white rounded-lg font-semibold">All Time</button>
+                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">Last 50 Trades</button>
+                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">This Month</button>
+                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">This Year</button>
+                            </div>
+                            
+                            <!-- Key Metrics -->
+                            <div class="card mb-6">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">Key Metrics</h3>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-gray-900">156</div>
+                                        <div class="text-sm text-gray-600">Total Trades</div>
+                                    </div>
+                                    <div class="text-center p-4 bg-green-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-green-600">73.1%</div>
+                                        <div class="text-sm text-gray-600">Win Rate</div>
+                                    </div>
+                                    <div class="text-center p-4 bg-blue-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-blue-600">$287.50</div>
+                                        <div class="text-sm text-gray-600">Avg Win</div>
+                                    </div>
+                                    <div class="text-center p-4 bg-red-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-red-600">-$412.30</div>
+                                        <div class="text-sm text-gray-600">Avg Loss</div>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                                    <div class="text-center p-4 bg-green-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-green-600">+$14,267.80</div>
+                                        <div class="text-sm text-gray-600">Net P/L</div>
+                                    </div>
+                                    <div class="text-center p-4 bg-gray-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-gray-900">+$91.46</div>
+                                        <div class="text-sm text-gray-600">Avg P/L</div>
+                                    </div>
+                                    <div class="text-center p-4 bg-blue-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-blue-600">+$485.00</div>
+                                        <div class="text-sm text-gray-600">Best Trade</div>
+                                    </div>
+                                    <div class="text-center p-4 bg-red-50 rounded-lg">
+                                        <div class="text-2xl font-bold text-red-600">-$987.50</div>
+                                        <div class="text-sm text-gray-600">Worst Trade</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- P/L Chart Placeholder -->
+                            <div class="card mb-6">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">P/L Trend (Last 50 Trades)</h3>
+                                <div class="bg-gray-50 rounded-lg p-8 text-center text-gray-500">
+                                    <i class="fas fa-chart-line text-6xl mb-4"></i>
+                                    <p>Chart visualization will be added when data is available</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Recent Trade History -->
+                            <div class="card mb-6">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">Recent Trade History</h3>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead>
+                                            <tr class="bg-gray-100">
+                                                <th class="px-4 py-3 text-left">Date</th>
+                                                <th class="px-4 py-3 text-left">Entry Time</th>
+                                                <th class="px-4 py-3 text-left">Exit Time</th>
+                                                <th class="px-4 py-3 text-right">Premium</th>
+                                                <th class="px-4 py-3 text-center">Contracts</th>
+                                                <th class="px-4 py-3 text-right">P/L</th>
+                                                <th class="px-4 py-3 text-center">Result</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                                <td class="px-4 py-3">2026-02-14</td>
+                                                <td class="px-4 py-3">10:15 AM</td>
+                                                <td class="px-4 py-3">2:30 PM</td>
+                                                <td class="px-4 py-3 text-right">$12.50</td>
+                                                <td class="px-4 py-3 text-center">2</td>
+                                                <td class="px-4 py-3 text-right text-green-600 font-semibold">+$312.50</td>
+                                                <td class="px-4 py-3 text-center">✅</td>
+                                            </tr>
+                                            <tr class="border-b border-gray-200 hover:bg-gray-50 bg-gray-50">
+                                                <td class="px-4 py-3" colspan="7" class="text-center text-gray-500 italic">More trades will appear here...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="mt-4 flex gap-4">
+                                    <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                                        <i class="fas fa-list mr-2"></i>View Full History
+                                    </button>
+                                    <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                                        <i class="fas fa-download mr-2"></i>Export to CSV
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Day of Week Statistics -->
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">Statistics by Day of Week</h3>
+                                <div class="space-y-3">
+                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                        <div class="font-semibold">Monday</div>
+                                        <div class="text-sm text-gray-600">32 trades</div>
+                                        <div class="text-sm font-semibold text-gray-700">68.8% win</div>
+                                        <div class="text-sm font-semibold text-green-600">+$1,245</div>
+                                        <div class="text-sm text-gray-600">Avg: +$38.91</div>
+                                    </div>
+                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                        <div class="font-semibold">Tuesday</div>
+                                        <div class="text-sm text-gray-600">28 trades</div>
+                                        <div class="text-sm font-semibold text-gray-700">75.0% win</div>
+                                        <div class="text-sm font-semibold text-green-600">+$2,156</div>
+                                        <div class="text-sm text-gray-600">Avg: +$77.00</div>
+                                    </div>
+                                    <div class="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
+                                        <div class="font-semibold">Wednesday</div>
+                                        <div class="text-sm text-gray-600">35 trades</div>
+                                        <div class="text-sm font-semibold text-green-700">77.1% win</div>
+                                        <div class="text-sm font-semibold text-green-600">+$3,987</div>
+                                        <div class="text-sm text-gray-600">Avg: +$113.91</div>
+                                    </div>
+                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                        <div class="font-semibold">Thursday</div>
+                                        <div class="text-sm text-gray-600">31 trades</div>
+                                        <div class="text-sm font-semibold text-gray-700">71.0% win</div>
+                                        <div class="text-sm font-semibold text-green-600">+$2,234</div>
+                                        <div class="text-sm text-gray-600">Avg: +$72.06</div>
+                                    </div>
+                                    <div class="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
+                                        <div class="font-semibold">Friday 📈</div>
+                                        <div class="text-sm text-gray-600">30 trades</div>
+                                        <div class="text-sm font-semibold text-green-700">70.0% win</div>
+                                        <div class="text-sm font-semibold text-green-600">+$4,645</div>
+                                        <div class="text-sm text-gray-600">Avg: +$154.83</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Today's Trading Tab -->
+                        <div id="dt-today-tab" class="daily-trade-tab-content hidden">
+                            <!-- Daily Summary -->
+                            <div class="card mb-6 bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200">
+                                <div class="flex justify-between items-center mb-4">
+                                    <div>
+                                        <h3 class="text-2xl font-bold text-gray-900">SPX: <span class="text-green-600">4,856.20</span> <span class="text-sm text-green-600">↑ +12.45 (0.26%)</span></h3>
+                                        <p class="text-sm text-gray-600">Time: 1:23 PM ET</p>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-green-600">+$485.50</div>
+                                        <div class="text-sm text-gray-600">Today's P/L 💰</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-gray-900">2/3</div>
+                                        <div class="text-sm text-gray-600">Trades</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-orange-600">$225/$500</div>
+                                        <div class="text-sm text-gray-600">Risk Used</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-blue-600">1</div>
+                                        <div class="text-sm text-gray-600">Open Positions</div>
+                                    </div>
+                                    <div class="text-center">
+                                        <div class="text-2xl font-bold text-green-600">100%</div>
+                                        <div class="text-sm text-gray-600">Win Rate Today</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Quick Entry Form -->
+                            <div class="card mb-6">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-plus-circle text-orange-600 mr-2"></i>Quick Entry Form
+                                </h3>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                    <div>
+                                        <label class="block text-gray-700 font-semibold mb-2">Entry Time</label>
+                                        <input type="time" value="13:23" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    </div>
+                                    <div>
+                                        <label class="block text-gray-700 font-semibold mb-2">Contracts</label>
+                                        <div class="flex gap-2">
+                                            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">-</button>
+                                            <input type="number" value="1" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-center">
+                                            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">+</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Strategy Type Toggle -->
+                                <div class="mb-4">
+                                    <label class="block text-gray-700 font-semibold mb-2">Strategy Type</label>
+                                    <div class="flex gap-2">
+                                        <button class="flex-1 px-4 py-2 bg-orange-600 text-white rounded-lg font-semibold">Iron Condor (Both Sides)</button>
+                                        <button class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">Credit Spread (One Side)</button>
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <!-- Call Spread -->
+                                    <div class="border-2 border-red-200 rounded-lg p-4 bg-red-50">
+                                        <div class="flex items-center justify-between mb-3">
+                                            <h4 class="font-bold text-gray-800">Call Spread</h4>
+                                            <label class="flex items-center">
+                                                <input type="checkbox" checked class="mr-2">
+                                                <span class="text-sm">Enable</span>
+                                            </label>
+                                        </div>
+                                        <div class="space-y-3">
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label class="block text-xs text-gray-600 mb-1">Short Call Strike</label>
+                                                    <input type="number" step="0.01" value="4870" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs text-gray-600 mb-1">Premium</label>
+                                                    <input type="number" step="0.01" value="1.50" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label class="block text-xs text-gray-600 mb-1">Long Call Strike</label>
+                                                    <input type="number" step="0.01" value="4875" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs text-gray-600 mb-1">Premium</label>
+                                                    <input type="number" step="0.01" value="0.80" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                            </div>
+                                            <div class="bg-white rounded p-2 text-sm">
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-600">Width:</span>
+                                                    <span class="font-semibold">5 pts</span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-600">Net Credit:</span>
+                                                    <span class="font-semibold text-green-600">$0.70</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Put Spread -->
+                                    <div class="border-2 border-green-200 rounded-lg p-4 bg-green-50">
+                                        <div class="flex items-center justify-between mb-3">
+                                            <h4 class="font-bold text-gray-800">Put Spread</h4>
+                                            <label class="flex items-center">
+                                                <input type="checkbox" checked class="mr-2">
+                                                <span class="text-sm">Enable</span>
+                                            </label>
+                                        </div>
+                                        <div class="space-y-3">
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label class="block text-xs text-gray-600 mb-1">Short Put Strike</label>
+                                                    <input type="number" step="0.01" value="4840" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs text-gray-600 mb-1">Premium</label>
+                                                    <input type="number" step="0.01" value="2.00" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <div>
+                                                    <label class="block text-xs text-gray-600 mb-1">Long Put Strike</label>
+                                                    <input type="number" step="0.01" value="4835" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                                <div>
+                                                    <label class="block text-xs text-gray-600 mb-1">Premium</label>
+                                                    <input type="number" step="0.01" value="1.20" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                </div>
+                                            </div>
+                                            <div class="bg-white rounded p-2 text-sm">
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-600">Width:</span>
+                                                    <span class="font-semibold">5 pts</span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-600">Net Credit:</span>
+                                                    <span class="font-semibold text-green-600">$0.80</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Trade Summary -->
+                                <div class="mt-4 p-4 bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg border border-orange-200">
+                                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
+                                        <div>
+                                            <div class="text-sm text-gray-600">Total Premium Credit</div>
+                                            <div class="text-xl font-bold text-green-600">$15.00</div>
+                                            <div class="text-xs text-gray-500">per contract</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm text-gray-600">Max Risk</div>
+                                            <div class="text-xl font-bold text-red-600">$485.00</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm text-gray-600">Commission</div>
+                                            <div class="text-xl font-bold text-gray-700">$2.60</div>
+                                        </div>
+                                        <div>
+                                            <div class="text-sm text-gray-600">Net Credit</div>
+                                            <div class="text-xl font-bold text-green-600">$1,497.40</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Notes -->
+                                <div class="mt-4">
+                                    <label class="block text-gray-700 font-semibold mb-2">Trade Notes (Optional)</label>
+                                    <textarea class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2" placeholder="Add notes about market conditions, reasoning, etc."></textarea>
+                                </div>
+                                
+                                <!-- Action Buttons -->
+                                <div class="mt-4 flex gap-4">
+                                    <button class="flex-1 bg-gradient-to-r from-orange-600 to-orange-700 text-white px-6 py-3 rounded-lg font-bold hover:from-orange-700 hover:to-orange-800">
+                                        <i class="fas fa-rocket mr-2"></i>Enter Trade
+                                    </button>
+                                    <button class="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50">
+                                        <i class="fas fa-redo mr-2"></i>Reset Form
+                                    </button>
+                                    <button class="px-6 py-3 border-2 border-orange-300 text-orange-700 rounded-lg font-semibold hover:bg-orange-50">
+                                        <i class="fas fa-cog mr-2"></i>Load Config
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Active Positions -->
+                            <div class="card mb-6">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-chart-line text-blue-600 mr-2"></i>Active Positions
+                                </h3>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead>
+                                            <tr class="bg-gray-100">
+                                                <th class="px-4 py-3 text-left">Entry</th>
+                                                <th class="px-4 py-3 text-left">SC/LC Strike</th>
+                                                <th class="px-4 py-3 text-left">SP/LP Strike</th>
+                                                <th class="px-4 py-3 text-right">Premium</th>
+                                                <th class="px-4 py-3 text-center">Contracts</th>
+                                                <th class="px-4 py-3 text-right">Current P/L</th>
+                                                <th class="px-4 py-3 text-center">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                                <td class="px-4 py-3">10:15 AM</td>
+                                                <td class="px-4 py-3">4865 / 4870</td>
+                                                <td class="px-4 py-3">4845 / 4840</td>
+                                                <td class="px-4 py-3 text-right">$12.50</td>
+                                                <td class="px-4 py-3 text-center font-semibold">1</td>
+                                                <td class="px-4 py-3 text-right">
+                                                    <div class="text-green-600 font-bold">+$187.50</div>
+                                                    <div class="text-xs text-gray-500">(60%)</div>
+                                                </td>
+                                                <td class="px-4 py-3 text-center">
+                                                    <button class="text-blue-600 hover:text-blue-800 mr-2" title="Monitor Position">
+                                                        <i class="fas fa-eye"></i>
+                                                    </button>
+                                                    <button class="text-green-600 hover:text-green-800 mr-2" title="Close Trade">
+                                                        <i class="fas fa-lock"></i>
+                                                    </button>
+                                                    <button class="text-gray-600 hover:text-gray-800" title="Add Notes">
+                                                        <i class="fas fa-sticky-note"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <!-- Closed Positions Today -->
+                            <div class="card mb-6">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-check-circle text-green-600 mr-2"></i>Closed Positions Today
+                                </h3>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead>
+                                            <tr class="bg-gray-100">
+                                                <th class="px-4 py-3 text-left">Entry</th>
+                                                <th class="px-4 py-3 text-left">Exit</th>
+                                                <th class="px-4 py-3 text-left">SC/LC Strike</th>
+                                                <th class="px-4 py-3 text-left">SP/LP Strike</th>
+                                                <th class="px-4 py-3 text-right">Open</th>
+                                                <th class="px-4 py-3 text-right">Close</th>
+                                                <th class="px-4 py-3 text-right">P/L</th>
+                                                <th class="px-4 py-3 text-center">Result</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                                                <td class="px-4 py-3">10:15 AM</td>
+                                                <td class="px-4 py-3">12:30 PM</td>
+                                                <td class="px-4 py-3">4860 / 4865</td>
+                                                <td class="px-4 py-3">4845 / 4840</td>
+                                                <td class="px-4 py-3 text-right">$14.00</td>
+                                                <td class="px-4 py-3 text-right">$7.00</td>
+                                                <td class="px-4 py-3 text-right">
+                                                    <div class="text-green-600 font-bold">+$298.00</div>
+                                                    <div class="text-xs text-gray-500">(50%)</div>
+                                                </td>
+                                                <td class="px-4 py-3 text-center">✅</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <!-- Trade Journal -->
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-book text-orange-600 mr-2"></i>Trade Journal (Optional)
+                                </h3>
+                                <div class="space-y-2 mb-4">
+                                    <div class="p-3 bg-gray-50 rounded-lg text-sm">
+                                        <span class="font-semibold">10:15 AM</span> - Entered IC, SPX trending up, low volatility
+                                    </div>
+                                    <div class="p-3 bg-gray-50 rounded-lg text-sm">
+                                        <span class="font-semibold">12:30 PM</span> - Closed for 50% profit target, reduced risk
+                                    </div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <input type="text" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" placeholder="Add journal entry...">
+                                    <button class="px-6 py-2 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700">
+                                        <i class="fas fa-plus mr-2"></i>Add
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
