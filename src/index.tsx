@@ -3129,23 +3129,24 @@ app.get('/', (c) => {
                                 <!-- Trading Rules & Risk Management -->
                                 <div class="card">
                                     <h3 class="text-xl font-bold text-gray-800 mb-4">
-                                        <i class="fas fa-shield-alt text-orange-600 mr-2"></i>Trading Rules & Risk Management
+                                        <i class="fas fa-shield-alt text-orange-600 mr-2"></i>Risk Management
                                     </h3>
                                     <div class="space-y-4">
-                                        <div>
-                                            <label class="block text-gray-700 font-semibold mb-2">Max Daily Trades</label>
-                                            <input type="number" value="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="3">
-                                        </div>
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Max Contract Limit (Absolute)</label>
                                             <input type="number" value="25" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="25">
                                             <small class="text-gray-500">Maximum contracts allowed regardless of profit</small>
                                         </div>
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Rolling Profit Window (Number of Trades)</label>
+                                            <input type="number" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
+                                            <small class="text-gray-500">Number of recent trades to calculate profit-based contract sizing</small>
+                                        </div>
                                         <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                                             <div class="flex items-start">
                                                 <i class="fas fa-info-circle text-blue-600 mr-2 mt-1"></i>
                                                 <div class="text-sm text-gray-700">
-                                                    <strong>Profit-Based Contract Sizing:</strong> Contract limit per trade is calculated based on profit from last 50 trades (rolling). Minimum starts at 1 contract. Max risk per trade is auto-calculated each time based on configured credit strike width. <em>No max daily loss limit.</em>
+                                                    <strong>Profit-Based Contract Sizing:</strong> Contract limit per trade is calculated based on profit from the configured rolling window of recent trades. Minimum starts at 1 contract. Max risk per trade is auto-calculated each time based on configured credit strike width. <em>No daily trade maximums or daily loss limits.</em>
                                                 </div>
                                             </div>
                                         </div>
@@ -3172,10 +3173,6 @@ app.get('/', (c) => {
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Default Contracts</label>
                                             <input type="number" value="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="1">
-                                        </div>
-                                        <div>
-                                            <label class="block text-gray-700 font-semibold mb-2">Commission Per Contract ($)</label>
-                                            <input type="number" step="0.01" value="0.65" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="0.65">
                                         </div>
                                     </div>
                                 </div>
