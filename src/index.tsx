@@ -3137,16 +3137,17 @@ app.get('/', (c) => {
                                             <input type="number" value="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="3">
                                         </div>
                                         <div>
-                                            <label class="block text-gray-700 font-semibold mb-2">Max Contracts Per Trade</label>
-                                            <input type="number" value="2" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="2">
+                                            <label class="block text-gray-700 font-semibold mb-2">Max Contract Limit (Absolute)</label>
+                                            <input type="number" value="25" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="25">
+                                            <small class="text-gray-500">Maximum contracts allowed regardless of profit</small>
                                         </div>
-                                        <div>
-                                            <label class="block text-gray-700 font-semibold mb-2">Max Daily Loss Limit ($)</label>
-                                            <input type="number" value="500" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="500">
-                                        </div>
-                                        <div>
-                                            <label class="block text-gray-700 font-semibold mb-2">Max Risk Per Trade ($)</label>
-                                            <input type="number" value="400" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="400">
+                                        <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                            <div class="flex items-start">
+                                                <i class="fas fa-info-circle text-blue-600 mr-2 mt-1"></i>
+                                                <div class="text-sm text-gray-700">
+                                                    <strong>Profit-Based Contract Sizing:</strong> Contract limit per trade is calculated based on profit from last 50 trades (rolling). Minimum starts at 1 contract. Max risk per trade is auto-calculated each time based on configured credit strike width. <em>No max daily loss limit.</em>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -3190,13 +3191,14 @@ app.get('/', (c) => {
                                             <input type="number" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
                                         </div>
                                         <div>
-                                            <label class="block text-gray-700 font-semibold mb-2">Stop Loss (multiplier of credit)</label>
-                                            <input type="number" step="0.1" value="2.0" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="2.0">
+                                            <label class="block text-gray-700 font-semibold mb-2">ATM Proximity Limit (Points from SPX)</label>
+                                            <input type="number" step="1" value="30" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="30">
+                                            <small class="text-gray-500">Exit if SPX moves within this distance from your short strikes</small>
                                         </div>
                                         <div>
-                                            <label class="block text-gray-700 font-semibold mb-2">Time-based Exit (HH:MM)</label>
+                                            <label class="block text-gray-700 font-semibold mb-2">Time-based Exit (HH:MM MT)</label>
                                             <input type="time" value="14:00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                                            <small class="text-gray-500">ET - Exit if no target/stop hit</small>
+                                            <small class="text-gray-500">MT - Exit if no Profit Target/Proximity Limit hit</small>
                                         </div>
                                     </div>
                                 </div>
