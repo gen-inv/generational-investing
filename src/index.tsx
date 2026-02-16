@@ -3375,33 +3375,56 @@ app.get('/', (c) => {
                         <div id="dt-today-tab" class="daily-trade-tab-content hidden">
                             <!-- Daily Summary -->
                             <div class="card mb-6 bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200">
-                                <div class="flex justify-between items-center mb-4">
-                                    <div>
-                                        <h3 class="text-2xl font-bold text-gray-900">SPX: <span class="text-green-600">4,856.20</span> <span class="text-sm text-green-600">↑ +12.45 (0.26%)</span></h3>
-                                        <p class="text-sm text-gray-600">Time: 1:23 PM ET</p>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <!-- SPX Price -->
+                                    <div class="text-center">
+                                        <h3 class="text-sm font-semibold text-gray-600 mb-2">SPX Price</h3>
+                                        <div class="text-3xl font-bold text-gray-900">4,856.20</div>
+                                        <div class="text-sm text-green-600 mt-1">↑ +12.45 (0.26%)</div>
+                                        <div class="text-xs text-gray-500 mt-1">1:23 PM ET</div>
+                                    </div>
+                                    
+                                    <!-- Open Trade Details -->
+                                    <div class="md:col-span-2 border-l-2 border-orange-200 pl-6">
+                                        <h3 class="text-sm font-semibold text-gray-600 mb-3">Open Position</h3>
+                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div>
+                                                <div class="text-xs text-gray-600 mb-1">Short Call Strike</div>
+                                                <div class="text-xl font-bold text-red-600">4870</div>
+                                                <div class="text-xs text-green-600 mt-1">0.28% OTM</div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs text-gray-600 mb-1">Short Put Strike</div>
+                                                <div class="text-xl font-bold text-green-600">4840</div>
+                                                <div class="text-xs text-green-600 mt-1">0.33% OTM</div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs text-gray-600 mb-1">Current Risk</div>
+                                                <div class="text-xl font-bold text-orange-600">$485</div>
+                                                <div class="text-xs text-gray-500 mt-1">Per contract</div>
+                                            </div>
+                                            <div>
+                                                <div class="text-xs text-gray-600 mb-1">Total Risk</div>
+                                                <div class="text-xl font-bold text-orange-700">$485</div>
+                                                <div class="text-xs text-gray-500 mt-1">1 contract</div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                            <div class="flex items-center text-xs text-gray-700">
+                                                <i class="fas fa-info-circle text-blue-600 mr-2"></i>
+                                                <span><strong>Strategy:</strong> Iron Condor | <strong>Credit:</strong> $15.00 | <strong>Entry:</strong> 9:30 AM</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-4">
-                                    <div class="text-center">
-                                        <div class="text-2xl font-bold text-green-600">+$485.50</div>
-                                        <div class="text-sm text-gray-600">Today's P/L 💰</div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-2xl font-bold text-gray-900">2/3</div>
-                                        <div class="text-sm text-gray-600">Trades</div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-2xl font-bold text-orange-600">$225/$500</div>
-                                        <div class="text-sm text-gray-600">Risk Used</div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-2xl font-bold text-blue-600">1</div>
-                                        <div class="text-sm text-gray-600">Open Positions</div>
-                                    </div>
-                                    <div class="text-center">
-                                        <div class="text-2xl font-bold text-green-600">100%</div>
-                                        <div class="text-sm text-gray-600">Win Rate Today</div>
-                                    </div>
+                                
+                                <!-- No Open Position State (hidden by default, show when no open trades) -->
+                                <div class="hidden text-center py-6">
+                                    <h3 class="text-sm font-semibold text-gray-600 mb-2">SPX Price</h3>
+                                    <div class="text-3xl font-bold text-gray-900">4,856.20</div>
+                                    <div class="text-sm text-green-600 mt-1">↑ +12.45 (0.26%)</div>
+                                    <div class="text-xs text-gray-500 mt-1">1:23 PM ET</div>
+                                    <p class="text-gray-500 italic mt-4">No open positions</p>
                                 </div>
                             </div>
                             
