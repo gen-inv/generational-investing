@@ -6961,12 +6961,20 @@ async function submitCloseTrade(event) {
         const tradeId = document.getElementById('close-trade-id').value
         const trade = allTradesData.find(t => t.id == tradeId)
         
+        const exitTime = document.getElementById('close-exit-time').value
         const exitCost = parseFloat(document.getElementById('close-exit-cost').value) || 0
+        const closeCommission = parseFloat(document.getElementById('close-commission').value) || 0
+        
+        // Validate required fields
+        if (!exitTime) {
+            alert('Please enter an exit time')
+            return
+        }
         
         const closeData = {
-            exit_time: document.getElementById('close-exit-time').value,
+            exit_time: exitTime,
             exit_cost: exitCost,
-            close_commission: parseFloat(document.getElementById('close-commission').value),
+            close_commission: closeCommission,
             exit_reason: document.getElementById('close-exit-reason').value,
             notes: document.getElementById('close-trade-notes').value
         }
