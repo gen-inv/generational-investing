@@ -6447,3 +6447,415 @@ function resetDailyTradeForm() {
     showNotification('Form reset', 'info')
 }
 
+// Full History Modal Functions
+let allTradesData = []
+let filteredTradesData = []
+
+async function openFullHistoryModal() {
+    const modal = document.getElementById('full-history-modal')
+    modal.classList.remove('hidden')
+    await loadFullHistory()
+}
+
+function closeFullHistoryModal() {
+    const modal = document.getElementById('full-history-modal')
+    modal.classList.add('hidden')
+}
+
+async function loadFullHistory() {
+    try {
+        const response = await api.get('/api/daily-trades')
+        allTradesData = response.data.trades || []
+        filteredTradesData = allTradesData
+        renderFullHistory()
+    } catch (error) {
+        console.error('Error loading full history:', error)
+        const tbody = document.getElementById('full-history-tbody')
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="px-4 py-8 text-center text-red-500">
+                    Failed to load trade history. Please try again.
+                </td>
+            </tr>
+        `
+    }
+}
+
+function filterFullHistory() {
+    const statusFilter = document.getElementById('history-status-filter').value
+    const searchText = document.getElementById('history-search').value.toLowerCase()
+    
+    filteredTradesData = allTradesData.filter(trade => {
+        // Status filter
+        if (statusFilter === 'closed' && trade.is_open) return false
+        if (statusFilter === 'open' && !trade.is_open) return false
+        
+        // Search filter
+        if (searchText) {
+            const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor' 
+                : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Spread'
+                : 'Put Spread'
+            
+            const searchable = [
+                trade.trade_date,
+                strategyLabel,
+                trade.notes || '',
+                trade.exit_reason || ''
+            ].join(' ').toLowerCase()
+            
+            if (!searchable.includes(searchText)) return false
+        }
+        
+        return true
+    })
+    
+    renderFullHistory()
+}
+
+function renderFullHistory() {
+    const tbody = document.getElementById('full-history-tbody')
+    
+    if (filteredTradesData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="px-4 py-8 text-center text-gray-500 italic">
+                    No trades found matching your filters
+                </td>
+            </tr>
+        `
+        return
+    }
+    
+    tbody.innerHTML = filteredTradesData.map(trade => {
+        const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor' 
+            : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Spread'
+            : 'Put Spread'
+        
+        const entryTime = trade.entry_time ? trade.entry_time.substring(0, 5) : '-'
+        const exitTime = trade.exit_time ? trade.exit_time.substring(0, 5) : '-'
+        
+        let statusBadge = ''
+        let plDisplay = '-'
+        let plColor = 'text-gray-600'
+        
+        if (trade.is_open) {
+            statusBadge = '<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">Open</span>'
+        } else {
+            const plColor = trade.profit_loss >= 0 ? 'text-green-600' : 'text-red-600'
+            const plSign = trade.profit_loss >= 0 ? '+' : ''
+            plDisplay = `<span class="${plColor} font-semibold">${plSign}${formatCurrency(trade.profit_loss)}</span>`
+            const statusIcon = trade.profit_loss >= 0 ? '✅' : '❌'
+            statusBadge = `<span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold">${statusIcon} Closed</span>`
+        }
+        
+        const actionButtons = trade.is_open 
+            ? `
+                <button onclick="openEditTradeModal(${trade.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button onclick="openCloseTradeModal(${trade.id})" class="text-green-600 hover:text-green-800" title="Close Trade">
+                    <i class="fas fa-check-circle"></i>
+                </button>
+            `
+            : `
+                <button onclick="openEditTradeModal(${trade.id})" class="text-blue-600 hover:text-blue-800" title="Edit">
+                    <i class="fas fa-edit"></i>
+                </button>
+            `
+        
+        return `
+            <tr class="border-b border-gray-200 hover:bg-gray-50">
+                <td class="px-4 py-3">${trade.trade_date}</td>
+                <td class="px-4 py-3">${entryTime}</td>
+                <td class="px-4 py-3">${exitTime}</td>
+                <td class="px-4 py-3">${strategyLabel}</td>
+                <td class="px-4 py-3 text-right">${formatCurrency(trade.total_credit)}</td>
+                <td class="px-4 py-3 text-center">${trade.contracts}</td>
+                <td class="px-4 py-3 text-right">${plDisplay}</td>
+                <td class="px-4 py-3 text-center">${statusBadge}</td>
+                <td class="px-4 py-3 text-center">${actionButtons}</td>
+            </tr>
+        `
+    }).join('')
+}
+
+// Edit Trade Modal Functions
+async function openEditTradeModal(tradeId) {
+    try {
+        // Find trade in our data
+        const trade = allTradesData.find(t => t.id === tradeId)
+        if (!trade) {
+            alert('Trade not found')
+            return
+        }
+        
+        // Populate form
+        document.getElementById('edit-trade-id').value = trade.id
+        document.getElementById('edit-trade-date').value = trade.trade_date
+        document.getElementById('edit-entry-time').value = trade.entry_time || ''
+        document.getElementById('edit-spx-entry').value = trade.spx_entry_price || ''
+        document.getElementById('edit-contracts').value = trade.contracts
+        
+        const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor (Both Sides)' 
+            : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Credit Spread'
+            : 'Put Credit Spread'
+        document.getElementById('edit-strategy-type').textContent = strategyLabel
+        
+        // Show/hide spread sections
+        const callSection = document.getElementById('edit-call-spread-section')
+        const putSection = document.getElementById('edit-put-spread-section')
+        
+        if (trade.call_spread_enabled) {
+            callSection.classList.remove('hidden')
+            document.getElementById('edit-call-short-strike').value = trade.call_short_strike || ''
+            document.getElementById('edit-call-credit').value = trade.call_total_credit || ''
+        } else {
+            callSection.classList.add('hidden')
+        }
+        
+        if (trade.put_spread_enabled) {
+            putSection.classList.remove('hidden')
+            document.getElementById('edit-put-short-strike').value = trade.put_short_strike || ''
+            document.getElementById('edit-put-credit').value = trade.put_total_credit || ''
+        } else {
+            putSection.classList.add('hidden')
+        }
+        
+        document.getElementById('edit-trade-notes').value = trade.notes || ''
+        
+        // Show modal
+        document.getElementById('edit-trade-modal').classList.remove('hidden')
+        
+    } catch (error) {
+        console.error('Error opening edit modal:', error)
+        alert('Failed to open edit modal')
+    }
+}
+
+function closeEditTradeModal() {
+    document.getElementById('edit-trade-modal').classList.add('hidden')
+}
+
+async function updateTrade(event) {
+    event.preventDefault()
+    
+    try {
+        const tradeId = document.getElementById('edit-trade-id').value
+        const trade = allTradesData.find(t => t.id == tradeId)
+        
+        const updateData = {
+            trade_date: document.getElementById('edit-trade-date').value,
+            entry_time: document.getElementById('edit-entry-time').value,
+            spx_entry_price: parseFloat(document.getElementById('edit-spx-entry').value) || null,
+            contracts: parseInt(document.getElementById('edit-contracts').value),
+            notes: document.getElementById('edit-trade-notes').value
+        }
+        
+        // Add spread data if enabled
+        if (trade.call_spread_enabled) {
+            updateData.call_short_strike = parseFloat(document.getElementById('edit-call-short-strike').value)
+            updateData.call_total_credit = parseFloat(document.getElementById('edit-call-credit').value)
+        }
+        
+        if (trade.put_spread_enabled) {
+            updateData.put_short_strike = parseFloat(document.getElementById('edit-put-short-strike').value)
+            updateData.put_total_credit = parseFloat(document.getElementById('edit-put-credit').value)
+        }
+        
+        // Calculate new total credit
+        updateData.total_credit = (updateData.call_total_credit || 0) + (updateData.put_total_credit || 0)
+        
+        await api.put(`/api/daily-trades/${tradeId}`, updateData)
+        
+        showNotification('Trade updated successfully', 'success')
+        closeEditTradeModal()
+        await loadFullHistory()
+        
+        // Also reload other views if needed
+        if (document.getElementById('dt-performance-tab').classList.contains('hidden') === false) {
+            loadRecentTrades()
+        }
+        if (document.getElementById('dt-today-tab').classList.contains('hidden') === false) {
+            loadActivePositions()
+            loadClosedPositionsToday()
+        }
+        
+    } catch (error) {
+        console.error('Error updating trade:', error)
+        alert(`Failed to update trade: ${error.response?.data?.error || error.message}`)
+    }
+}
+
+// Close Trade Modal Functions
+async function openCloseTradeModal(tradeId) {
+    try {
+        const trade = allTradesData.find(t => t.id === tradeId)
+        if (!trade) {
+            alert('Trade not found')
+            return
+        }
+        
+        if (!trade.is_open) {
+            alert('This trade is already closed')
+            return
+        }
+        
+        // Populate hidden field
+        document.getElementById('close-trade-id').value = trade.id
+        
+        // Set default exit date/time to now
+        const now = new Date()
+        const year = now.getFullYear()
+        const month = String(now.getMonth() + 1).padStart(2, '0')
+        const day = String(now.getDate()).padStart(2, '0')
+        const hours = String(now.getHours()).padStart(2, '0')
+        const minutes = String(now.getMinutes()).padStart(2, '0')
+        
+        document.getElementById('close-exit-date').value = `${year}-${month}-${day}`
+        document.getElementById('close-exit-time').value = `${hours}:${minutes}`
+        
+        // Clear other fields
+        document.getElementById('close-spx-exit').value = ''
+        document.getElementById('close-call-debit').value = ''
+        document.getElementById('close-put-debit').value = ''
+        document.getElementById('close-commission').value = '1.30'
+        document.getElementById('close-trade-notes').value = ''
+        
+        // Show/hide spread sections
+        const callSection = document.getElementById('close-call-spread-section')
+        const putSection = document.getElementById('close-put-spread-section')
+        
+        if (trade.call_spread_enabled) {
+            callSection.classList.remove('hidden')
+        } else {
+            callSection.classList.add('hidden')
+        }
+        
+        if (trade.put_spread_enabled) {
+            putSection.classList.remove('hidden')
+        } else {
+            putSection.classList.add('hidden')
+        }
+        
+        // Build summary
+        const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor' 
+            : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Spread'
+            : 'Put Spread'
+        
+        let strikeInfo = ''
+        if (trade.call_spread_enabled) {
+            strikeInfo += `<div><strong>Call Short Strike:</strong> ${trade.call_short_strike} (Credit: $${trade.call_total_credit})</div>`
+        }
+        if (trade.put_spread_enabled) {
+            strikeInfo += `<div><strong>Put Short Strike:</strong> ${trade.put_short_strike} (Credit: $${trade.put_total_credit})</div>`
+        }
+        
+        document.getElementById('close-trade-summary').innerHTML = `
+            <div class="grid grid-cols-2 gap-4 text-sm">
+                <div><strong>Date:</strong> ${trade.trade_date}</div>
+                <div><strong>Entry:</strong> ${trade.entry_time ? trade.entry_time.substring(0, 5) : '-'}</div>
+                <div><strong>Strategy:</strong> ${strategyLabel}</div>
+                <div><strong>Contracts:</strong> ${trade.contracts}</div>
+                ${strikeInfo}
+                <div><strong>Entry Credit:</strong> $${trade.total_credit}</div>
+                <div><strong>Entry Commission:</strong> $${trade.commission || 1.30}</div>
+            </div>
+        `
+        
+        // Add listeners for P/L preview
+        document.getElementById('close-call-debit').addEventListener('input', updateClosePLPreview)
+        document.getElementById('close-put-debit').addEventListener('input', updateClosePLPreview)
+        document.getElementById('close-commission').addEventListener('input', updateClosePLPreview)
+        
+        // Show modal
+        document.getElementById('close-trade-modal').classList.remove('hidden')
+        
+    } catch (error) {
+        console.error('Error opening close modal:', error)
+        alert('Failed to open close modal')
+    }
+}
+
+function closeCloseTradeModal() {
+    document.getElementById('close-trade-modal').classList.add('hidden')
+}
+
+function updateClosePLPreview() {
+    try {
+        const tradeId = document.getElementById('close-trade-id').value
+        const trade = allTradesData.find(t => t.id == tradeId)
+        if (!trade) return
+        
+        const callDebit = parseFloat(document.getElementById('close-call-debit').value) || 0
+        const putDebit = parseFloat(document.getElementById('close-put-debit').value) || 0
+        const closeCommission = parseFloat(document.getElementById('close-commission').value) || 0
+        
+        const totalDebit = (callDebit + putDebit) * trade.contracts * 100
+        const entryCredit = trade.total_credit * trade.contracts * 100
+        const entryCommission = trade.commission || 1.30
+        
+        const profitLoss = entryCredit - totalDebit - entryCommission - closeCommission
+        
+        const plDiv = document.getElementById('close-pl-preview')
+        const plAmount = document.getElementById('close-pl-amount')
+        
+        if (callDebit > 0 || putDebit > 0) {
+            plDiv.classList.remove('hidden')
+            const plColor = profitLoss >= 0 ? 'text-green-600' : 'text-red-600'
+            const plSign = profitLoss >= 0 ? '+' : ''
+            plAmount.innerHTML = `<span class="${plColor}">${plSign}$${profitLoss.toFixed(2)}</span>`
+        } else {
+            plDiv.classList.add('hidden')
+        }
+        
+    } catch (error) {
+        console.error('Error calculating P/L preview:', error)
+    }
+}
+
+async function submitCloseTrade(event) {
+    event.preventDefault()
+    
+    try {
+        const tradeId = document.getElementById('close-trade-id').value
+        const trade = allTradesData.find(t => t.id == tradeId)
+        
+        const closeData = {
+            exit_date: document.getElementById('close-exit-date').value,
+            exit_time: document.getElementById('close-exit-time').value,
+            spx_exit_price: parseFloat(document.getElementById('close-spx-exit').value) || null,
+            close_commission: parseFloat(document.getElementById('close-commission').value),
+            exit_reason: document.getElementById('close-exit-reason').value,
+            notes: document.getElementById('close-trade-notes').value
+        }
+        
+        // Add close debits
+        if (trade.call_spread_enabled) {
+            closeData.call_close_debit = parseFloat(document.getElementById('close-call-debit').value) || 0
+        }
+        
+        if (trade.put_spread_enabled) {
+            closeData.put_close_debit = parseFloat(document.getElementById('close-put-debit').value) || 0
+        }
+        
+        await api.post(`/api/daily-trades/${tradeId}/close`, closeData)
+        
+        showNotification('Trade closed successfully', 'success')
+        closeCloseTradeModal()
+        await loadFullHistory()
+        
+        // Reload other views
+        if (document.getElementById('dt-performance-tab').classList.contains('hidden') === false) {
+            loadRecentTrades()
+        }
+        if (document.getElementById('dt-today-tab').classList.contains('hidden') === false) {
+            loadActivePositions()
+            loadClosedPositionsToday()
+        }
+        
+    } catch (error) {
+        console.error('Error closing trade:', error)
+        alert(`Failed to close trade: ${error.response?.data?.error || error.message}`)
+    }
+}
+

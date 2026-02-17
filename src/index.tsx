@@ -2847,38 +2847,112 @@ app.post('/api/daily-trades', authMiddleware, async (c) => {
   }
 })
 
-// Close a daily trade
-app.put('/api/daily-trades/:id/close', authMiddleware, async (c) => {
+// Update a daily trade
+app.put('/api/daily-trades/:id', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
     const { env } = c
     const tradeId = c.req.param('id')
     const data = await c.req.json()
 
+    await env.DB.prepare(`
+      UPDATE daily_trades SET
+        trade_date = ?,
+        entry_time = ?,
+        contracts = ?,
+        call_short_strike = ?,
+        call_total_credit = ?,
+        put_short_strike = ?,
+        put_total_credit = ?,
+        spx_entry_price = ?,
+        total_credit = ?,
+        notes = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      data.trade_date,
+      data.entry_time,
+      data.contracts,
+      data.call_short_strike || null,
+      data.call_total_credit || null,
+      data.put_short_strike || null,
+      data.put_total_credit || null,
+      data.spx_entry_price || null,
+      data.total_credit,
+      data.notes || null,
+      tradeId,
+      userId
+    ).run()
+
+    return c.json({ 
+      success: true,
+      message: 'Trade updated successfully' 
+    })
+  } catch (error) {
+    console.error('Error updating daily trade:', error)
+    return c.json({ error: 'Failed to update trade' }, 500)
+  }
+})
+
+// Close a daily trade
+app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+    const tradeId = c.req.param('id')
+    const data = await c.req.json()
+
+    // First get the trade to calculate P/L
+    const trade = await env.DB.prepare(`
+      SELECT * FROM daily_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+
+    if (!trade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+
     // Calculate profit/loss
-    const totalDebit = (data.call_close_debit || 0) + (data.put_close_debit || 0)
-    const profitLoss = (data.total_credit - totalDebit - data.commission) * data.contracts * 100
+    const callCloseDebit = data.call_close_debit || 0
+    const putCloseDebit = data.put_close_debit || 0
+    const totalDebit = callCloseDebit + putCloseDebit
+    
+    const entryCredit = trade.total_credit * trade.contracts * 100
+    const closeDebit = totalDebit * trade.contracts * 100
+    const entryCommission = trade.commission || 0
+    const closeCommission = data.close_commission || 0
+    
+    const profitLoss = entryCredit - closeDebit - entryCommission - closeCommission
 
     await env.DB.prepare(`
       UPDATE daily_trades SET
+        exit_date = ?,
         exit_time = ?,
         call_close_debit = ?,
         put_close_debit = ?,
         spx_exit_price = ?,
         total_debit = ?,
+        close_commission = ?,
         profit_loss = ?,
         exit_reason = ?,
         is_open = 0,
+        notes = CASE 
+          WHEN ? != '' THEN COALESCE(notes, '') || CHAR(10) || 'Close: ' || ?
+          ELSE notes
+        END,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).bind(
+      data.exit_date || trade.trade_date,
       data.exit_time,
-      data.call_close_debit || null,
-      data.put_close_debit || null,
+      callCloseDebit,
+      putCloseDebit,
       data.spx_exit_price || null,
       totalDebit,
+      closeCommission,
       profitLoss,
       data.exit_reason || 'MANUAL',
+      data.notes || '',
+      data.notes || '',
       tradeId,
       userId
     ).run()
@@ -3739,7 +3813,12 @@ app.get('/', (c) => {
                             
                             <!-- Recent Trade History (Last 7 Days) -->
                             <div class="card mb-6">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4">Recent Trade History (Last 7 Days)</h3>
+                                <div class="flex justify-between items-center mb-4">
+                                    <h3 class="text-xl font-bold text-gray-800">Recent Trade History (Last 7 Days)</h3>
+                                    <button onclick="openFullHistoryModal()" class="px-4 py-2 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700">
+                                        <i class="fas fa-history mr-2"></i>View Full History
+                                    </button>
+                                </div>
                                 <div class="overflow-x-auto">
                                     <table class="w-full text-sm">
                                         <thead>
@@ -4145,6 +4224,240 @@ app.get('/', (c) => {
                         </div>
                     </div>
                     
+                </div>
+            </div>
+        </div>
+        
+        <!-- Full Trade History Modal -->
+        <div id="full-history-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+            <div class="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                    <h3 class="text-2xl font-bold text-orange-600">
+                        <i class="fas fa-history mr-2"></i>Full Trade History
+                    </h3>
+                    <button onclick="closeFullHistoryModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto p-6">
+                    <div class="mb-4 flex gap-4 items-center">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Filter by Status</label>
+                            <select id="history-status-filter" onchange="filterFullHistory()" class="px-4 py-2 border border-gray-300 rounded-lg">
+                                <option value="all">All Trades</option>
+                                <option value="closed">Closed Only</option>
+                                <option value="open">Open Only</option>
+                            </select>
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-sm font-semibold text-gray-700 mb-1">Search</label>
+                            <input type="text" id="history-search" oninput="filterFullHistory()" placeholder="Search by date, strategy, notes..." class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="px-4 py-3 text-left">Date</th>
+                                    <th class="px-4 py-3 text-left">Entry</th>
+                                    <th class="px-4 py-3 text-left">Exit</th>
+                                    <th class="px-4 py-3 text-left">Strategy</th>
+                                    <th class="px-4 py-3 text-right">Credit</th>
+                                    <th class="px-4 py-3 text-center">Contracts</th>
+                                    <th class="px-4 py-3 text-right">P/L</th>
+                                    <th class="px-4 py-3 text-center">Status</th>
+                                    <th class="px-4 py-3 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="full-history-tbody">
+                                <tr>
+                                    <td colspan="9" class="px-4 py-8 text-center text-gray-500 italic">
+                                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading all trades...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Edit Trade Modal -->
+        <div id="edit-trade-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+            <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                    <h3 class="text-2xl font-bold text-orange-600">
+                        <i class="fas fa-edit mr-2"></i>Edit Trade
+                    </h3>
+                    <button onclick="closeEditTradeModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+                
+                <div class="p-6">
+                    <form id="edit-trade-form" onsubmit="updateTrade(event)">
+                        <input type="hidden" id="edit-trade-id">
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Trade Date</label>
+                                <input type="date" id="edit-trade-date" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Entry Time</label>
+                                <input type="time" id="edit-entry-time" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">SPX Entry Price</label>
+                                <input type="number" step="0.01" id="edit-spx-entry" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Contracts</label>
+                                <input type="number" id="edit-contracts" required min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 font-semibold mb-2">Strategy Type</label>
+                            <div id="edit-strategy-type" class="text-lg font-semibold text-orange-600"></div>
+                        </div>
+                        
+                        <div id="edit-call-spread-section" class="mb-4">
+                            <h4 class="font-bold text-red-600 mb-2">Call Spread</h4>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2">Short Call Strike</label>
+                                    <input type="number" step="0.01" id="edit-call-short-strike" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2">Total Credit ($)</label>
+                                    <input type="number" step="0.01" id="edit-call-credit" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="edit-put-spread-section" class="mb-4">
+                            <h4 class="font-bold text-green-600 mb-2">Put Spread</h4>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2">Short Put Strike</label>
+                                    <input type="number" step="0.01" id="edit-put-short-strike" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2">Total Credit ($)</label>
+                                    <input type="number" step="0.01" id="edit-put-credit" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 font-semibold mb-2">Notes</label>
+                            <textarea id="edit-trade-notes" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                        </div>
+                        
+                        <div class="flex gap-3">
+                            <button type="submit" class="px-6 py-2 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700">
+                                <i class="fas fa-save mr-2"></i>Save Changes
+                            </button>
+                            <button type="button" onclick="closeEditTradeModal()" class="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-400">
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Close Trade Modal -->
+        <div id="close-trade-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full">
+                <div class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-lg">
+                    <h3 class="text-2xl font-bold text-orange-600">
+                        <i class="fas fa-check-circle mr-2"></i>Close Trade
+                    </h3>
+                    <button onclick="closeCloseTradeModal()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+                
+                <div class="p-6">
+                    <form id="close-trade-form" onsubmit="submitCloseTrade(event)">
+                        <input type="hidden" id="close-trade-id">
+                        
+                        <div id="close-trade-summary" class="mb-6 p-4 bg-gray-50 rounded-lg">
+                            <!-- Trade summary will be populated here -->
+                        </div>
+                        
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Exit Date</label>
+                                <input type="date" id="close-exit-date" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Exit Time</label>
+                                <input type="time" id="close-exit-time" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 font-semibold mb-2">SPX Exit Price</label>
+                            <input type="number" step="0.01" id="close-spx-exit" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        
+                        <div id="close-call-spread-section" class="mb-4 hidden">
+                            <h4 class="font-bold text-red-600 mb-2">Call Spread - Close Debit</h4>
+                            <input type="number" step="0.01" id="close-call-debit" placeholder="Enter debit paid to close (e.g., 0.25)" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <small class="text-gray-500">Enter the debit per contract paid to close the call spread</small>
+                        </div>
+                        
+                        <div id="close-put-spread-section" class="mb-4 hidden">
+                            <h4 class="font-bold text-green-600 mb-2">Put Spread - Close Debit</h4>
+                            <input type="number" step="0.01" id="close-put-debit" placeholder="Enter debit paid to close (e.g., 0.30)" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <small class="text-gray-500">Enter the debit per contract paid to close the put spread</small>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 font-semibold mb-2">Close Commission ($)</label>
+                            <input type="number" step="0.01" id="close-commission" value="1.30" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-gray-700 font-semibold mb-2">Exit Reason</label>
+                            <select id="close-exit-reason" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                <option value="PROFIT_TARGET">Profit Target Reached</option>
+                                <option value="TIME_EXIT">Time Exit</option>
+                                <option value="STOP_LOSS">Stop Loss / Risk Management</option>
+                                <option value="ATM_PROXIMITY">ATM Proximity Limit</option>
+                                <option value="MANUAL">Manual Exit</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <label class="block text-gray-700 font-semibold mb-2">Close Notes (Optional)</label>
+                            <textarea id="close-trade-notes" rows="2" placeholder="Add any closing notes..." class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                        </div>
+                        
+                        <div id="close-pl-preview" class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg hidden">
+                            <div class="flex items-center justify-between">
+                                <span class="font-semibold text-gray-700">Estimated P/L:</span>
+                                <span id="close-pl-amount" class="text-xl font-bold"></span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-3">
+                            <button type="submit" class="px-6 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700">
+                                <i class="fas fa-check mr-2"></i>Close Trade
+                            </button>
+                            <button type="button" onclick="closeCloseTradeModal()" class="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-400">
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
