@@ -3471,16 +3471,18 @@ app.get('/', (c) => {
                     <!-- Daily Trade Section (0DTE Trading) -->
                     <div id="daily-trade-section" class="section hidden">
                         <div class="flex justify-between items-center mb-6">
-                            <h2 class="text-3xl font-bold text-orange-600">0DTE SPX Trading</h2>
+                            <div class="flex items-center gap-3">
+                                <h2 class="text-3xl font-bold text-orange-600">0DTE SPX Trading</h2>
+                                <button onclick="openDailyTradeConfig()" class="p-2 text-gray-600 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors" title="Configuration">
+                                    <i class="fas fa-cog text-2xl"></i>
+                                </button>
+                            </div>
                         </div>
                         
                         <!-- Sub-tabs -->
                         <div class="mb-6 border-b border-gray-200">
                             <nav class="flex gap-4">
-                                <button onclick="showDailyTradeTab('config')" class="daily-trade-tab active px-6 py-3 font-semibold text-orange-600 border-b-2 border-orange-600" data-tab="config">
-                                    <i class="fas fa-cog mr-2"></i>Configuration
-                                </button>
-                                <button onclick="showDailyTradeTab('performance')" class="daily-trade-tab px-6 py-3 font-semibold text-gray-600 hover:text-orange-600" data-tab="performance">
+                                <button onclick="showDailyTradeTab('performance')" class="daily-trade-tab active px-6 py-3 font-semibold text-orange-600 border-b-2 border-orange-600" data-tab="performance">
                                     <i class="fas fa-chart-bar mr-2"></i>Performance
                                 </button>
                                 <button onclick="showDailyTradeTab('today')" class="daily-trade-tab px-6 py-3 font-semibold text-gray-600 hover:text-orange-600" data-tab="today">
@@ -3489,9 +3491,20 @@ app.get('/', (c) => {
                             </nav>
                         </div>
                         
-                        <!-- Configuration Tab -->
-                        <div id="dt-config-tab" class="daily-trade-tab-content">
-                            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Configuration Modal (hidden by default) -->
+                        <div id="dt-config-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+                            <div class="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+                                <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                                    <h3 class="text-2xl font-bold text-orange-600">
+                                        <i class="fas fa-cog mr-2"></i>0DTE Trading Configuration
+                                    </h3>
+                                    <button onclick="closeDailyTradeConfig()" class="text-gray-500 hover:text-gray-700">
+                                        <i class="fas fa-times text-2xl"></i>
+                                    </button>
+                                </div>
+                                
+                                <div class="p-6">
+                                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 <!-- Trading Rules & Risk Management -->
                                 <div class="card">
                                     <h3 class="text-xl font-bold text-gray-800 mb-4">
@@ -3591,9 +3604,11 @@ app.get('/', (c) => {
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
                         
                         <!-- Performance Tab -->
-                        <div id="dt-performance-tab" class="daily-trade-tab-content hidden">
+                        <div id="dt-performance-tab" class="daily-trade-tab-content">
                             <!-- Filter Buttons -->
                             <div class="mb-6 flex gap-2">
                                 <button class="px-4 py-2 bg-orange-600 text-white rounded-lg font-semibold">All Time</button>

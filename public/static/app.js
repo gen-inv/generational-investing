@@ -377,8 +377,8 @@ function showSection(sectionName) {
             loadClosedTrades()
             break
         case 'daily-trade':
-            // Show default tab (configuration) and load config
-            showDailyTradeTab('config')
+            // Show default tab (Performance) and load config
+            showDailyTradeTab('performance')
             loadDailyTradeConfig()
             break
     }
@@ -600,6 +600,27 @@ function updatePutSpreadCalculations() {
 // DAILY TRADE CONFIGURATION FUNCTIONS
 // ============================================================================
 
+// Open configuration modal
+function openDailyTradeConfig() {
+    const modal = document.getElementById('dt-config-modal')
+    if (modal) {
+        modal.classList.remove('hidden')
+        // Load config when opening modal
+        loadDailyTradeConfig()
+    }
+}
+
+// Close configuration modal
+function closeDailyTradeConfig() {
+    const modal = document.getElementById('dt-config-modal')
+    if (modal) {
+        modal.classList.add('hidden')
+        // Update displays after closing
+        updateStrikeWidthDisplays()
+        updateRollingWindowLabels()
+    }
+}
+
 // Load Daily Trade configuration
 async function loadDailyTradeConfig() {
     try {
@@ -687,6 +708,8 @@ async function saveDailyTradeConfig() {
             alert('✅ Configuration saved successfully!')
             // Update rolling window labels
             updateRollingWindowLabels()
+            // Close modal
+            closeDailyTradeConfig()
         } else {
             alert('Failed to save configuration')
         }
