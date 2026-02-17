@@ -3830,7 +3830,11 @@ app.get('/', (c) => {
                                     </div>
                                 </div>
                                 
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                                    <div>
+                                        <label class="block text-gray-700 font-semibold mb-2">Entry Date</label>
+                                        <input type="date" id="dt-entry-date" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    </div>
                                     <div>
                                         <label class="block text-gray-700 font-semibold mb-2">Entry Time</label>
                                         <input type="time" id="dt-entry-time" class="w-full px-4 py-2 border border-gray-300 rounded-lg">

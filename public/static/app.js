@@ -427,10 +427,19 @@ function showDailyTradeTab(tabName) {
     
     // Special handling for Today's Trading tab
     if (tabName === 'today') {
-        // Set entry time to current time
+        // Set entry date and time to current date/time
         const now = new Date()
+        const year = now.getFullYear()
+        const month = String(now.getMonth() + 1).padStart(2, '0')
+        const day = String(now.getDate()).padStart(2, '0')
         const hours = String(now.getHours()).padStart(2, '0')
         const minutes = String(now.getMinutes()).padStart(2, '0')
+        
+        const entryDateInput = document.getElementById('dt-entry-date')
+        if (entryDateInput && !entryDateInput.value) {
+            entryDateInput.value = `${year}-${month}-${day}`
+        }
+        
         const entryTimeInput = document.getElementById('dt-entry-time')
         if (entryTimeInput && !entryTimeInput.value) {
             entryTimeInput.value = `${hours}:${minutes}`
@@ -477,15 +486,22 @@ function updateRollingWindowLabels() {
 
 // Initialize Daily Trade spread calculations
 function initializeDailyTradeCalculations() {
-    // Set current time as default entry time
+    // Set current date and time as defaults
     const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
     const hours = String(now.getHours()).padStart(2, '0')
     const minutes = String(now.getMinutes()).padStart(2, '0')
-    const currentTime = `${hours}:${minutes}`
+    
+    const entryDateInput = document.getElementById('dt-entry-date')
+    if (entryDateInput && !entryDateInput.value) {
+        entryDateInput.value = `${year}-${month}-${day}`
+    }
     
     const entryTimeInput = document.getElementById('dt-entry-time')
     if (entryTimeInput && !entryTimeInput.value) {
-        entryTimeInput.value = currentTime
+        entryTimeInput.value = `${hours}:${minutes}`
     }
     
     // Add listener to strike width to update displays
@@ -6288,12 +6304,18 @@ function editTradeNotes(tradeId) {
 async function submitDailyTrade() {
     try {
         // Collect form data
+        const entryDate = document.getElementById('dt-entry-date').value
         const entryTime = document.getElementById('dt-entry-time').value
         const spxPrice = parseFloat(document.getElementById('dt-spx-price').value) || null
         const contracts = parseInt(document.getElementById('dt-contracts').value)
         const notes = document.getElementById('dt-notes').value.trim()
         
         // Check required fields
+        if (!entryDate) {
+            alert('Please enter an entry date')
+            return
+        }
+        
         if (!entryTime) {
             alert('Please enter an entry time')
             return
@@ -6347,7 +6369,7 @@ async function submitDailyTrade() {
         
         // Build trade data
         const tradeData = {
-            trade_date: new Date().toISOString().split('T')[0],
+            trade_date: entryDate, // Use the date from the form
             entry_time: entryTime + ':00', // Add seconds
             strategy_type: strategyType,
             contracts: contracts,
@@ -6389,10 +6411,15 @@ async function submitDailyTrade() {
 
 // Reset the daily trade form
 function resetDailyTradeForm() {
-    // Reset time to current time
+    // Reset date and time to current date/time
     const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
     const hours = String(now.getHours()).padStart(2, '0')
     const minutes = String(now.getMinutes()).padStart(2, '0')
+    
+    document.getElementById('dt-entry-date').value = `${year}-${month}-${day}`
     document.getElementById('dt-entry-time').value = `${hours}:${minutes}`
     
     // Clear SPX price
