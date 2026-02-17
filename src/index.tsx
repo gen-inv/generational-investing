@@ -2927,6 +2927,12 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
     
     const profitLoss = entryCredit - exitDebit - entryCommission - closeCommission
 
+    // Handle notes - append close notes if provided
+    let updatedNotes = trade.notes || ''
+    if (data.notes && data.notes.trim() !== '') {
+      updatedNotes = updatedNotes + '\n' + 'Close: ' + data.notes
+    }
+
     const result = await env.DB.prepare(`
       UPDATE daily_trades SET
         exit_time = ?,
@@ -2935,10 +2941,7 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
         profit_loss = ?,
         exit_reason = ?,
         is_open = 0,
-        notes = CASE 
-          WHEN ? != '' THEN COALESCE(notes, '') || char(10) || 'Close: ' || ?
-          ELSE notes
-        END,
+        notes = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).bind(
@@ -2947,8 +2950,7 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
       closeCommission,
       profitLoss,
       data.exit_reason || 'EXPIRED_WORTHLESS',
-      data.notes || '',
-      data.notes || '',
+      updatedNotes,
       tradeId,
       userId
     ).run()
