@@ -2741,6 +2741,224 @@ app.post('/api/daily-trade/config/reset', authMiddleware, async (c) => {
 })
 
 // ============================================================================
+// DAILY TRADES ROUTES
+// ============================================================================
+
+// Get all daily trades for user (with optional filters)
+app.get('/api/daily-trades', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+    const date = c.req.query('date') // Optional: filter by specific date
+    const isOpen = c.req.query('is_open') // Optional: filter by open/closed
+
+    let query = `
+      SELECT dt.*, a.account_name 
+      FROM daily_trades dt
+      LEFT JOIN accounts a ON dt.account_id = a.id
+      WHERE dt.user_id = ?
+    `
+    const params = [userId]
+
+    if (date) {
+      query += ` AND dt.trade_date = ?`
+      params.push(date)
+    }
+
+    if (isOpen !== undefined) {
+      query += ` AND dt.is_open = ?`
+      params.push(isOpen === 'true' ? 1 : 0)
+    }
+
+    query += ` ORDER BY dt.trade_date DESC, dt.entry_time DESC`
+
+    const result = await env.DB.prepare(query).bind(...params).all()
+
+    return c.json({ trades: result.results || [] })
+  } catch (error) {
+    console.error('Error fetching daily trades:', error)
+    return c.json({ error: 'Failed to fetch trades' }, 500)
+  }
+})
+
+// Get today's daily trades
+app.get('/api/daily-trades/today', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+    const today = new Date().toISOString().split('T')[0]
+
+    const result = await env.DB.prepare(`
+      SELECT dt.*, a.account_name 
+      FROM daily_trades dt
+      LEFT JOIN accounts a ON dt.account_id = a.id
+      WHERE dt.user_id = ? AND dt.trade_date = ?
+      ORDER BY dt.entry_time DESC
+    `).bind(userId, today).all()
+
+    return c.json({ trades: result.results || [] })
+  } catch (error) {
+    console.error('Error fetching today trades:', error)
+    return c.json({ error: 'Failed to fetch today trades' }, 500)
+  }
+})
+
+// Create new daily trade
+app.post('/api/daily-trades', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+    const data = await c.req.json()
+
+    const result = await env.DB.prepare(`
+      INSERT INTO daily_trades (
+        user_id, account_id, trade_date, entry_time, strategy_type, contracts,
+        call_enabled, call_short_strike, call_total_credit,
+        put_enabled, put_short_strike, put_total_credit,
+        spx_entry_price, total_credit, commission, notes, is_open
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).bind(
+      userId,
+      data.account_id || null,
+      data.trade_date,
+      data.entry_time,
+      data.strategy_type,
+      data.contracts,
+      data.call_enabled ? 1 : 0,
+      data.call_short_strike || null,
+      data.call_total_credit || null,
+      data.put_enabled ? 1 : 0,
+      data.put_short_strike || null,
+      data.put_total_credit || null,
+      data.spx_entry_price || null,
+      data.total_credit,
+      data.commission || 0,
+      data.notes || null
+    ).run()
+
+    return c.json({ 
+      success: true, 
+      id: result.meta.last_row_id,
+      message: 'Trade entered successfully' 
+    }, 201)
+  } catch (error) {
+    console.error('Error creating daily trade:', error)
+    return c.json({ error: 'Failed to create trade' }, 500)
+  }
+})
+
+// Close a daily trade
+app.put('/api/daily-trades/:id/close', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+    const tradeId = c.req.param('id')
+    const data = await c.req.json()
+
+    // Calculate profit/loss
+    const totalDebit = (data.call_close_debit || 0) + (data.put_close_debit || 0)
+    const profitLoss = (data.total_credit - totalDebit - data.commission) * data.contracts * 100
+
+    await env.DB.prepare(`
+      UPDATE daily_trades SET
+        exit_time = ?,
+        call_close_debit = ?,
+        put_close_debit = ?,
+        spx_exit_price = ?,
+        total_debit = ?,
+        profit_loss = ?,
+        exit_reason = ?,
+        is_open = 0,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      data.exit_time,
+      data.call_close_debit || null,
+      data.put_close_debit || null,
+      data.spx_exit_price || null,
+      totalDebit,
+      profitLoss,
+      data.exit_reason || 'MANUAL',
+      tradeId,
+      userId
+    ).run()
+
+    return c.json({ 
+      success: true, 
+      profit_loss: profitLoss,
+      message: 'Trade closed successfully' 
+    })
+  } catch (error) {
+    console.error('Error closing daily trade:', error)
+    return c.json({ error: 'Failed to close trade' }, 500)
+  }
+})
+
+// Delete a daily trade
+app.delete('/api/daily-trades/:id', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+    const tradeId = c.req.param('id')
+
+    await env.DB.prepare(`
+      DELETE FROM daily_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).run()
+
+    return c.json({ success: true, message: 'Trade deleted successfully' })
+  } catch (error) {
+    console.error('Error deleting daily trade:', error)
+    return c.json({ error: 'Failed to delete trade' }, 500)
+  }
+})
+
+// Get performance statistics
+app.get('/api/daily-trades/stats', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+    const period = c.req.query('period') || 'all' // all, last50, month, year
+
+    let query = `
+      SELECT 
+        COUNT(*) as total_trades,
+        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
+        AVG(CASE WHEN profit_loss > 0 THEN profit_loss ELSE NULL END) as avg_win,
+        AVG(CASE WHEN profit_loss < 0 THEN profit_loss ELSE NULL END) as avg_loss,
+        SUM(profit_loss) as net_pl,
+        AVG(profit_loss) as avg_pl,
+        MAX(profit_loss) as best_trade,
+        MIN(profit_loss) as worst_trade
+      FROM daily_trades
+      WHERE user_id = ? AND is_open = 0
+    `
+    const params = [userId]
+
+    if (period === 'last50') {
+      query += ` ORDER BY trade_date DESC, entry_time DESC LIMIT 50`
+    } else if (period === 'month') {
+      query += ` AND strftime('%Y-%m', trade_date) = strftime('%Y-%m', 'now')`
+    } else if (period === 'year') {
+      query += ` AND strftime('%Y', trade_date) = strftime('%Y', 'now')`
+    }
+
+    const result = await env.DB.prepare(query).bind(...params).first()
+
+    const winRate = result.total_trades > 0 
+      ? ((result.winning_trades / result.total_trades) * 100).toFixed(1)
+      : 0
+
+    return c.json({ 
+      ...result,
+      win_rate: winRate
+    })
+  } catch (error) {
+    console.error('Error fetching stats:', error)
+    return c.json({ error: 'Failed to fetch statistics' }, 500)
+  }
+})
+
+// ============================================================================
 // P/L REPORTING ROUTES
 // ============================================================================
 
