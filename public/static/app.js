@@ -726,17 +726,14 @@ function updateTradeSummary() {
     const totalCommission = callCommission + putCommission
     
     // Max Risk calculation
-    // For Iron Condor: only ONE side can lose (use the larger risk)
-    // For single spread: just that spread's risk
+    // For Iron Condor: (Spread Width × Contracts) - (TOTAL Premium × Contracts)
+    // For single spread: (Spread Width × Contracts) - (Premium × Contracts)
     const spreadWidth = strikeWidth * 100 // e.g., 5 pts = $500
     
     let maxRisk = 0
     if (callEnabled && putEnabled) {
-        // Iron Condor: only one side can lose at expiration
-        // Calculate risk for each side and use the larger one
-        const callRisk = (spreadWidth * contracts) - (callCredit * 100 * contracts)
-        const putRisk = (spreadWidth * contracts) - (putCredit * 100 * contracts)
-        maxRisk = Math.max(callRisk, putRisk)
+        // Iron Condor: Max dollars at work on one side, minus TOTAL premium collected
+        maxRisk = (spreadWidth * contracts) - (totalCredit * 100 * contracts)
     } else if (callEnabled) {
         // Call spread only
         maxRisk = (spreadWidth * contracts) - (callCredit * 100 * contracts)
