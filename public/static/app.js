@@ -6852,7 +6852,7 @@ async function openCloseTradeModal(tradeId) {
         document.getElementById('close-exit-time').value = `${hours}:${minutes}`
         
         // Clear other fields
-        document.getElementById('close-spx-exit').value = ''
+        // SPX Exit Price removed - not needed for 0DTE
         document.getElementById('close-call-debit').value = ''
         document.getElementById('close-put-debit').value = ''
         document.getElementById('close-commission').value = '1.30'
@@ -6960,7 +6960,6 @@ async function submitCloseTrade(event) {
         const closeData = {
             exit_date: document.getElementById('close-exit-date').value,
             exit_time: document.getElementById('close-exit-time').value,
-            spx_exit_price: parseFloat(document.getElementById('close-spx-exit').value) || null,
             close_commission: parseFloat(document.getElementById('close-commission').value),
             exit_reason: document.getElementById('close-exit-reason').value,
             notes: document.getElementById('close-trade-notes').value

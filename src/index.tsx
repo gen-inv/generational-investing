@@ -2923,13 +2923,12 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
     
     const profitLoss = entryCredit - closeDebit - entryCommission - closeCommission
 
-    await env.DB.prepare(`
+    const result = await env.DB.prepare(`
       UPDATE daily_trades SET
         exit_date = ?,
         exit_time = ?,
         call_close_debit = ?,
         put_close_debit = ?,
-        spx_exit_price = ?,
         total_debit = ?,
         close_commission = ?,
         profit_loss = ?,
@@ -2946,7 +2945,6 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
       data.exit_time,
       callCloseDebit,
       putCloseDebit,
-      data.spx_exit_price || null,
       totalDebit,
       closeCommission,
       profitLoss,
@@ -2956,6 +2954,10 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
       tradeId,
       userId
     ).run()
+    
+    if (!result.success) {
+      throw new Error('Database update failed')
+    }
 
     return c.json({ 
       success: true, 
@@ -4418,11 +4420,6 @@ app.get('/', (c) => {
                                 <label class="block text-gray-700 font-semibold mb-2">Exit Time</label>
                                 <input type="time" id="close-exit-time" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                             </div>
-                        </div>
-                        
-                        <div class="mb-4">
-                            <label class="block text-gray-700 font-semibold mb-2">SPX Exit Price</label>
-                            <input type="number" step="0.01" id="close-spx-exit" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                         </div>
                         
                         <div id="close-call-spread-section" class="mb-4 hidden">
