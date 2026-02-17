@@ -3824,13 +3824,21 @@ app.get('/', (c) => {
                                     </div>
                                 </div>
                                 
-                                <!-- No Open Position State (hidden by default, show when no open trades) -->
-                                <div class="hidden text-center py-6">
-                                    <h3 class="text-sm font-semibold text-gray-600 mb-2">SPX Price</h3>
-                                    <div class="text-3xl font-bold text-gray-900">4,856.20</div>
-                                    <div class="text-sm text-green-600 mt-1">↑ +12.45 (0.26%)</div>
-                                    <div class="text-xs text-gray-500 mt-1">1:23 PM ET</div>
-                                    <p class="text-gray-500 italic mt-4">No open positions</p>
+                                <!-- No Open Position State (shown when no open trades) -->
+                                <div id="dt-no-open-position" class="text-center py-8">
+                                    <div class="mb-4">
+                                        <i class="fas fa-chart-line text-gray-300 text-5xl mb-3"></i>
+                                        <h3 class="text-lg font-semibold text-gray-700 mb-2">Ready to Start Trading</h3>
+                                        <p class="text-gray-500 text-sm">No active positions yet. Use the Quick Entry Form below to enter your first trade.</p>
+                                    </div>
+                                    <div class="inline-block bg-gray-50 rounded-lg p-4 border border-gray-200">
+                                        <h4 class="text-xs font-semibold text-gray-600 mb-2">Current SPX</h4>
+                                        <div class="text-2xl font-bold text-gray-900" id="spx-price-display">Loading...</div>
+                                        <div class="text-sm mt-1" id="spx-change-display">
+                                            <span class="text-gray-500">--</span>
+                                        </div>
+                                        <div class="text-xs text-gray-400 mt-1" id="spx-time-display">--</div>
+                                    </div>
                                 </div>
                             </div>
                             
@@ -3973,18 +3981,18 @@ app.get('/', (c) => {
                                 <!-- Notes -->
                                 <div class="mt-4">
                                     <label class="block text-gray-700 font-semibold mb-2">Trade Notes (Optional)</label>
-                                    <textarea class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2" placeholder="Add notes about market conditions, reasoning, etc."></textarea>
+                                    <textarea id="dt-notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2" placeholder="Add notes about market conditions, reasoning, etc."></textarea>
                                 </div>
                                 
                                 <!-- Action Buttons -->
                                 <div class="mt-4 flex gap-4">
-                                    <button class="flex-1 bg-gradient-to-r from-orange-600 to-orange-700 text-white px-6 py-3 rounded-lg font-bold hover:from-orange-700 hover:to-orange-800">
+                                    <button onclick="submitDailyTrade()" class="flex-1 bg-gradient-to-r from-orange-600 to-orange-700 text-white px-6 py-3 rounded-lg font-bold hover:from-orange-700 hover:to-orange-800">
                                         <i class="fas fa-rocket mr-2"></i>Enter Trade
                                     </button>
-                                    <button class="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50">
+                                    <button onclick="resetDailyTradeForm()" class="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50">
                                         <i class="fas fa-redo mr-2"></i>Reset Form
                                     </button>
-                                    <button class="px-6 py-3 border-2 border-orange-300 text-orange-700 rounded-lg font-semibold hover:bg-orange-50">
+                                    <button onclick="openDailyTradeConfig()" class="px-6 py-3 border-2 border-orange-300 text-orange-700 rounded-lg font-semibold hover:bg-orange-50">
                                         <i class="fas fa-cog mr-2"></i>Load Config
                                     </button>
                                 </div>

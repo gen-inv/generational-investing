@@ -6257,3 +6257,144 @@ function editTradeNotes(tradeId) {
     // TODO: Implement edit notes modal
 }
 
+
+// ============================================================================
+// DAILY TRADE ENTRY - SUBMIT AND RESET
+// ============================================================================
+
+// Submit a new daily trade
+async function submitDailyTrade() {
+    try {
+        // Collect form data
+        const entryTime = document.getElementById('dt-entry-time').value
+        const spxPrice = parseFloat(document.getElementById('dt-spx-price').value) || null
+        const contracts = parseInt(document.getElementById('dt-contracts').value)
+        const notes = document.getElementById('dt-notes').value.trim()
+        
+        // Check required fields
+        if (!entryTime) {
+            alert('Please enter an entry time')
+            return
+        }
+        
+        if (contracts < 1) {
+            alert('Contracts must be at least 1')
+            return
+        }
+        
+        // Get call spread data
+        const callEnabled = document.getElementById('enable-call-spread').checked
+        const callShortStrike = callEnabled ? parseFloat(document.getElementById('call-short-strike').value) : null
+        const callTotalCredit = callEnabled ? parseFloat(document.getElementById('call-total-credit').value) : null
+        
+        // Get put spread data
+        const putEnabled = document.getElementById('enable-put-spread').checked
+        const putShortStrike = putEnabled ? parseFloat(document.getElementById('put-short-strike').value) : null
+        const putTotalCredit = putEnabled ? parseFloat(document.getElementById('put-total-credit').value) : null
+        
+        // Validate at least one side is enabled
+        if (!callEnabled && !putEnabled) {
+            alert('Please enable at least one side (Call Spread or Put Spread)')
+            return
+        }
+        
+        // Validate strikes and credits
+        if (callEnabled && (!callShortStrike || !callTotalCredit)) {
+            alert('Please enter Call Spread short strike and credit')
+            return
+        }
+        
+        if (putEnabled && (!putShortStrike || !putTotalCredit)) {
+            alert('Please enter Put Spread short strike and credit')
+            return
+        }
+        
+        // Determine strategy type
+        let strategyType = 'IRON_CONDOR'
+        if (callEnabled && !putEnabled) {
+            strategyType = 'CREDIT_SPREAD_CALL'
+        } else if (putEnabled && !callEnabled) {
+            strategyType = 'CREDIT_SPREAD_PUT'
+        }
+        
+        // Calculate total credit
+        const totalCredit = (callEnabled ? callTotalCredit : 0) + (putEnabled ? putTotalCredit : 0)
+        
+        // Get account ID from config (if loaded)
+        const accountId = null // TODO: Get from config when implemented
+        
+        // Build trade data
+        const tradeData = {
+            trade_date: new Date().toISOString().split('T')[0],
+            entry_time: entryTime + ':00', // Add seconds
+            strategy_type: strategyType,
+            contracts: contracts,
+            call_enabled: callEnabled ? 1 : 0,
+            call_short_strike: callShortStrike,
+            call_total_credit: callTotalCredit,
+            put_enabled: putEnabled ? 1 : 0,
+            put_short_strike: putShortStrike,
+            put_total_credit: putTotalCredit,
+            spx_entry_price: spxPrice,
+            total_credit: totalCredit,
+            commission: 0, // TODO: Calculate from config (0.65 per contract typically)
+            notes: notes || null,
+            is_open: 1
+        }
+        
+        // Submit to API
+        const response = await api.post('/api/daily-trades', tradeData)
+        
+        if (response.data.error) {
+            alert(`Error: ${response.data.error}`)
+            return
+        }
+        
+        // Success!
+        showNotification('Trade entered successfully!', 'success')
+        
+        // Reset form
+        resetDailyTradeForm()
+        
+        // Reload active positions
+        await loadActivePositions()
+        
+    } catch (error) {
+        console.error('Error submitting trade:', error)
+        alert(`Failed to enter trade: ${error.response?.data?.error || error.message}`)
+    }
+}
+
+// Reset the daily trade form
+function resetDailyTradeForm() {
+    // Reset time to current time
+    const now = new Date()
+    const hours = String(now.getHours()).padStart(2, '0')
+    const minutes = String(now.getMinutes()).padStart(2, '0')
+    document.getElementById('dt-entry-time').value = `${hours}:${minutes}`
+    
+    // Clear SPX price
+    document.getElementById('dt-spx-price').value = ''
+    
+    // Reset contracts to default or 1
+    document.getElementById('dt-contracts').value = '1'
+    
+    // Enable both sides
+    document.getElementById('enable-call-spread').checked = true
+    document.getElementById('enable-put-spread').checked = true
+    
+    // Clear strikes and credits
+    document.getElementById('call-short-strike').value = ''
+    document.getElementById('call-total-credit').value = ''
+    document.getElementById('put-short-strike').value = ''
+    document.getElementById('put-total-credit').value = ''
+    
+    // Clear notes
+    document.getElementById('dt-notes').value = ''
+    
+    // Recalculate
+    initializeDailyTradeCalculations()
+    
+    showNotification('Form reset', 'info')
+}
+
