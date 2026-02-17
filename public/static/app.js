@@ -342,6 +342,11 @@ function showSection(sectionName) {
         section.classList.add('hidden')
     })
     
+    // Hide all daily-trade tab contents (ensure tabs are reset when switching away)
+    document.querySelectorAll('.daily-trade-tab-content').forEach(content => {
+        content.classList.add('hidden')
+    })
+    
     // Remove active class from all nav links
     document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.remove('active')
