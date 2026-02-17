@@ -413,6 +413,23 @@ function showDailyTradeTab(tabName) {
     // Update rolling window labels when showing performance tab
     if (tabName === 'performance') {
         updateRollingWindowLabels()
+        // Load performance stats (default to 'all')
+        loadPerformanceStats(currentPerformancePeriod || 'all')
+    }
+    
+    // Special handling for Today's Trading tab
+    if (tabName === 'today') {
+        // Set entry time to current time
+        const now = new Date()
+        const hours = String(now.getHours()).padStart(2, '0')
+        const minutes = String(now.getMinutes()).padStart(2, '0')
+        const entryTimeInput = document.getElementById('dt-entry-time')
+        if (entryTimeInput && !entryTimeInput.value) {
+            entryTimeInput.value = `${hours}:${minutes}`
+        }
+        
+        // Initialize calculations
+        initializeDailyTradeCalculations()
     }
 }
 
@@ -5598,3 +5615,164 @@ async function deleteStock(id) {
         alert(error.response?.data?.error || 'Delete failed')
     }
 }
+
+// ============================================================================
+// DAILY TRADE PROFIT-BASED SIZING AND PERFORMANCE
+// ============================================================================
+
+// Global variable to store current performance stats
+let dailyTradePerformanceStats = null
+let currentPerformancePeriod = 'all'
+
+// Toggle profit-based position sizing
+function toggleProfitSizing() {
+    const toggle = document.getElementById('dt-profit-sizing-toggle')
+    const contractsInput = document.getElementById('dt-contracts')
+    const hint = document.getElementById('dt-contracts-hint')
+    const minusBtn = document.getElementById('dt-contracts-minus')
+    const plusBtn = document.getElementById('dt-contracts-plus')
+    
+    if (toggle.checked) {
+        // Profit-based sizing ON
+        calculateProfitBasedContracts()
+        contractsInput.disabled = true
+        minusBtn.disabled = true
+        plusBtn.disabled = true
+        contractsInput.classList.add('bg-gray-100', 'cursor-not-allowed')
+        hint.textContent = 'Profit-based sizing (auto)'
+        hint.classList.remove('text-gray-500')
+        hint.classList.add('text-orange-600', 'font-semibold')
+    } else {
+        // Manual sizing ON
+        const defaultContracts = parseInt(document.getElementById('dt-default-contracts')?.value || 1)
+        contractsInput.value = defaultContracts
+        contractsInput.disabled = false
+        minusBtn.disabled = false
+        plusBtn.disabled = false
+        contractsInput.classList.remove('bg-gray-100', 'cursor-not-allowed')
+        hint.textContent = 'Manual sizing'
+        hint.classList.remove('text-orange-600', 'font-semibold')
+        hint.classList.add('text-gray-500')
+        updateTotalRiskAndDistance() // Recalculate with manual value
+    }
+}
+
+// Calculate profit-based contracts
+async function calculateProfitBasedContracts() {
+    try {
+        const rollingWindow = parseInt(document.getElementById('dt-rolling-profit-window')?.value || 50)
+        const maxContractLimit = parseInt(document.getElementById('dt-max-contract-limit')?.value || 25)
+        
+        // Get stats for the rolling window period
+        const response = await api.get(`/api/daily-trades/stats?period=rolling&limit=${rollingWindow}`)
+        const stats = response.data
+        
+        // Calculate contracts based on net P/L
+        const netPL = stats.net_pl || 0
+        let calculatedContracts = 1 // Default minimum
+        
+        if (netPL > 0) {
+            // For every $1000 of profit, add 1 contract (configurable formula)
+            calculatedContracts = Math.max(1, Math.min(Math.floor(netPL / 1000) + 1, maxContractLimit))
+        }
+        
+        // Update the contracts input
+        const contractsInput = document.getElementById('dt-contracts')
+        if (contractsInput) {
+            contractsInput.value = calculatedContracts
+            updateTotalRiskAndDistance() // Recalculate risk with new contract count
+        }
+        
+        console.log(`Profit-based sizing: Net P/L=${netPL}, Calculated contracts=${calculatedContracts}`)
+    } catch (error) {
+        console.error('Error calculating profit-based contracts:', error)
+        // Fallback to minimum
+        document.getElementById('dt-contracts').value = 1
+    }
+}
+
+// Load performance stats for a specific period
+async function loadPerformanceStats(period) {
+    try {
+        currentPerformancePeriod = period
+        
+        // Update button styles
+        const allButtons = ['dt-filter-all', 'dt-filter-rolling', 'dt-filter-month', 'dt-filter-year']
+        const activeButton = `dt-filter-${period}`
+        
+        allButtons.forEach(btnId => {
+            const btn = document.getElementById(btnId)
+            if (btn) {
+                if (btnId === activeButton) {
+                    btn.className = 'px-4 py-2 bg-orange-600 text-white rounded-lg font-semibold'
+                } else {
+                    btn.className = 'px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300'
+                }
+            }
+        })
+        
+        // Build API query params
+        let queryParams = `period=${period}`
+        if (period === 'rolling') {
+            const rollingWindow = parseInt(document.getElementById('dt-rolling-profit-window')?.value || 50)
+            queryParams += `&limit=${rollingWindow}`
+        }
+        
+        // Fetch stats from API
+        const response = await api.get(`/api/daily-trades/stats?${queryParams}`)
+        const stats = response.data
+        dailyTradePerformanceStats = stats
+        
+        // Update UI
+        document.getElementById('dt-perf-total-trades').textContent = stats.total_trades || 0
+        document.getElementById('dt-perf-win-rate').textContent = stats.total_trades > 0 ? `${stats.win_rate}%` : '-'
+        document.getElementById('dt-perf-avg-win').textContent = stats.avg_win ? formatCurrency(stats.avg_win) : '-'
+        document.getElementById('dt-perf-avg-loss').textContent = stats.avg_loss ? formatCurrency(stats.avg_loss) : '-'
+        
+        // Net P/L with color
+        const netPLElement = document.getElementById('dt-perf-net-pl')
+        if (stats.net_pl !== null && stats.net_pl !== undefined) {
+            const sign = stats.net_pl >= 0 ? '+' : ''
+            netPLElement.textContent = sign + formatCurrency(stats.net_pl)
+            netPLElement.className = `text-2xl font-bold ${stats.net_pl >= 0 ? 'text-green-600' : 'text-red-600'}`
+        } else {
+            netPLElement.textContent = '-'
+            netPLElement.className = 'text-2xl font-bold text-gray-900'
+        }
+        
+        // Avg P/L with color
+        const avgPLElement = document.getElementById('dt-perf-avg-pl')
+        if (stats.avg_pl !== null && stats.avg_pl !== undefined) {
+            const sign = stats.avg_pl >= 0 ? '+' : ''
+            avgPLElement.textContent = sign + formatCurrency(stats.avg_pl)
+            avgPLElement.className = `text-2xl font-bold ${stats.avg_pl >= 0 ? 'text-green-600' : 'text-red-600'}`
+        } else {
+            avgPLElement.textContent = '-'
+            avgPLElement.className = 'text-2xl font-bold text-gray-900'
+        }
+        
+        document.getElementById('dt-perf-best-trade').textContent = stats.best_trade ? '+' + formatCurrency(stats.best_trade) : '-'
+        document.getElementById('dt-perf-worst-trade').textContent = stats.worst_trade ? formatCurrency(stats.worst_trade) : '-'
+        
+        console.log('Performance stats loaded:', stats)
+    } catch (error) {
+        console.error('Error loading performance stats:', error)
+        // Reset to defaults
+        document.getElementById('dt-perf-total-trades').textContent = '-'
+        document.getElementById('dt-perf-win-rate').textContent = '-'
+        document.getElementById('dt-perf-avg-win').textContent = '-'
+        document.getElementById('dt-perf-avg-loss').textContent = '-'
+        document.getElementById('dt-perf-net-pl').textContent = '-'
+        document.getElementById('dt-perf-avg-pl').textContent = '-'
+        document.getElementById('dt-perf-best-trade').textContent = '-'
+        document.getElementById('dt-perf-worst-trade').textContent = '-'
+    }
+}
+
+// Format currency helper
+function formatCurrency(value) {
+    if (value === null || value === undefined) return '-'
+    const absValue = Math.abs(value)
+    return '$' + absValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+

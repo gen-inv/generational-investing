@@ -3611,10 +3611,10 @@ app.get('/', (c) => {
                         <div id="dt-performance-tab" class="daily-trade-tab-content">
                             <!-- Filter Buttons -->
                             <div class="mb-6 flex gap-2">
-                                <button class="px-4 py-2 bg-orange-600 text-white rounded-lg font-semibold">All Time</button>
-                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300" id="dt-rolling-window-filter">Last 50 Trades</button>
-                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">This Month</button>
-                                <button class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">This Year</button>
+                                <button onclick="loadPerformanceStats('all')" id="dt-filter-all" class="px-4 py-2 bg-orange-600 text-white rounded-lg font-semibold">All Time</button>
+                                <button onclick="loadPerformanceStats('rolling')" id="dt-filter-rolling" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300" id="dt-rolling-window-filter">Last 50 Trades</button>
+                                <button onclick="loadPerformanceStats('month')" id="dt-filter-month" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">This Month</button>
+                                <button onclick="loadPerformanceStats('year')" id="dt-filter-year" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">This Year</button>
                             </div>
                             
                             <!-- Key Metrics -->
@@ -3622,37 +3622,37 @@ app.get('/', (c) => {
                                 <h3 class="text-xl font-bold text-gray-800 mb-4">Key Metrics</h3>
                                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
                                     <div class="text-center p-4 bg-gray-50 rounded-lg">
-                                        <div class="text-2xl font-bold text-gray-900">156</div>
+                                        <div id="dt-perf-total-trades" class="text-2xl font-bold text-gray-900">-</div>
                                         <div class="text-sm text-gray-600">Total Trades</div>
                                     </div>
                                     <div class="text-center p-4 bg-green-50 rounded-lg">
-                                        <div class="text-2xl font-bold text-green-600">73.1%</div>
+                                        <div id="dt-perf-win-rate" class="text-2xl font-bold text-green-600">-</div>
                                         <div class="text-sm text-gray-600">Win Rate</div>
                                     </div>
                                     <div class="text-center p-4 bg-blue-50 rounded-lg">
-                                        <div class="text-2xl font-bold text-blue-600">$287.50</div>
+                                        <div id="dt-perf-avg-win" class="text-2xl font-bold text-blue-600">-</div>
                                         <div class="text-sm text-gray-600">Avg Win</div>
                                     </div>
                                     <div class="text-center p-4 bg-red-50 rounded-lg">
-                                        <div class="text-2xl font-bold text-red-600">-$412.30</div>
+                                        <div id="dt-perf-avg-loss" class="text-2xl font-bold text-red-600">-</div>
                                         <div class="text-sm text-gray-600">Avg Loss</div>
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
                                     <div class="text-center p-4 bg-green-50 rounded-lg">
-                                        <div class="text-2xl font-bold text-green-600">+$14,267.80</div>
+                                        <div id="dt-perf-net-pl" class="text-2xl font-bold text-green-600">-</div>
                                         <div class="text-sm text-gray-600">Net P/L</div>
                                     </div>
                                     <div class="text-center p-4 bg-gray-50 rounded-lg">
-                                        <div class="text-2xl font-bold text-gray-900">+$91.46</div>
+                                        <div id="dt-perf-avg-pl" class="text-2xl font-bold text-gray-900">-</div>
                                         <div class="text-sm text-gray-600">Avg P/L</div>
                                     </div>
                                     <div class="text-center p-4 bg-blue-50 rounded-lg">
-                                        <div class="text-2xl font-bold text-blue-600">+$485.00</div>
+                                        <div id="dt-perf-best-trade" class="text-2xl font-bold text-blue-600">-</div>
                                         <div class="text-sm text-gray-600">Best Trade</div>
                                     </div>
                                     <div class="text-center p-4 bg-red-50 rounded-lg">
-                                        <div class="text-2xl font-bold text-red-600">-$987.50</div>
+                                        <div id="dt-perf-worst-trade" class="text-2xl font-bold text-red-600">-</div>
                                         <div class="text-sm text-gray-600">Worst Trade</div>
                                     </div>
                                 </div>
@@ -3811,9 +3811,18 @@ app.get('/', (c) => {
                             
                             <!-- Quick Entry Form -->
                             <div class="card mb-6">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4">
-                                    <i class="fas fa-plus-circle text-orange-600 mr-2"></i>Quick Entry Form
-                                </h3>
+                                <div class="flex justify-between items-center mb-4">
+                                    <h3 class="text-xl font-bold text-gray-800">
+                                        <i class="fas fa-plus-circle text-orange-600 mr-2"></i>Quick Entry Form
+                                    </h3>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-sm text-gray-600">Profit-Based Sizing</span>
+                                        <label class="relative inline-block w-12 h-6">
+                                            <input type="checkbox" id="dt-profit-sizing-toggle" class="sr-only peer" onchange="toggleProfitSizing()">
+                                            <div class="w-full h-full bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                                        </label>
+                                    </div>
+                                </div>
                                 
                                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                     <div>
@@ -3828,10 +3837,11 @@ app.get('/', (c) => {
                                     <div>
                                         <label class="block text-gray-700 font-semibold mb-2">Contracts</label>
                                         <div class="flex gap-2">
-                                            <button onclick="adjustContracts(-1)" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">-</button>
+                                            <button onclick="adjustContracts(-1)" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50" id="dt-contracts-minus">-</button>
                                             <input type="number" id="dt-contracts" value="1" min="1" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-center">
-                                            <button onclick="adjustContracts(1)" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">+</button>
+                                            <button onclick="adjustContracts(1)" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50" id="dt-contracts-plus">+</button>
                                         </div>
+                                        <small class="text-xs text-gray-500 mt-1 block" id="dt-contracts-hint">Manual sizing</small>
                                     </div>
                                 </div>
                                 
