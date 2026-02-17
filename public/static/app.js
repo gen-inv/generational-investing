@@ -6553,13 +6553,19 @@ function renderFullHistory() {
                 <button onclick="openEditTradeModal(${trade.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
                     <i class="fas fa-edit"></i>
                 </button>
-                <button onclick="openCloseTradeModal(${trade.id})" class="text-green-600 hover:text-green-800" title="Close Trade">
+                <button onclick="openCloseTradeModal(${trade.id})" class="text-green-600 hover:text-green-800 mr-2" title="Close Trade">
                     <i class="fas fa-check-circle"></i>
+                </button>
+                <button onclick="deleteTrade(${trade.id})" class="text-red-600 hover:text-red-800" title="Delete Trade">
+                    <i class="fas fa-trash"></i>
                 </button>
             `
             : `
-                <button onclick="openEditTradeModal(${trade.id})" class="text-blue-600 hover:text-blue-800" title="Edit">
+                <button onclick="openEditTradeModal(${trade.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
                     <i class="fas fa-edit"></i>
+                </button>
+                <button onclick="deleteTrade(${trade.id})" class="text-red-600 hover:text-red-800" title="Delete Trade">
+                    <i class="fas fa-trash"></i>
                 </button>
             `
         
@@ -6856,6 +6862,52 @@ async function submitCloseTrade(event) {
     } catch (error) {
         console.error('Error closing trade:', error)
         alert(`Failed to close trade: ${error.response?.data?.error || error.message}`)
+    }
+}
+
+// Delete Trade Function
+async function deleteTrade(tradeId) {
+    try {
+        const trade = allTradesData.find(t => t.id === tradeId)
+        if (!trade) {
+            alert('Trade not found')
+            return
+        }
+        
+        const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor' 
+            : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Spread'
+            : 'Put Spread'
+        
+        const confirmMsg = `Are you sure you want to DELETE this trade?\n\n` +
+            `Date: ${trade.trade_date}\n` +
+            `Strategy: ${strategyLabel}\n` +
+            `Contracts: ${trade.contracts}\n` +
+            `Credit: $${trade.total_credit}\n` +
+            `Status: ${trade.is_open ? 'OPEN' : 'CLOSED'}\n\n` +
+            `This action cannot be undone!`
+        
+        if (!confirm(confirmMsg)) {
+            return
+        }
+        
+        await api.delete(`/api/daily-trades/${tradeId}`)
+        
+        showNotification('Trade deleted successfully', 'success')
+        await loadFullHistory()
+        
+        // Reload other views
+        if (document.getElementById('dt-performance-tab').classList.contains('hidden') === false) {
+            loadRecentTrades()
+            loadDayOfWeekStats()
+        }
+        if (document.getElementById('dt-today-tab').classList.contains('hidden') === false) {
+            loadActivePositions()
+            loadClosedPositionsToday()
+        }
+        
+    } catch (error) {
+        console.error('Error deleting trade:', error)
+        alert(`Failed to delete trade: ${error.response?.data?.error || error.message}`)
     }
 }
 
