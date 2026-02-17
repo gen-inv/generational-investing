@@ -529,18 +529,44 @@ function initializeDailyTradeCalculations() {
     const putCommission = document.getElementById('put-commission')
     const enableCallSpread = document.getElementById('enable-call-spread')
     const enablePutSpread = document.getElementById('enable-put-spread')
+    const contractsInput = document.getElementById('dt-contracts')
     
     // Add event listeners for real-time calculations
-    if (callShortStrike) callShortStrike.addEventListener('input', updateCallSpreadCalculations)
-    if (callTotalCredit) callTotalCredit.addEventListener('input', updateCallSpreadCalculations)
-    if (putShortStrike) putShortStrike.addEventListener('input', updatePutSpreadCalculations)
-    if (putTotalCredit) putTotalCredit.addEventListener('input', updatePutSpreadCalculations)
+    if (callShortStrike) callShortStrike.addEventListener('input', () => {
+        updateCallSpreadCalculations()
+        updateTradeSummary()
+    })
+    if (callTotalCredit) callTotalCredit.addEventListener('input', () => {
+        updateCallSpreadCalculations()
+        updateTradeSummary()
+    })
+    if (putShortStrike) putShortStrike.addEventListener('input', () => {
+        updatePutSpreadCalculations()
+        updateTradeSummary()
+    })
+    if (putTotalCredit) putTotalCredit.addEventListener('input', () => {
+        updatePutSpreadCalculations()
+        updateTradeSummary()
+    })
     
-    // Add event listeners for commission updates
+    // Add event listeners for commission and contract updates
     if (callCommission) callCommission.addEventListener('input', updateTradeSummary)
     if (putCommission) putCommission.addEventListener('input', updateTradeSummary)
-    if (enableCallSpread) enableCallSpread.addEventListener('change', updateTradeSummary)
-    if (enablePutSpread) enablePutSpread.addEventListener('change', updateTradeSummary)
+    if (enableCallSpread) enableCallSpread.addEventListener('change', () => {
+        updateCallSpreadCalculations()
+        updatePutSpreadCalculations()
+        updateTradeSummary()
+    })
+    if (enablePutSpread) enablePutSpread.addEventListener('change', () => {
+        updateCallSpreadCalculations()
+        updatePutSpreadCalculations()
+        updateTradeSummary()
+    })
+    if (contractsInput) contractsInput.addEventListener('input', () => {
+        updateCallSpreadCalculations()
+        updatePutSpreadCalculations()
+        updateTradeSummary()
+    })
     
     // Initial calculation
     updateCallSpreadCalculations()
@@ -553,21 +579,25 @@ function updateStrikeWidthDisplays() {
     const strikeWidthInput = document.getElementById('dt-strike-width')
     const strikeWidth = strikeWidthInput ? parseInt(strikeWidthInput.value) : 5
     
-    // Update the (X pts) displays in spread titles
+    // Calculate dollar value of spread width
+    const dollarWidth = strikeWidth * 100
+    
+    // Update the ($X wide) displays in spread titles
     const callSpreadTitle = document.querySelector('.border-red-200 h4')
     const putSpreadTitle = document.querySelector('.border-green-200 h4')
     
     if (callSpreadTitle) {
-        callSpreadTitle.innerHTML = `<span class="text-red-600">BEARISH:</span> Call Spread <span class="text-sm font-normal text-gray-600">(${strikeWidth} pts)</span>`
+        callSpreadTitle.innerHTML = `<span class="text-red-600">BEARISH:</span> Call Spread <span class="text-sm font-normal text-gray-600">($${dollarWidth} wide)</span>`
     }
     
     if (putSpreadTitle) {
-        putSpreadTitle.innerHTML = `<span class="text-green-600">BULLISH:</span> Put Spread <span class="text-sm font-normal text-gray-600">(${strikeWidth} pts)</span>`
+        putSpreadTitle.innerHTML = `<span class="text-green-600">BULLISH:</span> Put Spread <span class="text-sm font-normal text-gray-600">($${dollarWidth} wide)</span>`
     }
     
     // Trigger recalculation with new strike width
     updateCallSpreadCalculations()
     updatePutSpreadCalculations()
+    updateTradeSummary()
 }
 
 // Adjust contracts with +/- buttons
@@ -593,8 +623,14 @@ function updateCallSpreadCalculations() {
     const shortStrike = parseFloat(document.getElementById('call-short-strike')?.value || 0)
     const totalCredit = parseFloat(document.getElementById('call-total-credit')?.value || 0)
     
-    // Calculate total risk: (strike width - credit) * 100
-    const totalRisk = ((strikeWidth - totalCredit) * 100).toFixed(2)
+    // Get contracts
+    const contracts = parseInt(document.getElementById('dt-contracts')?.value || 1)
+    
+    // Calculate total risk: (strike width * 100 * contracts) - (credit * 100 * contracts)
+    // = (strike width - credit) * 100 * contracts
+    const spreadWidth = strikeWidth * 100 // e.g., 5 pts = $500
+    const creditReceived = totalCredit * 100 * contracts // e.g., $0.70 * 100 * 1 = $70
+    const totalRisk = (spreadWidth * contracts) - creditReceived // e.g., $500 - $70 = $430
     
     // Calculate distance from SPX
     const distancePoints = (shortStrike - spxPrice).toFixed(2)
@@ -605,7 +641,7 @@ function updateCallSpreadCalculations() {
     const distanceEl = document.getElementById('call-distance')
     
     if (totalRiskEl) {
-        totalRiskEl.textContent = `$${totalRisk}`
+        totalRiskEl.textContent = `$${totalRisk.toFixed(2)}`
     }
     
     if (distanceEl) {
@@ -635,8 +671,13 @@ function updatePutSpreadCalculations() {
     const shortStrike = parseFloat(document.getElementById('put-short-strike')?.value || 0)
     const totalCredit = parseFloat(document.getElementById('put-total-credit')?.value || 0)
     
-    // Calculate total risk: (strike width - credit) * 100
-    const totalRisk = ((strikeWidth - totalCredit) * 100).toFixed(2)
+    // Get contracts
+    const contracts = parseInt(document.getElementById('dt-contracts')?.value || 1)
+    
+    // Calculate total risk: (strike width * 100 * contracts) - (credit * 100 * contracts)
+    const spreadWidth = strikeWidth * 100
+    const creditReceived = totalCredit * 100 * contracts
+    const totalRisk = (spreadWidth * contracts) - creditReceived
     
     // Calculate distance from SPX
     const distancePoints = (shortStrike - spxPrice).toFixed(2)
@@ -647,7 +688,7 @@ function updatePutSpreadCalculations() {
     const distanceEl = document.getElementById('put-distance')
     
     if (totalRiskEl) {
-        totalRiskEl.textContent = `$${totalRisk}`
+        totalRiskEl.textContent = `$${totalRisk.toFixed(2)}`
     }
     
     if (distanceEl) {
@@ -664,19 +705,69 @@ function updatePutSpreadCalculations() {
     }
 }
 
-// Update Trade Summary (commission display)
+// Update Trade Summary (all summary calculations)
 function updateTradeSummary() {
     const callEnabled = document.getElementById('enable-call-spread')?.checked
     const putEnabled = document.getElementById('enable-put-spread')?.checked
     
+    const callCredit = callEnabled ? (parseFloat(document.getElementById('call-total-credit')?.value) || 0) : 0
+    const putCredit = putEnabled ? (parseFloat(document.getElementById('put-total-credit')?.value) || 0) : 0
     const callCommission = callEnabled ? (parseFloat(document.getElementById('call-commission')?.value) || 0) : 0
     const putCommission = putEnabled ? (parseFloat(document.getElementById('put-commission')?.value) || 0) : 0
     
+    const contracts = parseInt(document.getElementById('dt-contracts')?.value || 1)
+    const strikeWidthInput = document.getElementById('dt-strike-width')
+    const strikeWidth = strikeWidthInput ? parseInt(strikeWidthInput.value) : 5
+    
+    // Total Premium Credit (per contract)
+    const totalCredit = callCredit + putCredit
+    
+    // Total Commission
     const totalCommission = callCommission + putCommission
     
+    // Max Risk calculation
+    // For Iron Condor: only ONE side can lose (use the larger risk)
+    // For single spread: just that spread's risk
+    const spreadWidth = strikeWidth * 100 // e.g., 5 pts = $500
+    
+    let maxRisk = 0
+    if (callEnabled && putEnabled) {
+        // Iron Condor: only one side can lose at expiration
+        // Calculate risk for each side and use the larger one
+        const callRisk = (spreadWidth * contracts) - (callCredit * 100 * contracts)
+        const putRisk = (spreadWidth * contracts) - (putCredit * 100 * contracts)
+        maxRisk = Math.max(callRisk, putRisk)
+    } else if (callEnabled) {
+        // Call spread only
+        maxRisk = (spreadWidth * contracts) - (callCredit * 100 * contracts)
+    } else if (putEnabled) {
+        // Put spread only
+        maxRisk = (spreadWidth * contracts) - (putCredit * 100 * contracts)
+    }
+    
+    // Net Credit = (Total Credit * 100 * Contracts) - Total Commission
+    const netCredit = (totalCredit * 100 * contracts) - totalCommission
+    
+    // Update displays
+    const totalCreditEl = document.getElementById('dt-total-credit')
+    const maxRiskEl = document.getElementById('dt-max-risk')
     const commissionEl = document.getElementById('dt-total-commission')
+    const netCreditEl = document.getElementById('dt-net-credit')
+    
+    if (totalCreditEl) {
+        totalCreditEl.textContent = `$${totalCredit.toFixed(2)}`
+    }
+    
+    if (maxRiskEl) {
+        maxRiskEl.textContent = `$${maxRisk.toFixed(2)}`
+    }
+    
     if (commissionEl) {
         commissionEl.textContent = `$${totalCommission.toFixed(2)}`
+    }
+    
+    if (netCreditEl) {
+        netCreditEl.textContent = `$${netCredit.toFixed(2)}`
     }
 }
 

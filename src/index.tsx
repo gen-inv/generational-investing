@@ -4024,12 +4024,12 @@ app.get('/', (c) => {
                                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
                                         <div>
                                             <div class="text-sm text-gray-600">Total Premium Credit</div>
-                                            <div class="text-xl font-bold text-green-600">$15.00</div>
+                                            <div class="text-xl font-bold text-green-600" id="dt-total-credit">$1.50</div>
                                             <div class="text-xs text-gray-500">per contract</div>
                                         </div>
                                         <div>
                                             <div class="text-sm text-gray-600">Max Risk</div>
-                                            <div class="text-xl font-bold text-red-600">$485.00</div>
+                                            <div class="text-xl font-bold text-red-600" id="dt-max-risk">$350.00</div>
                                         </div>
                                         <div>
                                             <div class="text-sm text-gray-600">Commission</div>
@@ -4037,7 +4037,7 @@ app.get('/', (c) => {
                                         </div>
                                         <div>
                                             <div class="text-sm text-gray-600">Net Credit</div>
-                                            <div class="text-xl font-bold text-green-600">$1,497.40</div>
+                                            <div class="text-xl font-bold text-green-600" id="dt-net-credit">$147.40</div>
                                         </div>
                                     </div>
                                 </div>
