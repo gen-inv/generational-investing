@@ -2923,7 +2923,6 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
 
     const result = await env.DB.prepare(`
       UPDATE daily_trades SET
-        exit_date = ?,
         exit_time = ?,
         total_debit = ?,
         close_commission = ?,
@@ -2937,7 +2936,6 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).bind(
-      data.exit_date || trade.trade_date,
       data.exit_time,
       exitCost,
       closeCommission,

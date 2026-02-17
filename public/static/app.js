@@ -6963,7 +6963,6 @@ async function submitCloseTrade(event) {
         const exitCost = parseFloat(document.getElementById('close-exit-cost').value) || 0
         
         const closeData = {
-            exit_date: document.getElementById('close-exit-date').value,
             exit_time: document.getElementById('close-exit-time').value,
             exit_cost: exitCost,
             close_commission: parseFloat(document.getElementById('close-commission').value),
