@@ -437,6 +437,32 @@ function updateRollingWindowLabels() {
 
 // Initialize Daily Trade spread calculations
 function initializeDailyTradeCalculations() {
+    // Set current time as default entry time
+    const now = new Date()
+    const hours = String(now.getHours()).padStart(2, '0')
+    const minutes = String(now.getMinutes()).padStart(2, '0')
+    const currentTime = `${hours}:${minutes}`
+    
+    const entryTimeInput = document.getElementById('dt-entry-time')
+    if (entryTimeInput && !entryTimeInput.value) {
+        entryTimeInput.value = currentTime
+    }
+    
+    // Add listener to strike width to update displays
+    const strikeWidthInput = document.getElementById('dt-strike-width')
+    if (strikeWidthInput) {
+        strikeWidthInput.addEventListener('input', updateStrikeWidthDisplays)
+    }
+    
+    // Add listener to SPX price for recalculation
+    const spxPriceInput = document.getElementById('dt-spx-price')
+    if (spxPriceInput) {
+        spxPriceInput.addEventListener('input', () => {
+            updateCallSpreadCalculations()
+            updatePutSpreadCalculations()
+        })
+    }
+    
     // Get input elements
     const callShortStrike = document.getElementById('call-short-strike')
     const callTotalCredit = document.getElementById('call-total-credit')
@@ -454,10 +480,47 @@ function initializeDailyTradeCalculations() {
     updatePutSpreadCalculations()
 }
 
+// Update strike width displays from configuration
+function updateStrikeWidthDisplays() {
+    const strikeWidthInput = document.getElementById('dt-strike-width')
+    const strikeWidth = strikeWidthInput ? parseInt(strikeWidthInput.value) : 5
+    
+    // Update the (X pts) displays in spread titles
+    const callSpreadTitle = document.querySelector('.border-red-200 h4')
+    const putSpreadTitle = document.querySelector('.border-green-200 h4')
+    
+    if (callSpreadTitle) {
+        callSpreadTitle.innerHTML = `Call Spread <span class="text-sm font-normal text-gray-600">(${strikeWidth} pts)</span>`
+    }
+    
+    if (putSpreadTitle) {
+        putSpreadTitle.innerHTML = `Put Spread <span class="text-sm font-normal text-gray-600">(${strikeWidth} pts)</span>`
+    }
+    
+    // Trigger recalculation with new strike width
+    updateCallSpreadCalculations()
+    updatePutSpreadCalculations()
+}
+
+// Adjust contracts with +/- buttons
+function adjustContracts(delta) {
+    const contractsInput = document.getElementById('dt-contracts')
+    if (contractsInput) {
+        const currentValue = parseInt(contractsInput.value) || 1
+        const newValue = Math.max(1, currentValue + delta)
+        contractsInput.value = newValue
+    }
+}
+
 // Update Call Spread calculations
 function updateCallSpreadCalculations() {
-    const strikeWidth = 5 // TODO: Get from configuration
-    const spxPrice = 4856.20 // TODO: Get from live data
+    // Get strike width from configuration
+    const strikeWidthInput = document.getElementById('dt-strike-width')
+    const strikeWidth = strikeWidthInput ? parseInt(strikeWidthInput.value) : 5
+    
+    // Get SPX price (manual override or default)
+    const spxPriceInput = document.getElementById('dt-spx-price')
+    const spxPrice = spxPriceInput && spxPriceInput.value ? parseFloat(spxPriceInput.value) : 4856.20
     
     const shortStrike = parseFloat(document.getElementById('call-short-strike')?.value || 0)
     const totalCredit = parseFloat(document.getElementById('call-total-credit')?.value || 0)
@@ -493,8 +556,13 @@ function updateCallSpreadCalculations() {
 
 // Update Put Spread calculations
 function updatePutSpreadCalculations() {
-    const strikeWidth = 5 // TODO: Get from configuration
-    const spxPrice = 4856.20 // TODO: Get from live data
+    // Get strike width from configuration
+    const strikeWidthInput = document.getElementById('dt-strike-width')
+    const strikeWidth = strikeWidthInput ? parseInt(strikeWidthInput.value) : 5
+    
+    // Get SPX price (manual override or default)
+    const spxPriceInput = document.getElementById('dt-spx-price')
+    const spxPrice = spxPriceInput && spxPriceInput.value ? parseFloat(spxPriceInput.value) : 4856.20
     
     const shortStrike = parseFloat(document.getElementById('put-short-strike')?.value || 0)
     const totalCredit = parseFloat(document.getElementById('put-total-credit')?.value || 0)
@@ -581,6 +649,9 @@ async function loadDailyTradeConfig() {
         
         // Update rolling window labels in Performance tab
         updateRollingWindowLabels()
+        
+        // Update strike width displays in Today's Trading tab
+        updateStrikeWidthDisplays()
         
         console.log('Daily Trade config loaded successfully', config)
     } catch (error) {

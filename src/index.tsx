@@ -3800,17 +3800,22 @@ app.get('/', (c) => {
                                     <i class="fas fa-plus-circle text-orange-600 mr-2"></i>Quick Entry Form
                                 </h3>
                                 
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                                     <div>
                                         <label class="block text-gray-700 font-semibold mb-2">Entry Time</label>
-                                        <input type="time" value="13:23" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                        <input type="time" id="dt-entry-time" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    </div>
+                                    <div>
+                                        <label class="block text-gray-700 font-semibold mb-2">SPX Price (Manual Override)</label>
+                                        <input type="number" step="0.01" id="dt-spx-price" placeholder="4856.20" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                        <small class="text-gray-500 text-xs">Leave blank for auto (future)</small>
                                     </div>
                                     <div>
                                         <label class="block text-gray-700 font-semibold mb-2">Contracts</label>
                                         <div class="flex gap-2">
-                                            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">-</button>
-                                            <input type="number" value="1" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-center">
-                                            <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">+</button>
+                                            <button onclick="adjustContracts(-1)" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">-</button>
+                                            <input type="number" id="dt-contracts" value="1" min="1" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-center">
+                                            <button onclick="adjustContracts(1)" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">+</button>
                                         </div>
                                     </div>
                                 </div>
