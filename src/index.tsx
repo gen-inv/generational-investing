@@ -3995,44 +3995,10 @@ app.get('/', (c) => {
                                 <h3 class="text-xl font-bold text-gray-800 mb-4">
                                     <i class="fas fa-chart-line text-blue-600 mr-2"></i>Active Positions
                                 </h3>
-                                <div class="overflow-x-auto">
-                                    <table class="w-full text-sm">
-                                        <thead>
-                                            <tr class="bg-gray-100">
-                                                <th class="px-4 py-3 text-left">Entry</th>
-                                                <th class="px-4 py-3 text-left">SC/LC Strike</th>
-                                                <th class="px-4 py-3 text-left">SP/LP Strike</th>
-                                                <th class="px-4 py-3 text-right">Premium</th>
-                                                <th class="px-4 py-3 text-center">Contracts</th>
-                                                <th class="px-4 py-3 text-right">Current P/L</th>
-                                                <th class="px-4 py-3 text-center">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr class="border-b border-gray-200 hover:bg-gray-50">
-                                                <td class="px-4 py-3">10:15 AM</td>
-                                                <td class="px-4 py-3">4865 / 4870</td>
-                                                <td class="px-4 py-3">4845 / 4840</td>
-                                                <td class="px-4 py-3 text-right">$12.50</td>
-                                                <td class="px-4 py-3 text-center font-semibold">1</td>
-                                                <td class="px-4 py-3 text-right">
-                                                    <div class="text-green-600 font-bold">+$187.50</div>
-                                                    <div class="text-xs text-gray-500">(60%)</div>
-                                                </td>
-                                                <td class="px-4 py-3 text-center">
-                                                    <button class="text-blue-600 hover:text-blue-800 mr-2" title="Monitor Position">
-                                                        <i class="fas fa-eye"></i>
-                                                    </button>
-                                                    <button class="text-green-600 hover:text-green-800 mr-2" title="Close Trade">
-                                                        <i class="fas fa-lock"></i>
-                                                    </button>
-                                                    <button class="text-gray-600 hover:text-gray-800" title="Add Notes">
-                                                        <i class="fas fa-sticky-note"></i>
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                <div id="dt-active-positions-container" class="overflow-x-auto">
+                                    <div class="text-center py-8 text-gray-500 italic">
+                                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading active positions...
+                                    </div>
                                 </div>
                             </div>
                             
@@ -4041,55 +4007,26 @@ app.get('/', (c) => {
                                 <h3 class="text-xl font-bold text-gray-800 mb-4">
                                     <i class="fas fa-check-circle text-green-600 mr-2"></i>Closed Positions Today
                                 </h3>
-                                <div class="overflow-x-auto">
-                                    <table class="w-full text-sm">
-                                        <thead>
-                                            <tr class="bg-gray-100">
-                                                <th class="px-4 py-3 text-left">Entry</th>
-                                                <th class="px-4 py-3 text-left">Exit</th>
-                                                <th class="px-4 py-3 text-left">SC/LC Strike</th>
-                                                <th class="px-4 py-3 text-left">SP/LP Strike</th>
-                                                <th class="px-4 py-3 text-right">Open</th>
-                                                <th class="px-4 py-3 text-right">Close</th>
-                                                <th class="px-4 py-3 text-right">P/L</th>
-                                                <th class="px-4 py-3 text-center">Result</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr class="border-b border-gray-200 hover:bg-gray-50">
-                                                <td class="px-4 py-3">10:15 AM</td>
-                                                <td class="px-4 py-3">12:30 PM</td>
-                                                <td class="px-4 py-3">4860 / 4865</td>
-                                                <td class="px-4 py-3">4845 / 4840</td>
-                                                <td class="px-4 py-3 text-right">$14.00</td>
-                                                <td class="px-4 py-3 text-right">$7.00</td>
-                                                <td class="px-4 py-3 text-right">
-                                                    <div class="text-green-600 font-bold">+$298.00</div>
-                                                    <div class="text-xs text-gray-500">(50%)</div>
-                                                </td>
-                                                <td class="px-4 py-3 text-center">✅</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                <div id="dt-closed-positions-container" class="overflow-x-auto">
+                                    <div class="text-center py-8 text-gray-500 italic">
+                                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading closed positions...
+                                    </div>
                                 </div>
                             </div>
                             
                             <!-- Trade Journal -->
                             <div class="card">
                                 <h3 class="text-xl font-bold text-gray-800 mb-4">
-                                    <i class="fas fa-book text-orange-600 mr-2"></i>Trade Journal (Optional)
+                                    <i class="fas fa-book text-orange-600 mr-2"></i>Trade Journal
                                 </h3>
-                                <div class="space-y-2 mb-4">
-                                    <div class="p-3 bg-gray-50 rounded-lg text-sm">
-                                        <span class="font-semibold">10:15 AM</span> - Entered IC, SPX trending up, low volatility
-                                    </div>
-                                    <div class="p-3 bg-gray-50 rounded-lg text-sm">
-                                        <span class="font-semibold">12:30 PM</span> - Closed for 50% profit target, reduced risk
+                                <div id="dt-journal-entries" class="space-y-2 mb-4">
+                                    <div class="text-center py-8 text-gray-500 italic">
+                                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading journal entries...
                                     </div>
                                 </div>
                                 <div class="flex gap-2">
-                                    <input type="text" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" placeholder="Add journal entry...">
-                                    <button class="px-6 py-2 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700">
+                                    <input type="text" id="dt-journal-input" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" placeholder="Add journal entry...">
+                                    <button onclick="addJournalEntry()" class="px-6 py-2 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700">
                                         <i class="fas fa-plus mr-2"></i>Add
                                     </button>
                                 </div>

@@ -433,6 +433,11 @@ function showDailyTradeTab(tabName) {
         
         // Initialize calculations
         initializeDailyTradeCalculations()
+        
+        // Load today's data
+        loadActivePositions()
+        loadClosedPositionsToday()
+        loadTodayJournal()
     }
 }
 
@@ -5920,5 +5925,291 @@ async function loadDayOfWeekStats() {
             </div>
         `
     }
+}
+
+
+// ============================================================================
+// TODAY'S TRADING - ACTIVE/CLOSED POSITIONS AND JOURNAL
+// ============================================================================
+
+// Global variable to store today's journal entries
+let todayJournalEntries = []
+
+// Load active positions
+async function loadActivePositions() {
+    try {
+        const response = await api.get('/api/daily-trades/today')
+        const trades = response.data.trades || []
+        
+        // Filter only open trades
+        const activePositions = trades.filter(trade => trade.is_open)
+        
+        const container = document.getElementById('dt-active-positions-container')
+        
+        if (activePositions.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <i class="fas fa-bed text-gray-300 text-6xl mb-4"></i>
+                    <p class="text-gray-500 text-lg">No active positions</p>
+                    <p class="text-gray-400 text-sm mt-2">Use the Quick Entry Form above to enter a new trade</p>
+                </div>
+            `
+            return
+        }
+        
+        // Build table with active positions
+        let tableHTML = `
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-100">
+                        <th class="px-4 py-3 text-left">Entry</th>
+                        <th class="px-4 py-3 text-left">Strategy</th>
+                        <th class="px-4 py-3 text-left">Strikes</th>
+                        <th class="px-4 py-3 text-right">Credit</th>
+                        <th class="px-4 py-3 text-center">Contracts</th>
+                        <th class="px-4 py-3 text-right">Max Risk</th>
+                        <th class="px-4 py-3 text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `
+        
+        activePositions.forEach(trade => {
+            const entryTime = trade.entry_time ? trade.entry_time.substring(0, 5) : '-'
+            const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor' 
+                : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Spread'
+                : 'Put Spread'
+            
+            // Build strikes display
+            let strikesDisplay = ''
+            if (trade.call_enabled && trade.put_enabled) {
+                strikesDisplay = `C: ${trade.call_short_strike || '-'} | P: ${trade.put_short_strike || '-'}`
+            } else if (trade.call_enabled) {
+                strikesDisplay = `Call: ${trade.call_short_strike || '-'}`
+            } else if (trade.put_enabled) {
+                strikesDisplay = `Put: ${trade.put_short_strike || '-'}`
+            }
+            
+            const strikeWidth = parseInt(document.getElementById('dt-strike-width')?.value || 5)
+            const maxRisk = ((strikeWidth - trade.total_credit) * 100 * trade.contracts).toFixed(2)
+            
+            tableHTML += `
+                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                    <td class="px-4 py-3 font-semibold">${entryTime}</td>
+                    <td class="px-4 py-3">${strategyLabel}</td>
+                    <td class="px-4 py-3">${strikesDisplay}</td>
+                    <td class="px-4 py-3 text-right text-green-600 font-semibold">${formatCurrency(trade.total_credit)}</td>
+                    <td class="px-4 py-3 text-center font-bold">${trade.contracts}</td>
+                    <td class="px-4 py-3 text-right text-red-600 font-semibold">${formatCurrency(maxRisk)}</td>
+                    <td class="px-4 py-3 text-center">
+                        <button onclick="closeTrade(${trade.id})" class="text-green-600 hover:text-green-800 mr-2" title="Close Trade">
+                            <i class="fas fa-lock"></i>
+                        </button>
+                        <button onclick="editTradeNotes(${trade.id})" class="text-gray-600 hover:text-gray-800" title="Edit Notes">
+                            <i class="fas fa-sticky-note"></i>
+                        </button>
+                    </td>
+                </tr>
+            `
+        })
+        
+        tableHTML += '</tbody></table>'
+        container.innerHTML = tableHTML
+        
+        console.log('Active positions loaded:', activePositions.length)
+    } catch (error) {
+        console.error('Error loading active positions:', error)
+        const container = document.getElementById('dt-active-positions-container')
+        container.innerHTML = `
+            <div class="text-center py-8 text-red-500">
+                <i class="fas fa-exclamation-triangle mr-2"></i>Failed to load positions
+            </div>
+        `
+    }
+}
+
+// Load closed positions for today
+async function loadClosedPositionsToday() {
+    try {
+        const response = await api.get('/api/daily-trades/today')
+        const trades = response.data.trades || []
+        
+        // Filter only closed trades
+        const closedPositions = trades.filter(trade => !trade.is_open)
+        
+        const container = document.getElementById('dt-closed-positions-container')
+        
+        if (closedPositions.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <i class="fas fa-calendar-check text-gray-300 text-6xl mb-4"></i>
+                    <p class="text-gray-500 text-lg">No closed positions today</p>
+                    <p class="text-gray-400 text-sm mt-2">Closed trades will appear here once you exit a position</p>
+                </div>
+            `
+            return
+        }
+        
+        // Build table with closed positions
+        let tableHTML = `
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-gray-100">
+                        <th class="px-4 py-3 text-left">Entry</th>
+                        <th class="px-4 py-3 text-left">Exit</th>
+                        <th class="px-4 py-3 text-left">Strategy</th>
+                        <th class="px-4 py-3 text-right">Credit</th>
+                        <th class="px-4 py-3 text-right">Debit</th>
+                        <th class="px-4 py-3 text-center">Contracts</th>
+                        <th class="px-4 py-3 text-right">P/L</th>
+                        <th class="px-4 py-3 text-center">Result</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `
+        
+        closedPositions.forEach(trade => {
+            const entryTime = trade.entry_time ? trade.entry_time.substring(0, 5) : '-'
+            const exitTime = trade.exit_time ? trade.exit_time.substring(0, 5) : '-'
+            const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor' 
+                : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Spread'
+                : 'Put Spread'
+            
+            const plColor = trade.profit_loss >= 0 ? 'text-green-600' : 'text-red-600'
+            const plSign = trade.profit_loss >= 0 ? '+' : ''
+            const statusIcon = trade.profit_loss >= 0 ? '✅' : '❌'
+            
+            // Calculate profit percentage
+            const profitPercent = trade.total_credit > 0 
+                ? ((trade.profit_loss / (trade.total_credit * trade.contracts * 100)) * 100).toFixed(0)
+                : 0
+            
+            tableHTML += `
+                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                    <td class="px-4 py-3">${entryTime}</td>
+                    <td class="px-4 py-3">${exitTime}</td>
+                    <td class="px-4 py-3">${strategyLabel}</td>
+                    <td class="px-4 py-3 text-right text-green-600">${formatCurrency(trade.total_credit)}</td>
+                    <td class="px-4 py-3 text-right text-red-600">${formatCurrency(trade.total_debit || 0)}</td>
+                    <td class="px-4 py-3 text-center font-semibold">${trade.contracts}</td>
+                    <td class="px-4 py-3 text-right">
+                        <div class="${plColor} font-bold">${plSign}${formatCurrency(trade.profit_loss)}</div>
+                        <div class="text-xs text-gray-500">(${profitPercent}%)</div>
+                    </td>
+                    <td class="px-4 py-3 text-center text-xl">${statusIcon}</td>
+                </tr>
+            `
+        })
+        
+        tableHTML += '</tbody></table>'
+        container.innerHTML = tableHTML
+        
+        console.log('Closed positions loaded:', closedPositions.length)
+    } catch (error) {
+        console.error('Error loading closed positions:', error)
+        const container = document.getElementById('dt-closed-positions-container')
+        container.innerHTML = `
+            <div class="text-center py-8 text-red-500">
+                <i class="fas fa-exclamation-triangle mr-2"></i>Failed to load positions
+            </div>
+        `
+    }
+}
+
+// Load trade journal entries for today
+async function loadTodayJournal() {
+    try {
+        const today = new Date().toISOString().split('T')[0]
+        
+        // For now, store journal entries in localStorage per date
+        const storageKey = `journal_${today}`
+        const stored = localStorage.getItem(storageKey)
+        todayJournalEntries = stored ? JSON.parse(stored) : []
+        
+        const container = document.getElementById('dt-journal-entries')
+        
+        if (todayJournalEntries.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <i class="fas fa-journal-whills text-gray-300 text-6xl mb-4"></i>
+                    <p class="text-gray-500 text-lg">No journal entries yet</p>
+                    <p class="text-gray-400 text-sm mt-2">Track your thoughts, market observations, and trade rationale</p>
+                </div>
+            `
+            return
+        }
+        
+        // Render journal entries
+        container.innerHTML = todayJournalEntries.map((entry, index) => `
+            <div class="p-3 bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-lg text-sm flex justify-between items-start">
+                <div class="flex-1">
+                    <span class="font-semibold text-orange-700">${entry.time}</span>
+                    <span class="text-gray-700"> - ${entry.text}</span>
+                </div>
+                <button onclick="deleteJournalEntry(${index})" class="text-red-500 hover:text-red-700 ml-2" title="Delete entry">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+        `).join('')
+        
+        console.log('Journal entries loaded:', todayJournalEntries.length)
+    } catch (error) {
+        console.error('Error loading journal:', error)
+        const container = document.getElementById('dt-journal-entries')
+        container.innerHTML = `
+            <div class="text-center py-8 text-red-500">
+                <i class="fas fa-exclamation-triangle mr-2"></i>Failed to load journal
+            </div>
+        `
+    }
+}
+
+// Add a journal entry
+function addJournalEntry() {
+    const input = document.getElementById('dt-journal-input')
+    const text = input.value.trim()
+    
+    if (!text) {
+        alert('Please enter a journal entry')
+        return
+    }
+    
+    const now = new Date()
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    
+    todayJournalEntries.push({ time, text })
+    
+    // Save to localStorage
+    const today = new Date().toISOString().split('T')[0]
+    localStorage.setItem(`journal_${today}`, JSON.stringify(todayJournalEntries))
+    
+    // Clear input and reload
+    input.value = ''
+    loadTodayJournal()
+}
+
+// Delete a journal entry
+function deleteJournalEntry(index) {
+    if (!confirm('Delete this journal entry?')) return
+    
+    todayJournalEntries.splice(index, 1)
+    
+    // Save to localStorage
+    const today = new Date().toISOString().split('T')[0]
+    localStorage.setItem(`journal_${today}`, JSON.stringify(todayJournalEntries))
+    
+    // Reload
+    loadTodayJournal()
+}
+
+// Placeholder functions for trade actions
+function closeTrade(tradeId) {
+    alert(`Close trade functionality will be implemented. Trade ID: ${tradeId}`)
+    // TODO: Implement close trade modal/form
+}
+
+function editTradeNotes(tradeId) {
+    alert(`Edit notes functionality will be implemented. Trade ID: ${tradeId}`)
+    // TODO: Implement edit notes modal
 }
 
