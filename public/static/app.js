@@ -537,11 +537,17 @@ async function loadDailyTradeConfig() {
     try {
         // Ensure accounts are loaded first
         if (!accountsList || accountsList.length === 0) {
+            console.log('Loading accounts list...')
             await loadAccountsList()
+            console.log('Accounts loaded:', accountsList)
+        } else {
+            console.log('Using cached accounts:', accountsList)
         }
         
         const response = await api.get('/api/daily-trade/config')
         const config = response.data
+        
+        console.log('Config received:', config)
         
         // Populate form fields
         document.getElementById('dt-max-contract-limit').value = config.max_contract_limit || 25
@@ -557,12 +563,20 @@ async function loadDailyTradeConfig() {
         // Load account select
         const accountSelect = document.getElementById('dt-default-account')
         if (accountSelect) {
+            console.log('Populating account select. Accounts available:', accountsList ? accountsList.length : 0)
             accountSelect.innerHTML = '<option value="">Select account...</option>'
             if (accountsList && accountsList.length > 0) {
-                accountSelect.innerHTML += accountsList.map(acc => 
-                    `<option value="${acc.id}" ${acc.id === config.default_account_id ? 'selected' : ''}>${acc.account_name}</option>`
-                ).join('')
+                const accountOptions = accountsList.map(acc => {
+                    console.log('Adding account:', acc.id, acc.account_name)
+                    return `<option value="${acc.id}" ${acc.id === config.default_account_id ? 'selected' : ''}>${acc.account_name}</option>`
+                }).join('')
+                accountSelect.innerHTML += accountOptions
+                console.log('Account select populated with', accountsList.length, 'accounts')
+            } else {
+                console.warn('No accounts available to populate dropdown')
             }
+        } else {
+            console.error('Account select element not found!')
         }
         
         // Update rolling window labels in Performance tab
@@ -639,8 +653,11 @@ async function resetDailyTradeConfig() {
 
 async function loadAccountsList() {
     try {
+        console.log('Fetching accounts from API...')
         const response = await api.get('/api/accounts')
+        console.log('API response:', response.data)
         accountsList = response.data.accounts || []
+        console.log('Accounts list set to:', accountsList)
     } catch (error) {
         console.error('Failed to load accounts list:', error)
         accountsList = []
