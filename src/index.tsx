@@ -2917,7 +2917,8 @@ app.get('/api/daily-trades/stats', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
     const { env } = c
-    const period = c.req.query('period') || 'all' // all, last50, month, year
+    const period = c.req.query('period') || 'all' // all, rolling, month, year
+    const limit = c.req.query('limit') ? parseInt(c.req.query('limit')) : 50
 
     let query = `
       SELECT 
@@ -2934,8 +2935,27 @@ app.get('/api/daily-trades/stats', authMiddleware, async (c) => {
     `
     const params = [userId]
 
-    if (period === 'last50') {
-      query += ` ORDER BY trade_date DESC, entry_time DESC LIMIT 50`
+    if (period === 'rolling') {
+      // For rolling window, use a subquery to get the last N trades
+      query = `
+        SELECT 
+          COUNT(*) as total_trades,
+          SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
+          AVG(CASE WHEN profit_loss > 0 THEN profit_loss ELSE NULL END) as avg_win,
+          AVG(CASE WHEN profit_loss < 0 THEN profit_loss ELSE NULL END) as avg_loss,
+          SUM(profit_loss) as net_pl,
+          AVG(profit_loss) as avg_pl,
+          MAX(profit_loss) as best_trade,
+          MIN(profit_loss) as worst_trade
+        FROM (
+          SELECT profit_loss 
+          FROM daily_trades 
+          WHERE user_id = ? AND is_open = 0 
+          ORDER BY trade_date DESC, entry_time DESC 
+          LIMIT ?
+        )
+      `
+      params.push(limit)
     } else if (period === 'month') {
       query += ` AND strftime('%Y-%m', trade_date) = strftime('%Y-%m', 'now')`
     } else if (period === 'year') {
@@ -2955,6 +2975,57 @@ app.get('/api/daily-trades/stats', authMiddleware, async (c) => {
   } catch (error) {
     console.error('Error fetching stats:', error)
     return c.json({ error: 'Failed to fetch statistics' }, 500)
+  }
+})
+
+// Get day of week statistics
+app.get('/api/daily-trades/day-stats', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+
+    const query = `
+      SELECT 
+        CASE CAST(strftime('%w', trade_date) AS INTEGER)
+          WHEN 0 THEN 'Sunday'
+          WHEN 1 THEN 'Monday'
+          WHEN 2 THEN 'Tuesday'
+          WHEN 3 THEN 'Wednesday'
+          WHEN 4 THEN 'Thursday'
+          WHEN 5 THEN 'Friday'
+          WHEN 6 THEN 'Saturday'
+        END as day_name,
+        CAST(strftime('%w', trade_date) AS INTEGER) as day_num,
+        COUNT(*) as total_trades,
+        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
+        SUM(profit_loss) as net_pl,
+        AVG(profit_loss) as avg_pl,
+        MAX(profit_loss) as best_trade,
+        MIN(profit_loss) as worst_trade
+      FROM daily_trades
+      WHERE user_id = ? AND is_open = 0
+      GROUP BY day_num, day_name
+      ORDER BY day_num
+    `
+
+    const result = await env.DB.prepare(query).bind(userId).all()
+
+    // Calculate win rates and format data
+    const dayStats = result.results.map(day => {
+      const winRate = day.total_trades > 0 
+        ? ((day.winning_trades / day.total_trades) * 100).toFixed(1)
+        : 0
+      
+      return {
+        ...day,
+        win_rate: winRate
+      }
+    })
+
+    return c.json({ days: dayStats })
+  } catch (error) {
+    console.error('Error fetching day stats:', error)
+    return c.json({ error: 'Failed to fetch day statistics' }, 500)
   }
 })
 
@@ -3667,86 +3738,41 @@ app.get('/', (c) => {
                                 </div>
                             </div>
                             
-                            <!-- Recent Trade History -->
+                            <!-- Recent Trade History (Last 7 Days) -->
                             <div class="card mb-6">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4">Recent Trade History</h3>
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">Recent Trade History (Last 7 Days)</h3>
                                 <div class="overflow-x-auto">
                                     <table class="w-full text-sm">
                                         <thead>
                                             <tr class="bg-gray-100">
                                                 <th class="px-4 py-3 text-left">Date</th>
-                                                <th class="px-4 py-3 text-left">Entry Time</th>
-                                                <th class="px-4 py-3 text-left">Exit Time</th>
-                                                <th class="px-4 py-3 text-right">Premium</th>
+                                                <th class="px-4 py-3 text-left">Strategy</th>
+                                                <th class="px-4 py-3 text-left">Entry</th>
+                                                <th class="px-4 py-3 text-left">Exit</th>
+                                                <th class="px-4 py-3 text-right">Credit</th>
                                                 <th class="px-4 py-3 text-center">Contracts</th>
                                                 <th class="px-4 py-3 text-right">P/L</th>
-                                                <th class="px-4 py-3 text-center">Result</th>
+                                                <th class="px-4 py-3 text-center">Status</th>
                                             </tr>
                                         </thead>
-                                        <tbody>
-                                            <tr class="border-b border-gray-200 hover:bg-gray-50">
-                                                <td class="px-4 py-3">2026-02-14</td>
-                                                <td class="px-4 py-3">10:15 AM</td>
-                                                <td class="px-4 py-3">2:30 PM</td>
-                                                <td class="px-4 py-3 text-right">$12.50</td>
-                                                <td class="px-4 py-3 text-center">2</td>
-                                                <td class="px-4 py-3 text-right text-green-600 font-semibold">+$312.50</td>
-                                                <td class="px-4 py-3 text-center">✅</td>
-                                            </tr>
-                                            <tr class="border-b border-gray-200 hover:bg-gray-50 bg-gray-50">
-                                                <td class="px-4 py-3" colspan="7" class="text-center text-gray-500 italic">More trades will appear here...</td>
+                                        <tbody id="dt-recent-trades-tbody">
+                                            <tr>
+                                                <td colspan="8" class="px-4 py-8 text-center text-gray-500 italic">
+                                                    <i class="fas fa-spinner fa-spin mr-2"></i>Loading trades...
+                                                </td>
                                             </tr>
                                         </tbody>
                                     </table>
-                                </div>
-                                <div class="mt-4 flex gap-4">
-                                    <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                                        <i class="fas fa-list mr-2"></i>View Full History
-                                    </button>
-                                    <button class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                                        <i class="fas fa-download mr-2"></i>Export to CSV
-                                    </button>
                                 </div>
                             </div>
                             
                             <!-- Day of Week Statistics -->
                             <div class="card">
                                 <h3 class="text-xl font-bold text-gray-800 mb-4">Statistics by Day of Week</h3>
-                                <div class="space-y-3">
-                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                        <div class="font-semibold">Monday</div>
-                                        <div class="text-sm text-gray-600">32 trades</div>
-                                        <div class="text-sm font-semibold text-gray-700">68.8% win</div>
-                                        <div class="text-sm font-semibold text-green-600">+$1,245</div>
-                                        <div class="text-sm text-gray-600">Avg: +$38.91</div>
+                                <div id="dt-day-stats-container" class="space-y-3">
+                                    <div class="text-center py-8 text-gray-500 italic">
+                                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading day of week statistics...
                                     </div>
-                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                        <div class="font-semibold">Tuesday</div>
-                                        <div class="text-sm text-gray-600">28 trades</div>
-                                        <div class="text-sm font-semibold text-gray-700">75.0% win</div>
-                                        <div class="text-sm font-semibold text-green-600">+$2,156</div>
-                                        <div class="text-sm text-gray-600">Avg: +$77.00</div>
-                                    </div>
-                                    <div class="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
-                                        <div class="font-semibold">Wednesday</div>
-                                        <div class="text-sm text-gray-600">35 trades</div>
-                                        <div class="text-sm font-semibold text-green-700">77.1% win</div>
-                                        <div class="text-sm font-semibold text-green-600">+$3,987</div>
-                                        <div class="text-sm text-gray-600">Avg: +$113.91</div>
-                                    </div>
-                                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                        <div class="font-semibold">Thursday</div>
-                                        <div class="text-sm text-gray-600">31 trades</div>
-                                        <div class="text-sm font-semibold text-gray-700">71.0% win</div>
-                                        <div class="text-sm font-semibold text-green-600">+$2,234</div>
-                                        <div class="text-sm text-gray-600">Avg: +$72.06</div>
-                                    </div>
-                                    <div class="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
-                                        <div class="font-semibold">Friday 📈</div>
-                                        <div class="text-sm text-gray-600">30 trades</div>
-                                        <div class="text-sm font-semibold text-green-700">70.0% win</div>
-                                        <div class="text-sm font-semibold text-green-600">+$4,645</div>
-                                        <div class="text-sm text-gray-600">Avg: +$154.83</div>
                                     </div>
                                 </div>
                             </div>

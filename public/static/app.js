@@ -415,6 +415,9 @@ function showDailyTradeTab(tabName) {
         updateRollingWindowLabels()
         // Load performance stats (default to 'rolling' to match the "Last X Trades" button as default active state)
         loadPerformanceStats(currentPerformancePeriod || 'rolling')
+        // Load recent trades and day of week statistics
+        loadRecentTrades()
+        loadDayOfWeekStats()
     }
     
     // Special handling for Today's Trading tab
@@ -5774,5 +5777,148 @@ function formatCurrency(value) {
     if (value === null || value === undefined) return '-'
     const absValue = Math.abs(value)
     return '$' + absValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+
+// Load recent trade history (last 7 days)
+async function loadRecentTrades() {
+    try {
+        const sevenDaysAgo = new Date()
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+        const startDate = sevenDaysAgo.toISOString().split('T')[0]
+        
+        const response = await api.get('/api/daily-trades')
+        const allTrades = response.data.trades || []
+        
+        // Filter trades from last 7 days and closed only
+        const recentTrades = allTrades.filter(trade => {
+            return trade.trade_date >= startDate && !trade.is_open
+        })
+        
+        const tbody = document.getElementById('dt-recent-trades-tbody')
+        
+        if (recentTrades.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-gray-500 italic">
+                        No trades in the last 7 days
+                    </td>
+                </tr>
+            `
+            return
+        }
+        
+        // Render trades
+        tbody.innerHTML = recentTrades.map(trade => {
+            const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor' 
+                : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Spread'
+                : 'Put Spread'
+            
+            const entryTime = trade.entry_time ? trade.entry_time.substring(0, 5) : '-'
+            const exitTime = trade.exit_time ? trade.exit_time.substring(0, 5) : '-'
+            
+            const plColor = trade.profit_loss >= 0 ? 'text-green-600' : 'text-red-600'
+            const plSign = trade.profit_loss >= 0 ? '+' : ''
+            const statusIcon = trade.profit_loss >= 0 ? '✅' : '❌'
+            
+            return `
+                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                    <td class="px-4 py-3">${trade.trade_date}</td>
+                    <td class="px-4 py-3">${strategyLabel}</td>
+                    <td class="px-4 py-3">${entryTime}</td>
+                    <td class="px-4 py-3">${exitTime}</td>
+                    <td class="px-4 py-3 text-right">${formatCurrency(trade.total_credit)}</td>
+                    <td class="px-4 py-3 text-center">${trade.contracts}</td>
+                    <td class="px-4 py-3 text-right ${plColor} font-semibold">${plSign}${formatCurrency(trade.profit_loss)}</td>
+                    <td class="px-4 py-3 text-center">${statusIcon}</td>
+                </tr>
+            `
+        }).join('')
+        
+        console.log('Recent trades loaded:', recentTrades.length, 'trades')
+    } catch (error) {
+        console.error('Error loading recent trades:', error)
+        const tbody = document.getElementById('dt-recent-trades-tbody')
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="px-4 py-8 text-center text-red-500">
+                    Failed to load trades. Please try again.
+                </td>
+            </tr>
+        `
+    }
+}
+
+// Load day of week statistics
+async function loadDayOfWeekStats() {
+    try {
+        const response = await api.get('/api/daily-trades/day-stats')
+        const days = response.data.days || []
+        
+        const container = document.getElementById('dt-day-stats-container')
+        
+        if (days.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8 text-gray-500 italic">
+                    No trades yet to calculate day of week statistics
+                </div>
+            `
+            return
+        }
+        
+        // Find best day (highest avg P/L)
+        let bestDay = null
+        let bestAvgPL = -Infinity
+        days.forEach(day => {
+            if (day.avg_pl > bestAvgPL) {
+                bestAvgPL = day.avg_pl
+                bestDay = day.day_name
+            }
+        })
+        
+        // Day name emojis
+        const dayEmojis = {
+            'Monday': '📅',
+            'Tuesday': '📊',
+            'Wednesday': '💼',
+            'Thursday': '📈',
+            'Friday': '🚀',
+            'Saturday': '🏖️',
+            'Sunday': '☀️'
+        }
+        
+        // Render day statistics
+        container.innerHTML = days.map(day => {
+            const isBestDay = day.day_name === bestDay && day.avg_pl > 0
+            const bgClass = isBestDay ? 'bg-green-50 border-2 border-green-200' : 'bg-gray-50'
+            const winRateClass = parseFloat(day.win_rate) >= 70 ? 'text-green-700' : 'text-gray-700'
+            const plColor = day.net_pl >= 0 ? 'text-green-600' : 'text-red-600'
+            const plSign = day.net_pl >= 0 ? '+' : ''
+            const avgSign = day.avg_pl >= 0 ? '+' : ''
+            
+            const emoji = dayEmojis[day.day_name] || ''
+            const displayName = isBestDay ? `${day.day_name} ${emoji}` : day.day_name
+            
+            return `
+                <div class="flex items-center justify-between p-3 ${bgClass} rounded-lg">
+                    <div class="font-semibold w-24">${displayName}</div>
+                    <div class="text-sm text-gray-600 w-20">${day.total_trades} trades</div>
+                    <div class="text-sm font-semibold ${winRateClass} w-20">${day.win_rate}% win</div>
+                    <div class="text-sm font-semibold ${plColor} w-24">${plSign}${formatCurrency(day.net_pl)}</div>
+                    <div class="text-sm text-gray-600 w-28">Avg: ${avgSign}${formatCurrency(day.avg_pl)}</div>
+                </div>
+            `
+        }).join('')
+        
+        console.log('Day of week stats loaded:', days.length, 'days')
+    } catch (error) {
+        console.error('Error loading day of week stats:', error)
+        const container = document.getElementById('dt-day-stats-container')
+        container.innerHTML = `
+            <div class="text-center py-8 text-red-500">
+                Failed to load statistics. Please try again.
+            </div>
+        `
+    }
 }
 
