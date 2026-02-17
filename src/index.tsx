@@ -3682,10 +3682,9 @@ app.get('/', (c) => {
                         <div id="dt-performance-tab" class="daily-trade-tab-content">
                             <!-- Filter Buttons -->
                             <div class="mb-6 flex gap-2">
-                                <button onclick="loadPerformanceStats('all')" id="dt-filter-all" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">All Time</button>
                                 <button onclick="loadPerformanceStats('rolling')" id="dt-filter-rolling" class="px-4 py-2 bg-orange-600 text-white rounded-lg font-semibold">Last 50 Trades</button>
-                                <button onclick="loadPerformanceStats('month')" id="dt-filter-month" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">This Month</button>
-                                <button onclick="loadPerformanceStats('year')" id="dt-filter-year" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">This Year</button>
+                                <button onclick="loadPerformanceStats('year')" id="dt-filter-year" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">YTD</button>
+                                <button onclick="loadPerformanceStats('all')" id="dt-filter-all" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">All Time</button>
                             </div>
                             
                             <!-- Key Metrics -->

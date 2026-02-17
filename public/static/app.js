@@ -5700,7 +5700,7 @@ async function loadPerformanceStats(period) {
         currentPerformancePeriod = period
         
         // Update button styles
-        const allButtons = ['dt-filter-all', 'dt-filter-rolling', 'dt-filter-month', 'dt-filter-year']
+        const allButtons = ['dt-filter-rolling', 'dt-filter-year', 'dt-filter-all']
         const activeButton = `dt-filter-${period}`
         
         allButtons.forEach(btnId => {
