@@ -2933,6 +2933,13 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
       updatedNotes = updatedNotes + '\n' + 'Close: ' + data.notes
     }
 
+    // Map exit reason to database-compatible value
+    // EXPIRED_WORTHLESS is shown in UI but stored as MANUAL for DB constraint compatibility
+    let exitReason = data.exit_reason || 'MANUAL'
+    if (exitReason === 'EXPIRED_WORTHLESS') {
+      exitReason = 'MANUAL'
+    }
+
     const result = await env.DB.prepare(`
       UPDATE daily_trades SET
         exit_time = ?,
@@ -2949,7 +2956,7 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
       exitCost,
       closeCommission,
       profitLoss,
-      data.exit_reason || 'EXPIRED_WORTHLESS',
+      exitReason,
       updatedNotes,
       tradeId,
       userId
