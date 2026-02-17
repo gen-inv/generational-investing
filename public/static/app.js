@@ -6842,14 +6842,11 @@ async function openCloseTradeModal(tradeId) {
         // Populate hidden field
         document.getElementById('close-trade-id').value = trade.id
         
-        // Set exit date to trade's open date (for same-day 0DTE trades)
-        // Set exit time to current time
+        // Set exit time to current time (no exit date field - 0DTE uses trade_date)
         const now = new Date()
         const hours = String(now.getHours()).padStart(2, '0')
         const minutes = String(now.getMinutes()).padStart(2, '0')
         
-        // Use trade's entry date (trade_date field)
-        document.getElementById('close-exit-date').value = trade.trade_date
         document.getElementById('close-exit-time').value = `${hours}:${minutes}`
         
         // Clear other fields
