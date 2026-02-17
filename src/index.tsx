@@ -2936,7 +2936,7 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
         exit_reason = ?,
         is_open = 0,
         notes = CASE 
-          WHEN ? != '' THEN COALESCE(notes, '') || CHAR(10) || 'Close: ' || ?
+          WHEN ? != '' THEN COALESCE(notes, '') || char(10) || 'Close: ' || ?
           ELSE notes
         END,
         updated_at = CURRENT_TIMESTAMP
