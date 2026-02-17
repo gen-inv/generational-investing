@@ -6996,7 +6996,9 @@ async function submitCloseTrade(event) {
         
     } catch (error) {
         console.error('Error closing trade:', error)
-        alert(`Failed to close trade: ${error.response?.data?.error || error.message}`)
+        console.error('Error response:', error.response?.data)
+        const errorMsg = error.response?.data?.details || error.response?.data?.error || error.message
+        alert(`Failed to close trade: ${errorMsg}`)
     }
 }
 
