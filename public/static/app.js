@@ -579,19 +579,16 @@ function updateStrikeWidthDisplays() {
     const strikeWidthInput = document.getElementById('dt-strike-width')
     const strikeWidth = strikeWidthInput ? parseInt(strikeWidthInput.value) : 5
     
-    // Calculate dollar value of spread width
-    const dollarWidth = strikeWidth * 100
+    // Update the ($X wide) displays in spread titles - show strike width value, not multiplied
+    const callSpreadWidthDisplay = document.getElementById('call-spread-width-display')
+    const putSpreadWidthDisplay = document.getElementById('put-spread-width-display')
     
-    // Update the ($X wide) displays in spread titles
-    const callSpreadTitle = document.querySelector('.border-red-200 h4')
-    const putSpreadTitle = document.querySelector('.border-green-200 h4')
-    
-    if (callSpreadTitle) {
-        callSpreadTitle.innerHTML = `<span class="text-red-600">BEARISH:</span> Call Spread <span class="text-sm font-normal text-gray-600">($${dollarWidth} wide)</span>`
+    if (callSpreadWidthDisplay) {
+        callSpreadWidthDisplay.textContent = `($${strikeWidth} wide)`
     }
     
-    if (putSpreadTitle) {
-        putSpreadTitle.innerHTML = `<span class="text-green-600">BULLISH:</span> Put Spread <span class="text-sm font-normal text-gray-600">($${dollarWidth} wide)</span>`
+    if (putSpreadWidthDisplay) {
+        putSpreadWidthDisplay.textContent = `($${strikeWidth} wide)`
     }
     
     // Trigger recalculation with new strike width
@@ -6434,7 +6431,9 @@ async function submitDailyTrade() {
         const entryDate = document.getElementById('dt-entry-date').value
         const entryTime = document.getElementById('dt-entry-time').value
         const spxPrice = parseFloat(document.getElementById('dt-spx-price').value) || null
+        const vixPrice = parseFloat(document.getElementById('dt-vix-price').value) || null
         const contracts = parseInt(document.getElementById('dt-contracts').value)
+        const strikeWidth = parseInt(document.getElementById('dt-strike-width').value) || 5
         const notes = document.getElementById('dt-notes').value.trim()
         
         // Check required fields
@@ -6503,6 +6502,7 @@ async function submitDailyTrade() {
             entry_time: entryTime + ':00', // Add seconds
             strategy_type: strategyType,
             contracts: contracts,
+            strike_width: strikeWidth,
             call_enabled: callEnabled ? 1 : 0,
             call_short_strike: callShortStrike,
             call_total_credit: callTotalCredit,
@@ -6510,6 +6510,7 @@ async function submitDailyTrade() {
             put_short_strike: putShortStrike,
             put_total_credit: putTotalCredit,
             spx_entry_price: spxPrice,
+            vix_entry_price: vixPrice,
             total_credit: totalCredit,
             commission: totalCommission,
             notes: notes || null,

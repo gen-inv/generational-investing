@@ -2812,11 +2812,11 @@ app.post('/api/daily-trades', authMiddleware, async (c) => {
 
     const result = await env.DB.prepare(`
       INSERT INTO daily_trades (
-        user_id, account_id, trade_date, entry_time, strategy_type, contracts,
+        user_id, account_id, trade_date, entry_time, strategy_type, contracts, strike_width,
         call_enabled, call_short_strike, call_total_credit,
         put_enabled, put_short_strike, put_total_credit,
-        spx_entry_price, total_credit, commission, notes, is_open
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        spx_entry_price, vix_entry_price, total_credit, commission, notes, is_open
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     `).bind(
       userId,
       data.account_id || null,
@@ -2824,6 +2824,7 @@ app.post('/api/daily-trades', authMiddleware, async (c) => {
       data.entry_time,
       data.strategy_type,
       data.contracts,
+      data.strike_width || 5,
       data.call_enabled ? 1 : 0,
       data.call_short_strike || null,
       data.call_total_credit || null,
@@ -2831,6 +2832,7 @@ app.post('/api/daily-trades', authMiddleware, async (c) => {
       data.put_short_strike || null,
       data.put_total_credit || null,
       data.spx_entry_price || null,
+      data.vix_entry_price || null,
       data.total_credit,
       data.commission || 0,
       data.notes || null
@@ -2860,11 +2862,13 @@ app.put('/api/daily-trades/:id', authMiddleware, async (c) => {
         trade_date = ?,
         entry_time = ?,
         contracts = ?,
+        strike_width = ?,
         call_short_strike = ?,
         call_total_credit = ?,
         put_short_strike = ?,
         put_total_credit = ?,
         spx_entry_price = ?,
+        vix_entry_price = ?,
         total_credit = ?,
         notes = ?,
         updated_at = CURRENT_TIMESTAMP
@@ -2873,11 +2877,13 @@ app.put('/api/daily-trades/:id', authMiddleware, async (c) => {
       data.trade_date,
       data.entry_time,
       data.contracts,
+      data.strike_width || 5,
       data.call_short_strike || null,
       data.call_total_credit || null,
       data.put_short_strike || null,
       data.put_total_credit || null,
       data.spx_entry_price || null,
+      data.vix_entry_price || null,
       data.total_credit,
       data.notes || null,
       tradeId,
@@ -3903,27 +3909,26 @@ app.get('/', (c) => {
                                     </div>
                                 </div>
                                 
-                                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
                                     <div>
-                                        <label class="block text-gray-700 font-semibold mb-2">Entry Date</label>
-                                        <input type="date" id="dt-entry-date" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                        <label class="block text-gray-700 font-semibold mb-1 text-sm">Entry Date</label>
+                                        <input type="date" id="dt-entry-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                                     </div>
                                     <div>
-                                        <label class="block text-gray-700 font-semibold mb-2">Entry Time</label>
-                                        <input type="time" id="dt-entry-time" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                        <label class="block text-gray-700 font-semibold mb-1 text-sm">Entry Time</label>
+                                        <input type="time" id="dt-entry-time" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                                     </div>
                                     <div>
-                                        <label class="block text-gray-700 font-semibold mb-2">SPX Price (Manual Override)</label>
-                                        <input type="number" step="0.01" id="dt-spx-price" placeholder="4856.20" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                                        <small class="text-gray-500 text-xs">Leave blank for auto (future)</small>
+                                        <label class="block text-gray-700 font-semibold mb-1 text-sm">SPX Price</label>
+                                        <input type="number" step="0.01" id="dt-spx-price" placeholder="4856.20" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                                     </div>
                                     <div>
-                                        <label class="block text-gray-700 font-semibold mb-2">Contracts</label>
-                                        <div class="flex gap-2">
-                                            <button onclick="adjustContracts(-1)" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50" id="dt-contracts-minus">-</button>
-                                            <input type="number" id="dt-contracts" value="1" min="1" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-center">
-                                            <button onclick="adjustContracts(1)" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50" id="dt-contracts-plus">+</button>
-                                        </div>
+                                        <label class="block text-gray-700 font-semibold mb-1 text-sm">VIX Price</label>
+                                        <input type="number" step="0.01" id="dt-vix-price" placeholder="18.50" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-gray-700 font-semibold mb-1 text-sm">Contracts</label>
+                                        <input type="number" id="dt-contracts" value="1" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-center text-sm">
                                         <small class="text-xs text-gray-500 mt-1 block" id="dt-contracts-hint">Manual sizing</small>
                                     </div>
                                 </div>
@@ -3941,7 +3946,7 @@ app.get('/', (c) => {
                                     <!-- Call Spread -->
                                     <div class="border-2 border-red-200 rounded-lg p-4 bg-red-50">
                                         <div class="flex items-center justify-between mb-3">
-                                            <h4 class="font-bold text-gray-800"><span class="text-red-600">BEARISH:</span> Call Spread <span class="text-sm font-normal text-gray-600">(5 pts)</span></h4>
+                                            <h4 class="font-bold text-gray-800"><span class="text-red-600">BEARISH:</span> Call Spread <span class="text-sm font-normal text-gray-600" id="call-spread-width-display">($5 wide)</span></h4>
                                             <label class="flex items-center">
                                                 <input type="checkbox" checked class="mr-2" id="enable-call-spread">
                                                 <span class="text-sm">Enable</span>
@@ -3982,7 +3987,7 @@ app.get('/', (c) => {
                                     <!-- Put Spread -->
                                     <div class="border-2 border-green-200 rounded-lg p-4 bg-green-50">
                                         <div class="flex items-center justify-between mb-3">
-                                            <h4 class="font-bold text-gray-800"><span class="text-green-600">BULLISH:</span> Put Spread <span class="text-sm font-normal text-gray-600">(5 pts)</span></h4>
+                                            <h4 class="font-bold text-gray-800"><span class="text-green-600">BULLISH:</span> Put Spread <span class="text-sm font-normal text-gray-600" id="put-spread-width-display">($5 wide)</span></h4>
                                             <label class="flex items-center">
                                                 <input type="checkbox" checked class="mr-2" id="enable-put-spread">
                                                 <span class="text-sm">Enable</span>
