@@ -3964,6 +3964,10 @@ app.get('/', (c) => {
                                                     <input type="number" step="0.01" value="0.70" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="call-total-credit">
                                                 </div>
                                             </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-600 mb-1">Commission ($)</label>
+                                                <input type="number" step="0.01" value="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="call-commission">
+                                            </div>
                                             <div class="bg-white rounded p-2 text-sm">
                                                 <div class="flex justify-between mb-1">
                                                     <span class="text-gray-600">Total Risk:</span>
@@ -3997,6 +4001,10 @@ app.get('/', (c) => {
                                                     <input type="number" step="0.01" value="0.80" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="put-total-credit">
                                                 </div>
                                             </div>
+                                            <div>
+                                                <label class="block text-xs text-gray-600 mb-1">Commission ($)</label>
+                                                <input type="number" step="0.01" value="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="put-commission">
+                                            </div>
                                             <div class="bg-white rounded p-2 text-sm">
                                                 <div class="flex justify-between mb-1">
                                                     <span class="text-gray-600">Total Risk:</span>
@@ -4025,7 +4033,7 @@ app.get('/', (c) => {
                                         </div>
                                         <div>
                                             <div class="text-sm text-gray-600">Commission</div>
-                                            <div class="text-xl font-bold text-gray-700">$2.60</div>
+                                            <div class="text-xl font-bold text-gray-700" id="dt-total-commission">$2.60</div>
                                         </div>
                                         <div>
                                             <div class="text-sm text-gray-600">Net Credit</div>

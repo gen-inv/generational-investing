@@ -525,15 +525,27 @@ function initializeDailyTradeCalculations() {
     const putShortStrike = document.getElementById('put-short-strike')
     const putTotalCredit = document.getElementById('put-total-credit')
     
+    const callCommission = document.getElementById('call-commission')
+    const putCommission = document.getElementById('put-commission')
+    const enableCallSpread = document.getElementById('enable-call-spread')
+    const enablePutSpread = document.getElementById('enable-put-spread')
+    
     // Add event listeners for real-time calculations
     if (callShortStrike) callShortStrike.addEventListener('input', updateCallSpreadCalculations)
     if (callTotalCredit) callTotalCredit.addEventListener('input', updateCallSpreadCalculations)
     if (putShortStrike) putShortStrike.addEventListener('input', updatePutSpreadCalculations)
     if (putTotalCredit) putTotalCredit.addEventListener('input', updatePutSpreadCalculations)
     
+    // Add event listeners for commission updates
+    if (callCommission) callCommission.addEventListener('input', updateTradeSummary)
+    if (putCommission) putCommission.addEventListener('input', updateTradeSummary)
+    if (enableCallSpread) enableCallSpread.addEventListener('change', updateTradeSummary)
+    if (enablePutSpread) enablePutSpread.addEventListener('change', updateTradeSummary)
+    
     // Initial calculation
     updateCallSpreadCalculations()
     updatePutSpreadCalculations()
+    updateTradeSummary()
 }
 
 // Update strike width displays from configuration
@@ -649,6 +661,22 @@ function updatePutSpreadCalculations() {
         } else {
             distanceEl.className = 'font-semibold text-green-600'
         }
+    }
+}
+
+// Update Trade Summary (commission display)
+function updateTradeSummary() {
+    const callEnabled = document.getElementById('enable-call-spread')?.checked
+    const putEnabled = document.getElementById('enable-put-spread')?.checked
+    
+    const callCommission = callEnabled ? (parseFloat(document.getElementById('call-commission')?.value) || 0) : 0
+    const putCommission = putEnabled ? (parseFloat(document.getElementById('put-commission')?.value) || 0) : 0
+    
+    const totalCommission = callCommission + putCommission
+    
+    const commissionEl = document.getElementById('dt-total-commission')
+    if (commissionEl) {
+        commissionEl.textContent = `$${totalCommission.toFixed(2)}`
     }
 }
 
@@ -6330,11 +6358,13 @@ async function submitDailyTrade() {
         const callEnabled = document.getElementById('enable-call-spread').checked
         const callShortStrike = callEnabled ? parseFloat(document.getElementById('call-short-strike').value) : null
         const callTotalCredit = callEnabled ? parseFloat(document.getElementById('call-total-credit').value) : null
+        const callCommission = callEnabled ? parseFloat(document.getElementById('call-commission').value) || 0 : 0
         
         // Get put spread data
         const putEnabled = document.getElementById('enable-put-spread').checked
         const putShortStrike = putEnabled ? parseFloat(document.getElementById('put-short-strike').value) : null
         const putTotalCredit = putEnabled ? parseFloat(document.getElementById('put-total-credit').value) : null
+        const putCommission = putEnabled ? parseFloat(document.getElementById('put-commission').value) || 0 : 0
         
         // Validate at least one side is enabled
         if (!callEnabled && !putEnabled) {
@@ -6361,8 +6391,9 @@ async function submitDailyTrade() {
             strategyType = 'CREDIT_SPREAD_PUT'
         }
         
-        // Calculate total credit
+        // Calculate total credit and commission
         const totalCredit = (callEnabled ? callTotalCredit : 0) + (putEnabled ? putTotalCredit : 0)
+        const totalCommission = callCommission + putCommission
         
         // Get account ID from config (if loaded)
         const accountId = null // TODO: Get from config when implemented
@@ -6381,7 +6412,7 @@ async function submitDailyTrade() {
             put_total_credit: putTotalCredit,
             spx_entry_price: spxPrice,
             total_credit: totalCredit,
-            commission: 0, // TODO: Calculate from config (0.65 per contract typically)
+            commission: totalCommission,
             notes: notes || null,
             is_open: 1
         }
@@ -6435,8 +6466,10 @@ function resetDailyTradeForm() {
     // Clear strikes and credits
     document.getElementById('call-short-strike').value = ''
     document.getElementById('call-total-credit').value = ''
+    document.getElementById('call-commission').value = '1.30'
     document.getElementById('put-short-strike').value = ''
     document.getElementById('put-total-credit').value = ''
+    document.getElementById('put-commission').value = '1.30'
     
     // Clear notes
     document.getElementById('dt-notes').value = ''
