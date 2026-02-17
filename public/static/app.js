@@ -440,7 +440,7 @@ function updateRollingWindowLabels() {
     const rollingWindow = rollingWindowInput ? parseInt(rollingWindowInput.value) : 50
     
     // Update filter button text
-    const filterButton = document.getElementById('dt-rolling-window-filter')
+    const filterButton = document.getElementById('dt-filter-rolling')
     if (filterButton) {
         filterButton.textContent = `Last ${rollingWindow} Trades`
     }
