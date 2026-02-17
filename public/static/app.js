@@ -621,27 +621,32 @@ function updateCallSpreadCalculations() {
     const spxPrice = spxPriceInput && spxPriceInput.value ? parseFloat(spxPriceInput.value) : 4856.20
     
     const shortStrike = parseFloat(document.getElementById('call-short-strike')?.value || 0)
-    const totalCredit = parseFloat(document.getElementById('call-total-credit')?.value || 0)
+    const premium = parseFloat(document.getElementById('call-total-credit')?.value || 0)
     
     // Get contracts
     const contracts = parseInt(document.getElementById('dt-contracts')?.value || 1)
     
-    // Calculate total risk: (strike width * 100 * contracts) - (credit * 100 * contracts)
-    // = (strike width - credit) * 100 * contracts
-    const spreadWidth = strikeWidth * 100 // e.g., 5 pts = $500
-    const creditReceived = totalCredit * 100 * contracts // e.g., $0.70 * 100 * 1 = $70
-    const totalRisk = (spreadWidth * contracts) - creditReceived // e.g., $500 - $70 = $430
+    // Calculate Total Dollars At Work: spread width × 100 × contracts
+    const dollarsAtWork = strikeWidth * 100 * contracts
+    
+    // Calculate Total Credit: premium × 100 × contracts
+    const totalCredit = premium * 100 * contracts
     
     // Calculate distance from SPX
     const distancePoints = (shortStrike - spxPrice).toFixed(2)
     const distancePercent = ((distancePoints / spxPrice) * 100).toFixed(2)
     
     // Update display
-    const totalRiskEl = document.getElementById('call-total-risk')
+    const dollarsAtWorkEl = document.getElementById('call-dollars-at-work')
+    const totalCreditEl = document.getElementById('call-total-credit-display')
     const distanceEl = document.getElementById('call-distance')
     
-    if (totalRiskEl) {
-        totalRiskEl.textContent = `$${totalRisk.toFixed(2)}`
+    if (dollarsAtWorkEl) {
+        dollarsAtWorkEl.textContent = `$${dollarsAtWork.toFixed(2)}`
+    }
+    
+    if (totalCreditEl) {
+        totalCreditEl.textContent = `$${totalCredit.toFixed(2)}`
     }
     
     if (distanceEl) {
@@ -669,26 +674,32 @@ function updatePutSpreadCalculations() {
     const spxPrice = spxPriceInput && spxPriceInput.value ? parseFloat(spxPriceInput.value) : 4856.20
     
     const shortStrike = parseFloat(document.getElementById('put-short-strike')?.value || 0)
-    const totalCredit = parseFloat(document.getElementById('put-total-credit')?.value || 0)
+    const premium = parseFloat(document.getElementById('put-total-credit')?.value || 0)
     
     // Get contracts
     const contracts = parseInt(document.getElementById('dt-contracts')?.value || 1)
     
-    // Calculate total risk: (strike width * 100 * contracts) - (credit * 100 * contracts)
-    const spreadWidth = strikeWidth * 100
-    const creditReceived = totalCredit * 100 * contracts
-    const totalRisk = (spreadWidth * contracts) - creditReceived
+    // Calculate Total Dollars At Work: spread width × 100 × contracts
+    const dollarsAtWork = strikeWidth * 100 * contracts
+    
+    // Calculate Total Credit: premium × 100 × contracts
+    const totalCredit = premium * 100 * contracts
     
     // Calculate distance from SPX
     const distancePoints = (shortStrike - spxPrice).toFixed(2)
     const distancePercent = ((distancePoints / spxPrice) * 100).toFixed(2)
     
     // Update display
-    const totalRiskEl = document.getElementById('put-total-risk')
+    const dollarsAtWorkEl = document.getElementById('put-dollars-at-work')
+    const totalCreditEl = document.getElementById('put-total-credit-display')
     const distanceEl = document.getElementById('put-distance')
     
-    if (totalRiskEl) {
-        totalRiskEl.textContent = `$${totalRisk.toFixed(2)}`
+    if (dollarsAtWorkEl) {
+        dollarsAtWorkEl.textContent = `$${dollarsAtWork.toFixed(2)}`
+    }
+    
+    if (totalCreditEl) {
+        totalCreditEl.textContent = `$${totalCredit.toFixed(2)}`
     }
     
     if (distanceEl) {
