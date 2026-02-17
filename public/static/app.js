@@ -535,6 +535,11 @@ function updatePutSpreadCalculations() {
 // Load Daily Trade configuration
 async function loadDailyTradeConfig() {
     try {
+        // Ensure accounts are loaded first
+        if (!accountsList || accountsList.length === 0) {
+            await loadAccountsList()
+        }
+        
         const response = await api.get('/api/daily-trade/config')
         const config = response.data
         
@@ -551,17 +556,19 @@ async function loadDailyTradeConfig() {
         
         // Load account select
         const accountSelect = document.getElementById('dt-default-account')
-        if (accountSelect && accountsList.length > 0) {
-            accountSelect.innerHTML = '<option value="">Select account...</option>' +
-                accountsList.map(acc => 
+        if (accountSelect) {
+            accountSelect.innerHTML = '<option value="">Select account...</option>'
+            if (accountsList && accountsList.length > 0) {
+                accountSelect.innerHTML += accountsList.map(acc => 
                     `<option value="${acc.id}" ${acc.id === config.default_account_id ? 'selected' : ''}>${acc.account_name}</option>`
                 ).join('')
+            }
         }
         
         // Update rolling window labels in Performance tab
         updateRollingWindowLabels()
         
-        console.log('Daily Trade config loaded successfully')
+        console.log('Daily Trade config loaded successfully', config)
     } catch (error) {
         console.error('Error loading Daily Trade config:', error)
         alert('Failed to load configuration. Using defaults.')
@@ -571,6 +578,7 @@ async function loadDailyTradeConfig() {
 // Save Daily Trade configuration
 async function saveDailyTradeConfig() {
     try {
+        const accountValue = document.getElementById('dt-default-account').value
         const config = {
             max_contract_limit: parseInt(document.getElementById('dt-max-contract-limit').value),
             rolling_profit_window: parseInt(document.getElementById('dt-rolling-profit-window').value),
@@ -581,10 +589,14 @@ async function saveDailyTradeConfig() {
             profit_target_percent: parseInt(document.getElementById('dt-profit-target-percent').value),
             atm_proximity_limit: parseInt(document.getElementById('dt-atm-proximity-limit').value),
             time_exit: document.getElementById('dt-time-exit').value + ':00',
-            default_account_id: document.getElementById('dt-default-account').value || null
+            default_account_id: accountValue ? parseInt(accountValue) : null
         }
         
+        console.log('Saving Daily Trade config:', config)
+        
         const response = await api.post('/api/daily-trade/config', config)
+        
+        console.log('Save response:', response.data)
         
         if (response.data.success) {
             alert('✅ Configuration saved successfully!')
