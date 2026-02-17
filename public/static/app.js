@@ -6853,26 +6853,12 @@ async function openCloseTradeModal(tradeId) {
         
         // Clear other fields
         // SPX Exit Price removed - not needed for 0DTE
-        document.getElementById('close-call-debit').value = ''
-        document.getElementById('close-put-debit').value = ''
+        document.getElementById('close-exit-cost').value = ''
         document.getElementById('close-commission').value = '1.30'
         document.getElementById('close-trade-notes').value = ''
         
-        // Show/hide spread sections
-        const callSection = document.getElementById('close-call-spread-section')
-        const putSection = document.getElementById('close-put-spread-section')
-        
-        if (trade.call_spread_enabled) {
-            callSection.classList.remove('hidden')
-        } else {
-            callSection.classList.add('hidden')
-        }
-        
-        if (trade.put_spread_enabled) {
-            putSection.classList.remove('hidden')
-        } else {
-            putSection.classList.add('hidden')
-        }
+        // Show/hide spread sections - NO LONGER NEEDED
+        // Removed call/put spread sections - using single Exit Cost field instead
         
         // Build summary
         const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor' 
@@ -6900,9 +6886,11 @@ async function openCloseTradeModal(tradeId) {
         `
         
         // Add listeners for P/L preview
-        document.getElementById('close-call-debit').addEventListener('input', updateClosePLPreview)
-        document.getElementById('close-put-debit').addEventListener('input', updateClosePLPreview)
+        document.getElementById('close-exit-cost').addEventListener('input', updateClosePLPreview)
         document.getElementById('close-commission').addEventListener('input', updateClosePLPreview)
+        
+        // Initial preview calculation
+        updateClosePLPreview()
         
         // Show modal
         document.getElementById('close-trade-modal').classList.remove('hidden')
@@ -6923,27 +6911,42 @@ function updateClosePLPreview() {
         const trade = allTradesData.find(t => t.id == tradeId)
         if (!trade) return
         
-        const callDebit = parseFloat(document.getElementById('close-call-debit').value) || 0
-        const putDebit = parseFloat(document.getElementById('close-put-debit').value) || 0
+        const exitCost = parseFloat(document.getElementById('close-exit-cost').value) || 0
         const closeCommission = parseFloat(document.getElementById('close-commission').value) || 0
         
-        const totalDebit = (callDebit + putDebit) * trade.contracts * 100
+        const exitDebit = exitCost * trade.contracts * 100
         const entryCredit = trade.total_credit * trade.contracts * 100
         const entryCommission = trade.commission || 1.30
         
-        const profitLoss = entryCredit - totalDebit - entryCommission - closeCommission
+        const profitLoss = entryCredit - exitDebit - entryCommission - closeCommission
+        
+        // Calculate Dollars At Work (spread width × contracts × 100)
+        const strikeWidth = trade.strike_width || 5
+        const dollarsAtWork = strikeWidth * trade.contracts * 100
+        
+        // Calculate RORC (Return on Risk Capital)
+        const rorc = dollarsAtWork > 0 ? (profitLoss / dollarsAtWork) * 100 : 0
         
         const plDiv = document.getElementById('close-pl-preview')
         const plAmount = document.getElementById('close-pl-amount')
+        const rorcAmount = document.getElementById('close-rorc-amount')
+        const dollarsAtWorkSpan = document.getElementById('close-dollars-at-work')
         
-        if (callDebit > 0 || putDebit > 0) {
-            plDiv.classList.remove('hidden')
-            const plColor = profitLoss >= 0 ? 'text-green-600' : 'text-red-600'
-            const plSign = profitLoss >= 0 ? '+' : ''
-            plAmount.innerHTML = `<span class="${plColor}">${plSign}$${profitLoss.toFixed(2)}</span>`
-        } else {
-            plDiv.classList.add('hidden')
-        }
+        // Always show preview when modal is open
+        plDiv.classList.remove('hidden')
+        
+        // Update P/L
+        const plColor = profitLoss >= 0 ? 'text-green-600' : 'text-red-600'
+        const plSign = profitLoss >= 0 ? '+' : ''
+        plAmount.innerHTML = `<span class="${plColor}">${plSign}$${profitLoss.toFixed(2)}</span>`
+        
+        // Update RORC
+        const rorcColor = rorc >= 0 ? 'text-green-600' : 'text-red-600'
+        const rorcSign = rorc >= 0 ? '+' : ''
+        rorcAmount.innerHTML = `<span class="${rorcColor}">${rorcSign}${rorc.toFixed(2)}%</span>`
+        
+        // Update Dollars At Work
+        dollarsAtWorkSpan.textContent = `$${dollarsAtWork.toFixed(2)}`
         
     } catch (error) {
         console.error('Error calculating P/L preview:', error)
@@ -6957,21 +6960,15 @@ async function submitCloseTrade(event) {
         const tradeId = document.getElementById('close-trade-id').value
         const trade = allTradesData.find(t => t.id == tradeId)
         
+        const exitCost = parseFloat(document.getElementById('close-exit-cost').value) || 0
+        
         const closeData = {
             exit_date: document.getElementById('close-exit-date').value,
             exit_time: document.getElementById('close-exit-time').value,
+            exit_cost: exitCost,
             close_commission: parseFloat(document.getElementById('close-commission').value),
             exit_reason: document.getElementById('close-exit-reason').value,
             notes: document.getElementById('close-trade-notes').value
-        }
-        
-        // Add close debits
-        if (trade.call_spread_enabled) {
-            closeData.call_close_debit = parseFloat(document.getElementById('close-call-debit').value) || 0
-        }
-        
-        if (trade.put_spread_enabled) {
-            closeData.put_close_debit = parseFloat(document.getElementById('close-put-debit').value) || 0
         }
         
         await api.post(`/api/daily-trades/${tradeId}/close`, closeData)

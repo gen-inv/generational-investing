@@ -2912,23 +2912,19 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
     }
 
     // Calculate profit/loss
-    const callCloseDebit = data.call_close_debit || 0
-    const putCloseDebit = data.put_close_debit || 0
-    const totalDebit = callCloseDebit + putCloseDebit
+    const exitCost = data.exit_cost || 0
     
     const entryCredit = trade.total_credit * trade.contracts * 100
-    const closeDebit = totalDebit * trade.contracts * 100
+    const exitDebit = exitCost * trade.contracts * 100
     const entryCommission = trade.commission || 0
     const closeCommission = data.close_commission || 0
     
-    const profitLoss = entryCredit - closeDebit - entryCommission - closeCommission
+    const profitLoss = entryCredit - exitDebit - entryCommission - closeCommission
 
     const result = await env.DB.prepare(`
       UPDATE daily_trades SET
         exit_date = ?,
         exit_time = ?,
-        call_close_debit = ?,
-        put_close_debit = ?,
         total_debit = ?,
         close_commission = ?,
         profit_loss = ?,
@@ -2943,9 +2939,7 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
     `).bind(
       data.exit_date || trade.trade_date,
       data.exit_time,
-      callCloseDebit,
-      putCloseDebit,
-      totalDebit,
+      exitCost,
       closeCommission,
       profitLoss,
       data.exit_reason || 'MANUAL',
@@ -4422,21 +4416,16 @@ app.get('/', (c) => {
                             </div>
                         </div>
                         
-                        <div id="close-call-spread-section" class="mb-4 hidden">
-                            <h4 class="font-bold text-red-600 mb-2">Call Spread - Close Debit</h4>
-                            <input type="number" step="0.01" id="close-call-debit" placeholder="Enter debit paid to close (e.g., 0.25)" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                            <small class="text-gray-500">Enter the debit per contract paid to close the call spread</small>
-                        </div>
-                        
-                        <div id="close-put-spread-section" class="mb-4 hidden">
-                            <h4 class="font-bold text-green-600 mb-2">Put Spread - Close Debit</h4>
-                            <input type="number" step="0.01" id="close-put-debit" placeholder="Enter debit paid to close (e.g., 0.30)" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                            <small class="text-gray-500">Enter the debit per contract paid to close the put spread</small>
-                        </div>
-                        
-                        <div class="mb-4">
-                            <label class="block text-gray-700 font-semibold mb-2">Close Commission ($)</label>
-                            <input type="number" step="0.01" id="close-commission" value="1.30" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Exit Cost ($)</label>
+                                <input type="number" step="0.01" id="close-exit-cost" placeholder="0.00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                <small class="text-gray-500">Total debit paid to close (or 0.00 if expired worthless)</small>
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">Close Commission ($)</label>
+                                <input type="number" step="0.01" id="close-commission" value="1.30" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            </div>
                         </div>
                         
                         <div class="mb-4">
@@ -4455,10 +4444,19 @@ app.get('/', (c) => {
                             <textarea id="close-trade-notes" rows="2" placeholder="Add any closing notes..." class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
                         </div>
                         
-                        <div id="close-pl-preview" class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg hidden">
-                            <div class="flex items-center justify-between">
-                                <span class="font-semibold text-gray-700">Estimated P/L:</span>
-                                <span id="close-pl-amount" class="text-xl font-bold"></span>
+                        <div id="close-pl-preview" class="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg hidden">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="text-center p-3 bg-white rounded-lg shadow-sm">
+                                    <div class="text-sm text-gray-600 mb-1">Profit/Loss</div>
+                                    <div id="close-pl-amount" class="text-2xl font-bold"></div>
+                                </div>
+                                <div class="text-center p-3 bg-white rounded-lg shadow-sm">
+                                    <div class="text-sm text-gray-600 mb-1">RORC</div>
+                                    <div id="close-rorc-amount" class="text-2xl font-bold"></div>
+                                </div>
+                            </div>
+                            <div class="mt-3 text-center">
+                                <div class="text-xs text-gray-600">Dollars At Work: <span id="close-dollars-at-work" class="font-semibold"></span></div>
                             </div>
                         </div>
                         
