@@ -431,6 +431,16 @@ function showDailyTradeTab(tabName) {
             entryTimeInput.value = `${hours}:${minutes}`
         }
         
+        // Load configuration to set default contracts value
+        loadDailyTradeConfig().then(() => {
+            // After config loads, set default contracts if not already set
+            const contractsInput = document.getElementById('dt-contracts')
+            const defaultContracts = parseInt(document.getElementById('dt-default-contracts')?.value || 1)
+            if (contractsInput && contractsInput.value === '1') {
+                contractsInput.value = defaultContracts
+            }
+        })
+        
         // Initialize calculations
         initializeDailyTradeCalculations()
         
