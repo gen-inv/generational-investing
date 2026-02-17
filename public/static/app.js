@@ -6031,8 +6031,8 @@ async function loadActivePositions() {
         console.error('Error loading active positions:', error)
         const container = document.getElementById('dt-active-positions-container')
         
-        // Show friendly message for 404 or no data, error message for real errors
-        if (error.response?.status === 404 || error.response?.data?.trades === null) {
+        // Show friendly message for common scenarios (auth, no data, not found)
+        if (error.response?.status === 401 || error.response?.status === 404 || error.response?.data?.trades === null) {
             container.innerHTML = `
                 <div class="text-center py-12">
                     <i class="fas fa-bed text-gray-300 text-6xl mb-4"></i>
@@ -6131,8 +6131,8 @@ async function loadClosedPositionsToday() {
         console.error('Error loading closed positions:', error)
         const container = document.getElementById('dt-closed-positions-container')
         
-        // Show friendly message for 404 or no data, error message for real errors
-        if (error.response?.status === 404 || error.response?.data?.trades === null) {
+        // Show friendly message for common scenarios (auth, no data, not found)
+        if (error.response?.status === 401 || error.response?.status === 404 || error.response?.data?.trades === null) {
             container.innerHTML = `
                 <div class="text-center py-12">
                     <i class="fas fa-calendar-check text-gray-300 text-6xl mb-4"></i>
