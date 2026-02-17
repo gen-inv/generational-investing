@@ -2946,7 +2946,7 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
       exitCost,
       closeCommission,
       profitLoss,
-      data.exit_reason || 'MANUAL',
+      data.exit_reason || 'EXPIRED_WORTHLESS',
       data.notes || '',
       data.notes || '',
       tradeId,
@@ -4438,7 +4438,7 @@ app.get('/', (c) => {
                                 <option value="TIME_EXIT">Time Exit</option>
                                 <option value="STOP_LOSS">Stop Loss / Risk Management</option>
                                 <option value="ATM_PROXIMITY">ATM Proximity Limit</option>
-                                <option value="MANUAL">Manual Exit</option>
+                                <option value="EXPIRED_WORTHLESS">Expired Worthless</option>
                             </select>
                         </div>
                         
