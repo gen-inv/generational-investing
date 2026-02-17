@@ -5947,14 +5947,26 @@ let todayJournalEntries = []
 
 // Load active positions
 async function loadActivePositions() {
+    const container = document.getElementById('dt-active-positions-container')
+    
+    // If no token, show friendly empty state immediately
+    if (!token) {
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <i class="fas fa-bed text-gray-300 text-6xl mb-4"></i>
+                <p class="text-gray-500 text-lg">No active positions</p>
+                <p class="text-gray-400 text-sm mt-2">Use the Quick Entry Form above to enter a new trade</p>
+            </div>
+        `
+        return
+    }
+    
     try {
         const response = await api.get('/api/daily-trades/today')
         const trades = response.data.trades || []
         
         // Filter only open trades
         const activePositions = trades.filter(trade => trade.is_open)
-        
-        const container = document.getElementById('dt-active-positions-container')
         
         if (activePositions.length === 0) {
             container.innerHTML = `
@@ -6029,37 +6041,42 @@ async function loadActivePositions() {
         console.log('Active positions loaded:', activePositions.length)
     } catch (error) {
         console.error('Error loading active positions:', error)
-        const container = document.getElementById('dt-active-positions-container')
+        console.log('Error response:', error.response)
         
-        // Show friendly message for common scenarios (auth, no data, not found)
-        if (error.response?.status === 401 || error.response?.status === 404 || error.response?.data?.trades === null) {
-            container.innerHTML = `
-                <div class="text-center py-12">
-                    <i class="fas fa-bed text-gray-300 text-6xl mb-4"></i>
-                    <p class="text-gray-500 text-lg">No active positions</p>
-                    <p class="text-gray-400 text-sm mt-2">Use the Quick Entry Form above to enter a new trade</p>
-                </div>
-            `
-        } else {
-            container.innerHTML = `
-                <div class="text-center py-8 text-red-500">
-                    <i class="fas fa-exclamation-triangle mr-2"></i>Failed to load positions
-                </div>
-            `
-        }
+        // Always show friendly message for any error when loading positions
+        // Common scenarios: auth errors, network errors, empty database
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <i class="fas fa-bed text-gray-300 text-6xl mb-4"></i>
+                <p class="text-gray-500 text-lg">No active positions</p>
+                <p class="text-gray-400 text-sm mt-2">Use the Quick Entry Form above to enter a new trade</p>
+            </div>
+        `
     }
 }
 
 // Load closed positions for today
 async function loadClosedPositionsToday() {
+    const container = document.getElementById('dt-closed-positions-container')
+    
+    // If no token, show friendly empty state immediately
+    if (!token) {
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <i class="fas fa-calendar-check text-gray-300 text-6xl mb-4"></i>
+                <p class="text-gray-500 text-lg">No closed positions today</p>
+                <p class="text-gray-400 text-sm mt-2">Closed trades will appear here once you exit a position</p>
+            </div>
+        `
+        return
+    }
+    
     try {
         const response = await api.get('/api/daily-trades/today')
         const trades = response.data.trades || []
         
         // Filter only closed trades
         const closedPositions = trades.filter(trade => !trade.is_open)
-        
-        const container = document.getElementById('dt-closed-positions-container')
         
         if (closedPositions.length === 0) {
             container.innerHTML = `
@@ -6129,24 +6146,17 @@ async function loadClosedPositionsToday() {
         console.log('Closed positions loaded:', closedPositions.length)
     } catch (error) {
         console.error('Error loading closed positions:', error)
-        const container = document.getElementById('dt-closed-positions-container')
+        console.log('Error response:', error.response)
         
-        // Show friendly message for common scenarios (auth, no data, not found)
-        if (error.response?.status === 401 || error.response?.status === 404 || error.response?.data?.trades === null) {
-            container.innerHTML = `
-                <div class="text-center py-12">
-                    <i class="fas fa-calendar-check text-gray-300 text-6xl mb-4"></i>
-                    <p class="text-gray-500 text-lg">No closed positions today</p>
-                    <p class="text-gray-400 text-sm mt-2">Closed trades will appear here once you exit a position</p>
-                </div>
-            `
-        } else {
-            container.innerHTML = `
-                <div class="text-center py-8 text-red-500">
-                    <i class="fas fa-exclamation-triangle mr-2"></i>Failed to load positions
-                </div>
-            `
-        }
+        // Always show friendly message for any error when loading positions
+        // Common scenarios: auth errors, network errors, empty database
+        container.innerHTML = `
+            <div class="text-center py-12">
+                <i class="fas fa-calendar-check text-gray-300 text-6xl mb-4"></i>
+                <p class="text-gray-500 text-lg">No closed positions today</p>
+                <p class="text-gray-400 text-sm mt-2">Closed trades will appear here once you exit a position</p>
+            </div>
+        `
     }
 }
 
