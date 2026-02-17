@@ -413,8 +413,8 @@ function showDailyTradeTab(tabName) {
     // Update rolling window labels when showing performance tab
     if (tabName === 'performance') {
         updateRollingWindowLabels()
-        // Load performance stats (default to 'all')
-        loadPerformanceStats(currentPerformancePeriod || 'all')
+        // Load performance stats (default to 'rolling' to match the "Last X Trades" button as default active state)
+        loadPerformanceStats(currentPerformancePeriod || 'rolling')
     }
     
     // Special handling for Today's Trading tab
@@ -5622,7 +5622,7 @@ async function deleteStock(id) {
 
 // Global variable to store current performance stats
 let dailyTradePerformanceStats = null
-let currentPerformancePeriod = 'all'
+let currentPerformancePeriod = 'rolling' // Default to rolling window (Last X Trades)
 
 // Toggle profit-based position sizing
 function toggleProfitSizing() {
