@@ -3954,7 +3954,7 @@ app.get('/', (c) => {
                                             </label>
                                         </div>
                                         <div class="space-y-3">
-                                            <div class="grid grid-cols-2 gap-2">
+                                            <div class="grid grid-cols-3 gap-2">
                                                 <div>
                                                     <label class="block text-xs text-gray-600 mb-1">Short Call Strike</label>
                                                     <input type="number" step="0.01" value="4870" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="call-short-strike">
@@ -3963,10 +3963,10 @@ app.get('/', (c) => {
                                                     <label class="block text-xs text-gray-600 mb-1">Total Credit ($)</label>
                                                     <input type="number" step="0.01" value="0.70" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="call-total-credit">
                                                 </div>
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs text-gray-600 mb-1">Commission ($)</label>
-                                                <input type="number" step="0.01" value="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="call-commission">
+                                                <div>
+                                                    <label class="block text-xs text-gray-600 mb-1">Commission ($)</label>
+                                                    <input type="number" step="0.01" value="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="call-commission">
+                                                </div>
                                             </div>
                                             <div class="bg-white rounded p-2 text-sm">
                                                 <div class="flex justify-between mb-1">
@@ -3991,7 +3991,7 @@ app.get('/', (c) => {
                                             </label>
                                         </div>
                                         <div class="space-y-3">
-                                            <div class="grid grid-cols-2 gap-2">
+                                            <div class="grid grid-cols-3 gap-2">
                                                 <div>
                                                     <label class="block text-xs text-gray-600 mb-1">Short Put Strike</label>
                                                     <input type="number" step="0.01" value="4840" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="put-short-strike">
@@ -4000,10 +4000,10 @@ app.get('/', (c) => {
                                                     <label class="block text-xs text-gray-600 mb-1">Total Credit ($)</label>
                                                     <input type="number" step="0.01" value="0.80" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="put-total-credit">
                                                 </div>
-                                            </div>
-                                            <div>
-                                                <label class="block text-xs text-gray-600 mb-1">Commission ($)</label>
-                                                <input type="number" step="0.01" value="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="put-commission">
+                                                <div>
+                                                    <label class="block text-xs text-gray-600 mb-1">Commission ($)</label>
+                                                    <input type="number" step="0.01" value="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" id="put-commission">
+                                                </div>
                                             </div>
                                             <div class="bg-white rounded p-2 text-sm">
                                                 <div class="flex justify-between mb-1">
