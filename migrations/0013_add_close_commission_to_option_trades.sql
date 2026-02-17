@@ -1,8 +1,12 @@
 -- Migration: Ensure close_commission field exists in option_trades table
--- Description: This field was manually added to production but missing from migrations
+-- Description: This field was manually added to production before this migration was created
 -- This migration ensures it exists in all environments (local dev, test, production)
--- Note: If the column already exists, this migration will be skipped by checking d1_migrations table
+-- 
+-- IMPORTANT: This migration will FAIL in production with "duplicate column" error
+-- because the column was manually added there before. This is EXPECTED and SAFE.
+-- The migration succeeds in fresh local/test databases where it's needed.
+--
+-- We keep this migration for documentation and to ensure new environments have the column.
 
 -- Add close_commission column with default value
--- Note: This will fail if column already exists, but that's expected and handled by wrangler
 ALTER TABLE option_trades ADD COLUMN close_commission REAL DEFAULT 0;
