@@ -5953,9 +5953,15 @@ let todayJournalEntries = []
 // Load active positions
 async function loadActivePositions() {
     const container = document.getElementById('dt-active-positions-container')
+    const openPositionDisplay = document.getElementById('dt-open-position-display')
+    const noOpenPositionDisplay = document.getElementById('dt-no-open-position')
     
     // If no token, show friendly empty state immediately
     if (!token) {
+        // Hide open position display, show no position message
+        if (openPositionDisplay) openPositionDisplay.classList.add('hidden')
+        if (noOpenPositionDisplay) noOpenPositionDisplay.classList.remove('hidden')
+        
         container.innerHTML = `
             <div class="text-center py-12">
                 <i class="fas fa-bed text-gray-300 text-6xl mb-4"></i>
@@ -5974,6 +5980,10 @@ async function loadActivePositions() {
         const activePositions = trades.filter(trade => trade.is_open)
         
         if (activePositions.length === 0) {
+            // Hide open position display, show no position message
+            if (openPositionDisplay) openPositionDisplay.classList.add('hidden')
+            if (noOpenPositionDisplay) noOpenPositionDisplay.classList.remove('hidden')
+            
             container.innerHTML = `
                 <div class="text-center py-12">
                     <i class="fas fa-bed text-gray-300 text-6xl mb-4"></i>
@@ -5983,6 +5993,13 @@ async function loadActivePositions() {
             `
             return
         }
+        
+        // Show open position display, hide no position message
+        if (openPositionDisplay) openPositionDisplay.classList.remove('hidden')
+        if (noOpenPositionDisplay) noOpenPositionDisplay.classList.add('hidden')
+        
+        // TODO: Update the SPX summary box with real data from first active position
+        // For now, we'll just show the position exists
         
         // Build table with active positions
         let tableHTML = `

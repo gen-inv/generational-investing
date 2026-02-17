@@ -3779,65 +3779,38 @@ app.get('/', (c) => {
                         
                         <!-- Today's Trading Tab -->
                         <div id="dt-today-tab" class="daily-trade-tab-content hidden">
-                            <!-- Daily Summary -->
+                            <!-- Position Summary Card -->
                             <div class="card mb-6 bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200">
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <!-- SPX Price -->
-                                    <div class="text-center">
-                                        <h3 class="text-sm font-semibold text-gray-600 mb-2">SPX Price</h3>
-                                        <div class="text-3xl font-bold text-gray-900">4,856.20</div>
-                                        <div class="text-sm text-green-600 mt-1">↑ +12.45 (0.26%)</div>
-                                        <div class="text-xs text-gray-500 mt-1">1:23 PM ET</div>
-                                    </div>
-                                    
-                                    <!-- Open Trade Details -->
-                                    <div class="md:col-span-2 border-l-2 border-orange-200 pl-6">
-                                        <h3 class="text-sm font-semibold text-gray-600 mb-3">Open Position</h3>
-                                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            <div>
-                                                <div class="text-xs text-gray-600 mb-1">Short Call Strike</div>
-                                                <div class="text-xl font-bold text-red-600">4870</div>
-                                                <div class="text-xs text-green-600 mt-1">0.28% OTM</div>
-                                            </div>
-                                            <div>
-                                                <div class="text-xs text-gray-600 mb-1">Short Put Strike</div>
-                                                <div class="text-xl font-bold text-green-600">4840</div>
-                                                <div class="text-xs text-green-600 mt-1">0.33% OTM</div>
-                                            </div>
-                                            <div>
-                                                <div class="text-xs text-gray-600 mb-1">Current Risk</div>
-                                                <div class="text-xl font-bold text-orange-600">$485</div>
-                                                <div class="text-xs text-gray-500 mt-1">Per contract</div>
-                                            </div>
-                                            <div>
-                                                <div class="text-xs text-gray-600 mb-1">Total Risk</div>
-                                                <div class="text-xl font-bold text-orange-700">$485</div>
-                                                <div class="text-xs text-gray-500 mt-1">1 contract</div>
-                                            </div>
+                                <!-- Open Position Display (shown when there's an active trade) -->
+                                <div id="dt-open-position-display" class="hidden">
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <!-- SPX Price -->
+                                        <div class="text-center">
+                                            <h3 class="text-sm font-semibold text-gray-600 mb-2">SPX Price</h3>
+                                            <div class="text-3xl font-bold text-gray-900" id="dt-spx-current">--</div>
+                                            <div class="text-sm mt-1" id="dt-spx-change">--</div>
+                                            <div class="text-xs text-gray-500 mt-1" id="dt-spx-time">--</div>
                                         </div>
-                                        <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                            <div class="flex items-center text-xs text-gray-700">
-                                                <i class="fas fa-info-circle text-blue-600 mr-2"></i>
-                                                <span><strong>Strategy:</strong> Iron Condor | <strong>Credit:</strong> $15.00 | <strong>Entry:</strong> 9:30 AM</span>
+                                        
+                                        <!-- Open Trade Details -->
+                                        <div class="md:col-span-2 border-l-2 border-orange-200 pl-6">
+                                            <h3 class="text-sm font-semibold text-gray-600 mb-3">Open Position</h3>
+                                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="dt-position-details">
+                                                <!-- Dynamic position details will be inserted here -->
+                                            </div>
+                                            <div class="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg" id="dt-position-info">
+                                                <!-- Dynamic position info will be inserted here -->
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <!-- No Open Position State (shown when no open trades) -->
+                                <!-- No Open Position State (shown when no active trades) -->
                                 <div id="dt-no-open-position" class="text-center py-8">
                                     <div class="mb-4">
                                         <i class="fas fa-chart-line text-gray-300 text-5xl mb-3"></i>
                                         <h3 class="text-lg font-semibold text-gray-700 mb-2">Ready to Start Trading</h3>
                                         <p class="text-gray-500 text-sm">No active positions yet. Use the Quick Entry Form below to enter your first trade.</p>
-                                    </div>
-                                    <div class="inline-block bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                        <h4 class="text-xs font-semibold text-gray-600 mb-2">Current SPX</h4>
-                                        <div class="text-2xl font-bold text-gray-900" id="spx-price-display">Loading...</div>
-                                        <div class="text-sm mt-1" id="spx-change-display">
-                                            <span class="text-gray-500">--</span>
-                                        </div>
-                                        <div class="text-xs text-gray-400 mt-1" id="spx-time-display">--</div>
                                     </div>
                                 </div>
                             </div>
