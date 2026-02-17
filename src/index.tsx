@@ -2966,7 +2966,8 @@ app.post('/api/daily-trades/:id/close', authMiddleware, async (c) => {
     })
   } catch (error) {
     console.error('Error closing daily trade:', error)
-    return c.json({ error: 'Failed to close trade' }, 500)
+    console.error('Error message:', error.message)
+    return c.json({ error: 'Failed to close trade', details: error.message }, 500)
   }
 })
 
