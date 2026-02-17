@@ -4400,8 +4400,8 @@ app.get('/', (c) => {
         
         <!-- Close Trade Modal -->
         <div id="close-trade-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
-            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full">
-                <div class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-lg">
+            <div class="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[95vh] overflow-y-auto">
+                <div class="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-lg sticky top-0 z-10">
                     <h3 class="text-2xl font-bold text-orange-600">
                         <i class="fas fa-check-circle mr-2"></i>Close Trade
                     </h3>
@@ -4418,58 +4418,59 @@ app.get('/', (c) => {
                             <!-- Trade summary will be populated here -->
                         </div>
                         
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <!-- Compressed Exit Data Entry - All on One Line -->
+                        <div class="grid grid-cols-4 gap-3 mb-4">
                             <div>
-                                <label class="block text-gray-700 font-semibold mb-2">Exit Date</label>
-                                <input type="date" id="close-exit-date" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Exit Time</label>
+                                <input type="time" id="close-exit-time" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                             </div>
                             <div>
-                                <label class="block text-gray-700 font-semibold mb-2">Exit Time</label>
-                                <input type="time" id="close-exit-time" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Exit Cost ($)</label>
+                                <input type="number" step="0.01" id="close-exit-cost" placeholder="0.00" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Exit Commission ($)</label>
+                                <input type="number" step="0.01" id="close-commission" value="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Exit Reason</label>
+                                <select id="close-exit-reason" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    <option value="PROFIT_TARGET">Profit Target</option>
+                                    <option value="TIME_EXIT">Time Exit</option>
+                                    <option value="STOP_LOSS">Stop Loss</option>
+                                    <option value="ATM_PROXIMITY">ATM Proximity</option>
+                                    <option value="EXPIRED_WORTHLESS">Expired Worthless</option>
+                                </select>
                             </div>
                         </div>
                         
-                        <div class="grid grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2">Exit Cost ($)</label>
-                                <input type="number" step="0.01" id="close-exit-cost" placeholder="0.00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                                <small class="text-gray-500">Total debit paid to close (or 0.00 if expired worthless)</small>
-                            </div>
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2">Close Commission ($)</label>
-                                <input type="number" step="0.01" id="close-commission" value="1.30" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                            </div>
-                        </div>
-                        
-                        <div class="mb-4">
-                            <label class="block text-gray-700 font-semibold mb-2">Exit Reason</label>
-                            <select id="close-exit-reason" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                                <option value="PROFIT_TARGET">Profit Target Reached</option>
-                                <option value="TIME_EXIT">Time Exit</option>
-                                <option value="STOP_LOSS">Stop Loss / Risk Management</option>
-                                <option value="ATM_PROXIMITY">ATM Proximity Limit</option>
-                                <option value="EXPIRED_WORTHLESS">Expired Worthless</option>
-                            </select>
+                        <div class="mb-4 text-xs text-gray-500 -mt-2">
+                            <i class="fas fa-info-circle mr-1"></i>Enter 0.00 for Exit Cost and Commission if trade expired worthless
                         </div>
                         
                         <div class="mb-6">
                             <label class="block text-gray-700 font-semibold mb-2">Close Notes (Optional)</label>
-                            <textarea id="close-trade-notes" rows="2" placeholder="Add any closing notes..." class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                            <textarea id="close-trade-notes" rows="3" placeholder="Add any closing notes about this trade..." class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
                         </div>
                         
-                        <div id="close-pl-preview" class="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg hidden">
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="text-center p-3 bg-white rounded-lg shadow-sm">
-                                    <div class="text-sm text-gray-600 mb-1">Profit/Loss</div>
+                        <!-- Real-time P/L Preview -->
+                        <div id="close-pl-preview" class="mb-6 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg hidden">
+                            <h4 class="text-sm font-semibold text-gray-700 mb-3 text-center">
+                                <i class="fas fa-chart-line mr-2"></i>Real-Time P/L Preview
+                            </h4>
+                            <div class="grid grid-cols-3 gap-4">
+                                <div class="text-center p-4 bg-white rounded-lg shadow-sm">
+                                    <div class="text-xs text-gray-600 mb-1">Profit/Loss</div>
                                     <div id="close-pl-amount" class="text-2xl font-bold"></div>
                                 </div>
-                                <div class="text-center p-3 bg-white rounded-lg shadow-sm">
-                                    <div class="text-sm text-gray-600 mb-1">RORC</div>
+                                <div class="text-center p-4 bg-white rounded-lg shadow-sm">
+                                    <div class="text-xs text-gray-600 mb-1">RORC</div>
                                     <div id="close-rorc-amount" class="text-2xl font-bold"></div>
                                 </div>
-                            </div>
-                            <div class="mt-3 text-center">
-                                <div class="text-xs text-gray-600">Dollars At Work: <span id="close-dollars-at-work" class="font-semibold"></span></div>
+                                <div class="text-center p-4 bg-white rounded-lg shadow-sm">
+                                    <div class="text-xs text-gray-600 mb-1">Dollars At Work</div>
+                                    <div id="close-dollars-at-work" class="text-lg font-semibold text-gray-700"></div>
+                                </div>
                             </div>
                         </div>
                         
