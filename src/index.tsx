@@ -3891,7 +3891,7 @@ app.get('/', (c) => {
                                     <!-- Call Spread -->
                                     <div class="border-2 border-red-200 rounded-lg p-4 bg-red-50">
                                         <div class="flex items-center justify-between mb-3">
-                                            <h4 class="font-bold text-gray-800">Call Spread <span class="text-sm font-normal text-gray-600">(5 pts)</span></h4>
+                                            <h4 class="font-bold text-gray-800"><span class="text-red-600">BEARISH:</span> Call Spread <span class="text-sm font-normal text-gray-600">(5 pts)</span></h4>
                                             <label class="flex items-center">
                                                 <input type="checkbox" checked class="mr-2" id="enable-call-spread">
                                                 <span class="text-sm">Enable</span>
@@ -3924,7 +3924,7 @@ app.get('/', (c) => {
                                     <!-- Put Spread -->
                                     <div class="border-2 border-green-200 rounded-lg p-4 bg-green-50">
                                         <div class="flex items-center justify-between mb-3">
-                                            <h4 class="font-bold text-gray-800">Put Spread <span class="text-sm font-normal text-gray-600">(5 pts)</span></h4>
+                                            <h4 class="font-bold text-gray-800"><span class="text-green-600">BULLISH:</span> Put Spread <span class="text-sm font-normal text-gray-600">(5 pts)</span></h4>
                                             <label class="flex items-center">
                                                 <input type="checkbox" checked class="mr-2" id="enable-put-spread">
                                                 <span class="text-sm">Enable</span>

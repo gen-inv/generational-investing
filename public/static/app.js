@@ -525,11 +525,11 @@ function updateStrikeWidthDisplays() {
     const putSpreadTitle = document.querySelector('.border-green-200 h4')
     
     if (callSpreadTitle) {
-        callSpreadTitle.innerHTML = `Call Spread <span class="text-sm font-normal text-gray-600">(${strikeWidth} pts)</span>`
+        callSpreadTitle.innerHTML = `<span class="text-red-600">BEARISH:</span> Call Spread <span class="text-sm font-normal text-gray-600">(${strikeWidth} pts)</span>`
     }
     
     if (putSpreadTitle) {
-        putSpreadTitle.innerHTML = `Put Spread <span class="text-sm font-normal text-gray-600">(${strikeWidth} pts)</span>`
+        putSpreadTitle.innerHTML = `<span class="text-green-600">BULLISH:</span> Put Spread <span class="text-sm font-normal text-gray-600">(${strikeWidth} pts)</span>`
     }
     
     // Trigger recalculation with new strike width
