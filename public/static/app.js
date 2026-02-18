@@ -6460,7 +6460,8 @@ async function loadActiveTrades() {
     }
     
     try {
-        const response = await api.get('/api/daily-trades/today')
+        // Get ALL open trades, not just today's
+        const response = await api.get('/api/daily-trades')
         const trades = response.data.trades || []
         
         // Filter only open trades
