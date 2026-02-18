@@ -1445,6 +1445,14 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
         AND strftime('%Y', trade_date) = ?
       `).bind(userId, account.id, currentYear.toString()).first() as any;
 
+      console.log(`YTD Performance for ${account.account_name}:`, {
+        stockPL: stockPL?.total_pl || 0,
+        optionPL: optionPL?.total_pl || 0,
+        dailyPL: dailyPL?.total_pl || 0,
+        account_id: account.id,
+        currentYear
+      });
+
       const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0) + (dailyPL?.total_pl || 0);
       const currentValue = account.default_currency === 'CAD' 
         ? (account.balance_cad || 0) 
