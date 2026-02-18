@@ -6005,8 +6005,14 @@ async function renderPLTrendChart(period) {
         
         // Add 15% padding for better visibility
         const padding = range * 0.15
-        const yMax = maxValue + padding
-        const yMin = minValue - padding
+        let yMax = maxValue + padding
+        let yMin = minValue - padding
+        
+        // Round yMax up to nearest $1000
+        yMax = Math.ceil(yMax / 1000) * 1000
+        
+        // Round yMin down to nearest $1000 (for symmetry)
+        yMin = Math.floor(yMin / 1000) * 1000
         
         // Destroy existing chart if it exists
         if (plTrendChart) {
@@ -6020,24 +6026,28 @@ async function renderPLTrendChart(period) {
             return
         }
         
-        // Create new chart
+        // Create new chart with mixed type (bar + line)
         plTrendChart = new Chart(ctx, {
-            type: 'line',
+            type: 'bar',
             data: {
                 labels: labels,
                 datasets: [
                     {
+                        type: 'bar',
                         label: 'Individual P/L',
                         data: plData,
-                        borderColor: 'rgb(249, 115, 22)', // Orange-600
-                        backgroundColor: 'rgba(249, 115, 22, 0.1)',
-                        borderWidth: 2,
-                        pointRadius: 4,
-                        pointHoverRadius: 6,
-                        tension: 0.1,
-                        yAxisID: 'y'
+                        backgroundColor: plData.map(val => 
+                            val >= 0 ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)'
+                        ),
+                        borderColor: plData.map(val => 
+                            val >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'
+                        ),
+                        borderWidth: 1,
+                        yAxisID: 'y',
+                        order: 2
                     },
                     {
+                        type: 'line',
                         label: 'Cumulative P/L',
                         data: cumulativeData,
                         borderColor: 'rgb(59, 130, 246)', // Blue-500
@@ -6047,7 +6057,8 @@ async function renderPLTrendChart(period) {
                         pointHoverRadius: 6,
                         tension: 0.3,
                         yAxisID: 'y',
-                        fill: false
+                        fill: false,
+                        order: 1
                     }
                 ]
             },
@@ -6117,7 +6128,7 @@ async function renderPLTrendChart(period) {
                         ticks: {
                             callback: function(value) {
                                 const sign = value >= 0 ? '+' : ''
-                                return sign + '$' + Math.abs(value).toFixed(0)
+                                return sign + '$' + Math.abs(value).toLocaleString()
                             }
                         },
                         grid: {
