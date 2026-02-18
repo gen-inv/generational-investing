@@ -459,6 +459,7 @@ function showDailyTradeTab(tabName) {
         initializeDailyTradeCalculations()
         
         // Load today's data
+        loadActiveTrades()
         loadActivePositions()
         loadClosedPositionsToday()
         loadTodayJournal()
@@ -6447,6 +6448,86 @@ async function loadActivePositions() {
     }
 }
 
+// Load active trades table
+async function loadActiveTrades() {
+    const section = document.getElementById('dt-active-trades-section')
+    const tbody = document.getElementById('dt-active-trades-tbody')
+    const countBadge = document.getElementById('dt-active-trade-count')
+    
+    if (!token) {
+        section.classList.add('hidden')
+        return
+    }
+    
+    try {
+        const response = await api.get('/api/daily-trades/today')
+        const trades = response.data.trades || []
+        
+        // Filter only open trades
+        const activeTrades = trades.filter(trade => trade.is_open)
+        
+        if (activeTrades.length === 0) {
+            section.classList.add('hidden')
+            return
+        }
+        
+        // Show section and update count
+        section.classList.remove('hidden')
+        countBadge.textContent = `${activeTrades.length} open`
+        
+        // Build table rows
+        tbody.innerHTML = activeTrades.map(trade => {
+            const entryTime = trade.entry_time ? trade.entry_time.substring(0, 5) : '-'
+            const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor' 
+                : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Spread'
+                : 'Put Spread'
+            
+            // Build spreads display
+            let callSpreadDisplay = '-'
+            if (trade.call_enabled) {
+                callSpreadDisplay = `${trade.call_short_strike} ($${parseFloat(trade.call_total_credit).toFixed(2)})`
+            }
+            
+            let putSpreadDisplay = '-'
+            if (trade.put_enabled) {
+                putSpreadDisplay = `${trade.put_short_strike} ($${parseFloat(trade.put_total_credit).toFixed(2)})`
+            }
+            
+            return `
+                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                    <td class="px-4 py-3">
+                        <div class="font-semibold">${trade.trade_date}</div>
+                        <div class="text-xs text-gray-500">${entryTime}</div>
+                    </td>
+                    <td class="px-4 py-3">${strategyLabel}</td>
+                    <td class="px-4 py-3 text-center font-semibold">${trade.contracts}</td>
+                    <td class="px-4 py-3">${callSpreadDisplay}</td>
+                    <td class="px-4 py-3">${putSpreadDisplay}</td>
+                    <td class="px-4 py-3 text-right font-semibold text-green-600">$${parseFloat(trade.total_credit).toFixed(2)}</td>
+                    <td class="px-4 py-3 text-right text-gray-600">$${parseFloat(trade.commission || 0).toFixed(2)}</td>
+                    <td class="px-4 py-3">
+                        <div class="flex justify-center gap-2">
+                            <button onclick="openEditTradeModal(${trade.id})" class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="openCloseTradeModal(${trade.id})" class="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 text-xs" title="Close">
+                                <i class="fas fa-door-open"></i>
+                            </button>
+                            <button onclick="deleteDailyTrade(${trade.id})" class="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs" title="Delete">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `
+        }).join('')
+        
+    } catch (error) {
+        console.error('Error loading active trades:', error)
+        section.classList.add('hidden')
+    }
+}
+
 // Load closed positions for today
 async function loadClosedPositionsToday() {
     const container = document.getElementById('dt-closed-positions-container')
@@ -6762,11 +6843,37 @@ async function submitDailyTrade() {
         resetDailyTradeForm()
         
         // Reload active positions
+        await loadActiveTrades()
         await loadActivePositions()
         
     } catch (error) {
         console.error('Error submitting trade:', error)
         alert(`Failed to enter trade: ${error.response?.data?.error || error.message}`)
+    }
+}
+
+// Delete a daily trade
+async function deleteDailyTrade(tradeId) {
+    if (!confirm('Are you sure you want to delete this trade? This action cannot be undone.')) {
+        return
+    }
+    
+    try {
+        await api.delete(`/api/daily-trades/${tradeId}`)
+        showNotification('Trade deleted successfully', 'success')
+        
+        // Reload all daily trade data
+        await loadActiveTrades()
+        await loadActivePositions()
+        await loadClosedPositionsToday()
+        
+        // If on full history, reload that too
+        if (allTradesData) {
+            await loadFullTradeHistory()
+        }
+    } catch (error) {
+        console.error('Error deleting trade:', error)
+        alert(`Failed to delete trade: ${error.response?.data?.error || error.message}`)
     }
 }
 
