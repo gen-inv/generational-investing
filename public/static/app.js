@@ -7195,10 +7195,10 @@ async function openCloseTradeModal(tradeId) {
         
         let strikeInfo = ''
         if (trade.call_spread_enabled) {
-            strikeInfo += `<div><strong>Call Short Strike:</strong> ${trade.call_short_strike} (Credit: $${trade.call_total_credit})</div>`
+            strikeInfo += `<div><strong>Call Short Strike:</strong> ${trade.call_short_strike} (Credit: $${parseFloat(trade.call_total_credit).toFixed(2)})</div>`
         }
         if (trade.put_spread_enabled) {
-            strikeInfo += `<div><strong>Put Short Strike:</strong> ${trade.put_short_strike} (Credit: $${trade.put_total_credit})</div>`
+            strikeInfo += `<div><strong>Put Short Strike:</strong> ${trade.put_short_strike} (Credit: $${parseFloat(trade.put_total_credit).toFixed(2)})</div>`
         }
         
         document.getElementById('close-trade-summary').innerHTML = `
@@ -7208,8 +7208,8 @@ async function openCloseTradeModal(tradeId) {
                 <div><strong>Strategy:</strong> ${strategyLabel}</div>
                 <div><strong>Contracts:</strong> ${trade.contracts}</div>
                 ${strikeInfo}
-                <div><strong>Entry Credit:</strong> $${trade.total_credit}</div>
-                <div><strong>Entry Commission:</strong> $${trade.commission || 1.30}</div>
+                <div><strong>Entry Credit:</strong> $${parseFloat(trade.total_credit).toFixed(2)}</div>
+                <div><strong>Entry Commission:</strong> $${parseFloat(trade.commission || 1.30).toFixed(2)}</div>
             </div>
         `
         
