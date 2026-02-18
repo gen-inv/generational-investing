@@ -2613,8 +2613,7 @@ app.get('/api/daily-trade/config', authMiddleware, async (c) => {
         rolling_profit_window: 50,
         target_premium_min: 10.00,
         target_premium_max: 15.00,
-        target_delta_min: -0.15,
-        target_delta_max: -0.05,
+        guideline_delta: -0.10,
         strike_width: 5,
         default_contracts: 1,
         profit_target_percent: 50,
@@ -2651,8 +2650,7 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
           rolling_profit_window = ?,
           target_premium_min = ?,
           target_premium_max = ?,
-          target_delta_min = ?,
-          target_delta_max = ?,
+          guideline_delta = ?,
           strike_width = ?,
           default_contracts = ?,
           profit_target_percent = ?,
@@ -2666,8 +2664,7 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
         data.rolling_profit_window,
         data.target_premium_min,
         data.target_premium_max,
-        data.target_delta_min || -0.15,
-        data.target_delta_max || -0.05,
+        data.guideline_delta || -0.10,
         data.strike_width,
         data.default_contracts,
         data.profit_target_percent,
@@ -2685,23 +2682,21 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
           rolling_profit_window,
           target_premium_min,
           target_premium_max,
-          target_delta_min,
-          target_delta_max,
+          guideline_delta,
           strike_width,
           default_contracts,
           profit_target_percent,
           atm_proximity_limit,
           time_exit,
           default_account_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         userId,
         data.max_contract_limit,
         data.rolling_profit_window,
         data.target_premium_min,
         data.target_premium_max,
-        data.target_delta_min || -0.15,
-        data.target_delta_max || -0.05,
+        data.guideline_delta || -0.10,
         data.strike_width,
         data.default_contracts,
         data.profit_target_percent,
@@ -3743,12 +3738,9 @@ app.get('/', (c) => {
                                             </div>
                                         </div>
                                         <div>
-                                            <label class="block text-gray-700 font-semibold mb-2">Target Delta Range</label>
-                                            <div class="grid grid-cols-2 gap-2">
-                                                <input type="number" step="0.01" id="dt-target-delta-min" value="-0.15" class="px-4 py-2 border border-gray-300 rounded-lg" placeholder="Min (e.g., -0.15)">
-                                                <input type="number" step="0.01" id="dt-target-delta-max" value="-0.05" class="px-4 py-2 border border-gray-300 rounded-lg" placeholder="Max (e.g., -0.05)">
-                                            </div>
-                                            <small class="text-gray-500">Short option delta (negative for calls/puts)</small>
+                                            <label class="block text-gray-700 font-semibold mb-2">Guideline Delta</label>
+                                            <input type="number" step="0.01" id="dt-guideline-delta" value="-0.10" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="-0.10">
+                                            <small class="text-gray-500">Target delta for short option selection (negative value, e.g., -0.10)</small>
                                         </div>
                                         <div>
                                             <label class="block text-gray-700 font-semibold mb-2">Strike Width (Points)</label>
