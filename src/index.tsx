@@ -2861,30 +2861,38 @@ app.put('/api/daily-trades/:id', authMiddleware, async (c) => {
       UPDATE daily_trades SET
         trade_date = ?,
         entry_time = ?,
+        strategy_type = ?,
         contracts = ?,
         strike_width = ?,
+        call_enabled = ?,
         call_short_strike = ?,
         call_total_credit = ?,
+        put_enabled = ?,
         put_short_strike = ?,
         put_total_credit = ?,
         spx_entry_price = ?,
         vix_entry_price = ?,
         total_credit = ?,
+        commission = ?,
         notes = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).bind(
       data.trade_date,
       data.entry_time,
+      data.strategy_type || 'IRON_CONDOR',
       data.contracts,
       data.strike_width || 5,
+      data.call_enabled ? 1 : 0,
       data.call_short_strike || null,
-      data.call_total_credit || null,
+      data.call_total_credit || 0,
+      data.put_enabled ? 1 : 0,
       data.put_short_strike || null,
-      data.put_total_credit || null,
+      data.put_total_credit || 0,
       data.spx_entry_price || null,
       data.vix_entry_price || null,
-      data.total_credit,
+      data.total_credit || 0,
+      data.commission || 1.30,
       data.notes || null,
       tradeId,
       userId
@@ -4311,8 +4319,8 @@ app.get('/', (c) => {
         
         <!-- Edit Trade Modal -->
         <div id="edit-trade-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
-            <div class="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+            <div class="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-y-auto">
+                <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10">
                     <h3 class="text-2xl font-bold text-orange-600">
                         <i class="fas fa-edit mr-2"></i>Edit Trade
                     </h3>
@@ -4325,66 +4333,101 @@ app.get('/', (c) => {
                     <form id="edit-trade-form" onsubmit="updateTrade(event)">
                         <input type="hidden" id="edit-trade-id">
                         
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <!-- Compressed Top Row: Date, Time, SPX, VIX, Contracts, Strike Width, Commission -->
+                        <div class="grid grid-cols-7 gap-3 mb-4">
                             <div>
-                                <label class="block text-gray-700 font-semibold mb-2">Trade Date</label>
-                                <input type="date" id="edit-trade-date" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Entry Date</label>
+                                <input type="date" id="edit-trade-date" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                             </div>
                             <div>
-                                <label class="block text-gray-700 font-semibold mb-2">Entry Time</label>
-                                <input type="time" id="edit-entry-time" required class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Entry Time</label>
+                                <input type="time" id="edit-entry-time" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">SPX Price</label>
+                                <input type="number" step="0.01" id="edit-spx-entry" placeholder="5856.20" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">VIX Price</label>
+                                <input type="number" step="0.01" id="edit-vix-entry" placeholder="15.50" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Contracts</label>
+                                <input type="number" id="edit-contracts" required min="1" value="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Strike Width</label>
+                                <input type="number" id="edit-strike-width" required min="1" value="5" onchange="updateEditStrikeWidthDisplays()" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Commission ($)</label>
+                                <input type="number" step="0.01" id="edit-commission" value="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
                             </div>
                         </div>
                         
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2">SPX Entry Price</label>
-                                <input type="number" step="0.01" id="edit-spx-entry" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                            </div>
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2">Contracts</label>
-                                <input type="number" id="edit-contracts" required min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                            </div>
-                        </div>
-                        
+                        <!-- Strategy Type Selection -->
                         <div class="mb-4">
                             <label class="block text-gray-700 font-semibold mb-2">Strategy Type</label>
-                            <div id="edit-strategy-type" class="text-lg font-semibold text-orange-600"></div>
+                            <select id="edit-strategy-type" onchange="updateEditStrategyDisplay()" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                <option value="IRON_CONDOR">Iron Condor (Call + Put Spreads)</option>
+                                <option value="CREDIT_SPREAD_CALL">Credit Spread - Call Only</option>
+                                <option value="CREDIT_SPREAD_PUT">Credit Spread - Put Only</option>
+                            </select>
                         </div>
                         
-                        <div id="edit-call-spread-section" class="mb-4">
-                            <h4 class="font-bold text-red-600 mb-2">Call Spread</h4>
+                        <!-- Call Spread Section -->
+                        <div id="edit-call-spread-section" class="mb-4 p-4 border-2 border-red-200 rounded-lg bg-red-50">
+                            <div class="flex justify-between items-center mb-3">
+                                <h4 id="edit-call-spread-title" class="font-bold text-lg">
+                                    <span class="text-red-600">BEARISH:</span> Call Spread <span class="text-sm font-normal text-gray-600">($5 wide)</span>
+                                </h4>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="edit-enable-call-spread" onchange="updateEditStrategyDisplay()" class="w-5 h-5">
+                                    <span class="font-semibold">Enable</span>
+                                </label>
+                            </div>
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-gray-700 font-semibold mb-2">Short Call Strike</label>
-                                    <input type="number" step="0.01" id="edit-call-short-strike" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    <input type="number" step="0.01" id="edit-call-short-strike" placeholder="5875" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                                 </div>
                                 <div>
                                     <label class="block text-gray-700 font-semibold mb-2">Total Credit ($)</label>
-                                    <input type="number" step="0.01" id="edit-call-credit" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    <input type="number" step="0.01" id="edit-call-credit" placeholder="3.50" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                                 </div>
                             </div>
                         </div>
                         
-                        <div id="edit-put-spread-section" class="mb-4">
-                            <h4 class="font-bold text-green-600 mb-2">Put Spread</h4>
+                        <!-- Put Spread Section -->
+                        <div id="edit-put-spread-section" class="mb-4 p-4 border-2 border-green-200 rounded-lg bg-green-50">
+                            <div class="flex justify-between items-center mb-3">
+                                <h4 id="edit-put-spread-title" class="font-bold text-lg">
+                                    <span class="text-green-600">BULLISH:</span> Put Spread <span class="text-sm font-normal text-gray-600">($5 wide)</span>
+                                </h4>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="edit-enable-put-spread" onchange="updateEditStrategyDisplay()" class="w-5 h-5">
+                                    <span class="font-semibold">Enable</span>
+                                </label>
+                            </div>
                             <div class="grid grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-gray-700 font-semibold mb-2">Short Put Strike</label>
-                                    <input type="number" step="0.01" id="edit-put-short-strike" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    <input type="number" step="0.01" id="edit-put-short-strike" placeholder="5835" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                                 </div>
                                 <div>
                                     <label class="block text-gray-700 font-semibold mb-2">Total Credit ($)</label>
-                                    <input type="number" step="0.01" id="edit-put-credit" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                    <input type="number" step="0.01" id="edit-put-credit" placeholder="3.00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
                                 </div>
                             </div>
                         </div>
                         
+                        <!-- Notes -->
                         <div class="mb-4">
-                            <label class="block text-gray-700 font-semibold mb-2">Notes</label>
-                            <textarea id="edit-trade-notes" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
+                            <label class="block text-gray-700 font-semibold mb-2">Notes (Optional)</label>
+                            <textarea id="edit-trade-notes" rows="3" placeholder="Add any notes about this trade..." class="w-full px-4 py-2 border border-gray-300 rounded-lg"></textarea>
                         </div>
                         
+                        <!-- Action Buttons -->
                         <div class="flex gap-3">
                             <button type="submit" class="px-6 py-2 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700">
                                 <i class="fas fa-save mr-2"></i>Save Changes

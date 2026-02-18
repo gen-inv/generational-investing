@@ -6728,39 +6728,38 @@ async function openEditTradeModal(tradeId) {
             return
         }
         
-        // Populate form
+        // Populate form fields
         document.getElementById('edit-trade-id').value = trade.id
         document.getElementById('edit-trade-date').value = trade.trade_date
         document.getElementById('edit-entry-time').value = trade.entry_time || ''
         document.getElementById('edit-spx-entry').value = trade.spx_entry_price || ''
+        document.getElementById('edit-vix-entry').value = trade.vix_entry_price || ''
         document.getElementById('edit-contracts').value = trade.contracts
-        
-        const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor (Both Sides)' 
-            : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Credit Spread'
-            : 'Put Credit Spread'
-        document.getElementById('edit-strategy-type').textContent = strategyLabel
-        
-        // Show/hide spread sections
-        const callSection = document.getElementById('edit-call-spread-section')
-        const putSection = document.getElementById('edit-put-spread-section')
-        
-        if (trade.call_spread_enabled) {
-            callSection.classList.remove('hidden')
-            document.getElementById('edit-call-short-strike').value = trade.call_short_strike || ''
-            document.getElementById('edit-call-credit').value = trade.call_total_credit || ''
-        } else {
-            callSection.classList.add('hidden')
-        }
-        
-        if (trade.put_spread_enabled) {
-            putSection.classList.remove('hidden')
-            document.getElementById('edit-put-short-strike').value = trade.put_short_strike || ''
-            document.getElementById('edit-put-credit').value = trade.put_total_credit || ''
-        } else {
-            putSection.classList.add('hidden')
-        }
-        
+        document.getElementById('edit-strike-width').value = trade.strike_width || 5
+        document.getElementById('edit-commission').value = trade.commission || 1.30
         document.getElementById('edit-trade-notes').value = trade.notes || ''
+        
+        // Set strategy type
+        document.getElementById('edit-strategy-type').value = trade.strategy_type
+        
+        // Set up spread sections based on strategy
+        const callEnabled = trade.call_enabled || trade.strategy_type === 'IRON_CONDOR' || trade.strategy_type === 'CREDIT_SPREAD_CALL'
+        const putEnabled = trade.put_enabled || trade.strategy_type === 'IRON_CONDOR' || trade.strategy_type === 'CREDIT_SPREAD_PUT'
+        
+        document.getElementById('edit-enable-call-spread').checked = callEnabled
+        document.getElementById('edit-enable-put-spread').checked = putEnabled
+        
+        // Populate spread data
+        document.getElementById('edit-call-short-strike').value = trade.call_short_strike || ''
+        document.getElementById('edit-call-credit').value = trade.call_total_credit || ''
+        document.getElementById('edit-put-short-strike').value = trade.put_short_strike || ''
+        document.getElementById('edit-put-credit').value = trade.put_total_credit || ''
+        
+        // Update strike width displays
+        updateEditStrikeWidthDisplays()
+        
+        // Update strategy display (show/hide spreads)
+        updateEditStrategyDisplay()
         
         // Show modal
         document.getElementById('edit-trade-modal').classList.remove('hidden')
@@ -6775,30 +6774,100 @@ function closeEditTradeModal() {
     document.getElementById('edit-trade-modal').classList.add('hidden')
 }
 
+function updateEditStrikeWidthDisplays() {
+    const strikeWidthInput = document.getElementById('edit-strike-width')
+    const strikeWidth = strikeWidthInput ? parseInt(strikeWidthInput.value) : 5
+    
+    const callSpreadTitle = document.getElementById('edit-call-spread-title')
+    const putSpreadTitle = document.getElementById('edit-put-spread-title')
+    
+    if (callSpreadTitle) {
+        callSpreadTitle.innerHTML = `<span class="text-red-600">BEARISH:</span> Call Spread <span class="text-sm font-normal text-gray-600">($${strikeWidth} wide)</span>`
+    }
+    if (putSpreadTitle) {
+        putSpreadTitle.innerHTML = `<span class="text-green-600">BULLISH:</span> Put Spread <span class="text-sm font-normal text-gray-600">($${strikeWidth} wide)</span>`
+    }
+}
+
+function updateEditStrategyDisplay() {
+    const strategyType = document.getElementById('edit-strategy-type').value
+    const callEnabled = document.getElementById('edit-enable-call-spread').checked
+    const putEnabled = document.getElementById('edit-enable-put-spread').checked
+    
+    const callSection = document.getElementById('edit-call-spread-section')
+    const putSection = document.getElementById('edit-put-spread-section')
+    const callCheckbox = document.getElementById('edit-enable-call-spread')
+    const putCheckbox = document.getElementById('edit-enable-put-spread')
+    
+    // Strategy-specific behavior
+    if (strategyType === 'IRON_CONDOR') {
+        // Both spreads must be enabled for Iron Condor
+        callSection.classList.remove('hidden')
+        putSection.classList.remove('hidden')
+        callCheckbox.checked = true
+        callCheckbox.disabled = true
+        putCheckbox.checked = true
+        putCheckbox.disabled = true
+    } else if (strategyType === 'CREDIT_SPREAD_CALL') {
+        // Only call spread for Call Credit Spread
+        callSection.classList.remove('hidden')
+        putSection.classList.add('hidden')
+        callCheckbox.checked = true
+        callCheckbox.disabled = true
+        putCheckbox.checked = false
+        putCheckbox.disabled = true
+    } else if (strategyType === 'CREDIT_SPREAD_PUT') {
+        // Only put spread for Put Credit Spread
+        callSection.classList.add('hidden')
+        putSection.classList.remove('hidden')
+        callCheckbox.checked = false
+        callCheckbox.disabled = true
+        putCheckbox.checked = true
+        putCheckbox.disabled = true
+    }
+}
+
 async function updateTrade(event) {
     event.preventDefault()
     
     try {
         const tradeId = document.getElementById('edit-trade-id').value
-        const trade = allTradesData.find(t => t.id == tradeId)
+        const strategyType = document.getElementById('edit-strategy-type').value
+        const callEnabled = document.getElementById('edit-enable-call-spread').checked
+        const putEnabled = document.getElementById('edit-enable-put-spread').checked
         
         const updateData = {
             trade_date: document.getElementById('edit-trade-date').value,
             entry_time: document.getElementById('edit-entry-time').value,
             spx_entry_price: parseFloat(document.getElementById('edit-spx-entry').value) || null,
+            vix_entry_price: parseFloat(document.getElementById('edit-vix-entry').value) || null,
             contracts: parseInt(document.getElementById('edit-contracts').value),
+            strike_width: parseInt(document.getElementById('edit-strike-width').value) || 5,
+            commission: parseFloat(document.getElementById('edit-commission').value) || 1.30,
+            strategy_type: strategyType,
             notes: document.getElementById('edit-trade-notes').value
         }
         
-        // Add spread data if enabled
-        if (trade.call_spread_enabled) {
-            updateData.call_short_strike = parseFloat(document.getElementById('edit-call-short-strike').value)
-            updateData.call_total_credit = parseFloat(document.getElementById('edit-call-credit').value)
+        // Add call spread data if enabled
+        if (callEnabled) {
+            updateData.call_enabled = true
+            updateData.call_short_strike = parseFloat(document.getElementById('edit-call-short-strike').value) || 0
+            updateData.call_total_credit = parseFloat(document.getElementById('edit-call-credit').value) || 0
+        } else {
+            updateData.call_enabled = false
+            updateData.call_short_strike = null
+            updateData.call_total_credit = 0
         }
         
-        if (trade.put_spread_enabled) {
-            updateData.put_short_strike = parseFloat(document.getElementById('edit-put-short-strike').value)
-            updateData.put_total_credit = parseFloat(document.getElementById('edit-put-credit').value)
+        // Add put spread data if enabled
+        if (putEnabled) {
+            updateData.put_enabled = true
+            updateData.put_short_strike = parseFloat(document.getElementById('edit-put-short-strike').value) || 0
+            updateData.put_total_credit = parseFloat(document.getElementById('edit-put-credit').value) || 0
+        } else {
+            updateData.put_enabled = false
+            updateData.put_short_strike = null
+            updateData.put_total_credit = 0
         }
         
         // Calculate new total credit
