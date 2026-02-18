@@ -5919,6 +5919,21 @@ async function loadPerformanceStats(period) {
         document.getElementById('dt-perf-best-trade').textContent = stats.best_trade ? '+' + formatCurrency(stats.best_trade) : '-'
         document.getElementById('dt-perf-worst-trade').textContent = stats.worst_trade ? formatCurrency(stats.worst_trade) : '-'
         
+        // Update chart title
+        let chartTitle = 'P/L Trend'
+        if (period === 'rolling') {
+            const rollingWindow = parseInt(document.getElementById('dt-rolling-profit-window')?.value || 50)
+            chartTitle += ` (Last ${rollingWindow} Trades)`
+        } else if (period === 'year') {
+            chartTitle += ' (YTD)'
+        } else {
+            chartTitle += ' (All Time)'
+        }
+        document.getElementById('dt-chart-title').innerHTML = `<i class="fas fa-chart-line mr-2 text-orange-600"></i>${chartTitle}`
+        
+        // Render P/L Trend Chart
+        await renderPLTrendChart(period)
+        
         console.log('Performance stats loaded:', stats)
     } catch (error) {
         console.error('Error loading performance stats:', error)
@@ -5939,6 +5954,170 @@ function formatCurrency(value) {
     if (value === null || value === undefined) return '-'
     const absValue = Math.abs(value)
     return '$' + absValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+// Global chart instance
+let plTrendChart = null
+
+// Render P/L Trend Chart
+async function renderPLTrendChart(period) {
+    try {
+        // Build API query params
+        let queryParams = `period=${period}`
+        if (period === 'rolling') {
+            const rollingWindow = parseInt(document.getElementById('dt-rolling-profit-window')?.value || 50)
+            queryParams += `&limit=${rollingWindow}`
+        }
+        
+        // Fetch trade data for chart
+        const response = await api.get(`/api/daily-trades/chart-data?${queryParams}`)
+        const trades = response.data.trades || []
+        
+        // Prepare chart data
+        const labels = []
+        const plData = []
+        const cumulativeData = []
+        let cumulativePL = 0
+        
+        trades.forEach((trade, index) => {
+            // Label: Trade # or Date
+            labels.push(`#${index + 1}`)
+            
+            // Individual P/L
+            plData.push(trade.profit_loss || 0)
+            
+            // Cumulative P/L
+            cumulativePL += (trade.profit_loss || 0)
+            cumulativeData.push(cumulativePL)
+        })
+        
+        // Destroy existing chart if it exists
+        if (plTrendChart) {
+            plTrendChart.destroy()
+        }
+        
+        // Get canvas context
+        const ctx = document.getElementById('dt-pl-trend-chart')
+        if (!ctx) {
+            console.error('Chart canvas not found')
+            return
+        }
+        
+        // Create new chart
+        plTrendChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Individual P/L',
+                        data: plData,
+                        borderColor: 'rgb(249, 115, 22)', // Orange-600
+                        backgroundColor: 'rgba(249, 115, 22, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        tension: 0.1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Cumulative P/L',
+                        data: cumulativeData,
+                        borderColor: 'rgb(59, 130, 246)', // Blue-500
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: 0,
+                        pointHoverRadius: 6,
+                        tension: 0.3,
+                        yAxisID: 'y',
+                        fill: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            font: {
+                                size: 12
+                            },
+                            usePointStyle: true,
+                            padding: 15
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || ''
+                                if (label) {
+                                    label += ': '
+                                }
+                                const value = context.parsed.y
+                                const sign = value >= 0 ? '+' : ''
+                                label += sign + '$' + Math.abs(value).toFixed(2)
+                                return label
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Trade Number',
+                            font: {
+                                size: 12
+                            }
+                        },
+                        ticks: {
+                            maxRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 20
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Profit / Loss ($)',
+                            font: {
+                                size: 12
+                            }
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                const sign = value >= 0 ? '+' : ''
+                                return sign + '$' + Math.abs(value).toFixed(0)
+                            }
+                        },
+                        grid: {
+                            color: function(context) {
+                                if (context.tick.value === 0) {
+                                    return 'rgba(0, 0, 0, 0.3)'
+                                }
+                                return 'rgba(0, 0, 0, 0.05)'
+                            }
+                        }
+                    }
+                }
+            }
+        })
+        
+        console.log(`P/L Trend chart rendered with ${trades.length} trades`)
+    } catch (error) {
+        console.error('Error rendering P/L trend chart:', error)
+    }
 }
 
 

@@ -3099,6 +3099,55 @@ app.get('/api/daily-trades/stats', authMiddleware, async (c) => {
   }
 })
 
+// Get chart data for P/L trend visualization
+app.get('/api/daily-trades/chart-data', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+    const period = c.req.query('period') || 'all'
+    const limit = c.req.query('limit') ? parseInt(c.req.query('limit')) : 50
+
+    let query = `
+      SELECT 
+        id,
+        trade_date,
+        entry_time,
+        strategy_type,
+        contracts,
+        total_credit,
+        profit_loss
+      FROM daily_trades
+      WHERE user_id = ? AND is_open = 0
+    `
+    const params = [userId]
+
+    if (period === 'rolling') {
+      // For rolling window, get the last N trades
+      query += ` ORDER BY trade_date DESC, entry_time DESC LIMIT ?`
+      params.push(limit)
+    } else if (period === 'month') {
+      query += ` AND strftime('%Y-%m', trade_date) = strftime('%Y-%m', 'now')
+                 ORDER BY trade_date ASC, entry_time ASC`
+    } else if (period === 'year') {
+      query += ` AND strftime('%Y', trade_date) = strftime('%Y', 'now')
+                 ORDER BY trade_date ASC, entry_time ASC`
+    } else {
+      // All time
+      query += ` ORDER BY trade_date ASC, entry_time ASC`
+    }
+
+    const result = await env.DB.prepare(query).bind(...params).all()
+    
+    // For rolling period, reverse the array to show oldest to newest
+    const trades = period === 'rolling' ? result.results.reverse() : result.results
+
+    return c.json({ trades })
+  } catch (error) {
+    console.error('Error fetching chart data:', error)
+    return c.json({ error: 'Failed to fetch chart data' }, 500)
+  }
+})
+
 // Get day of week statistics
 app.get('/api/daily-trades/day-stats', authMiddleware, async (c) => {
   try {
@@ -3284,6 +3333,7 @@ app.get('/', (c) => {
         <title>Generational Investing - Portfolio Management</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
         <style>
             :root {
                 --teal: #004F59;
@@ -3854,12 +3904,13 @@ app.get('/', (c) => {
                                 </div>
                             </div>
                             
-                            <!-- P/L Chart Placeholder -->
+                            <!-- P/L Trend Chart -->
                             <div class="card mb-6">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4" id="dt-chart-title">P/L Trend (Last 50 Trades)</h3>
-                                <div class="bg-gray-50 rounded-lg p-8 text-center text-gray-500">
-                                    <i class="fas fa-chart-line text-6xl mb-4"></i>
-                                    <p>Chart visualization will be added when data is available</p>
+                                <h3 class="text-xl font-bold text-gray-800 mb-4" id="dt-chart-title">
+                                    <i class="fas fa-chart-line mr-2 text-orange-600"></i>P/L Trend (Last 50 Trades)
+                                </h3>
+                                <div class="bg-white rounded-lg p-4">
+                                    <canvas id="dt-pl-trend-chart" height="80"></canvas>
                                 </div>
                             </div>
                             
