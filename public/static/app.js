@@ -5991,6 +5991,15 @@ async function renderPLTrendChart(period) {
             cumulativeData.push(cumulativePL)
         })
         
+        // Calculate reasonable Y-axis range based on cumulative P/L
+        const maxCumulative = Math.max(...cumulativeData, 0)
+        const minCumulative = Math.min(...cumulativeData, 0)
+        
+        // Add 10% padding above max and below min
+        const range = Math.max(Math.abs(maxCumulative), Math.abs(minCumulative))
+        const yMax = maxCumulative + (range * 0.10)
+        const yMin = minCumulative - (range * 0.10)
+        
         // Destroy existing chart if it exists
         if (plTrendChart) {
             plTrendChart.destroy()
@@ -6088,6 +6097,8 @@ async function renderPLTrendChart(period) {
                         type: 'linear',
                         display: true,
                         position: 'left',
+                        min: yMin,
+                        max: yMax,
                         title: {
                             display: true,
                             text: 'Profit / Loss ($)',
