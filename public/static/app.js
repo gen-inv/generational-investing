@@ -823,6 +823,8 @@ async function loadDailyTradeConfig() {
         document.getElementById('dt-rolling-profit-window').value = config.rolling_profit_window || 50
         document.getElementById('dt-target-premium-min').value = config.target_premium_min || 10.00
         document.getElementById('dt-target-premium-max').value = config.target_premium_max || 15.00
+        document.getElementById('dt-target-delta-min').value = config.target_delta_min || -0.15
+        document.getElementById('dt-target-delta-max').value = config.target_delta_max || -0.05
         document.getElementById('dt-strike-width').value = config.strike_width || 5
         document.getElementById('dt-default-contracts').value = config.default_contracts || 1
         document.getElementById('dt-profit-target-percent').value = config.profit_target_percent || 50
@@ -870,6 +872,8 @@ async function saveDailyTradeConfig() {
             rolling_profit_window: parseInt(document.getElementById('dt-rolling-profit-window').value),
             target_premium_min: parseFloat(document.getElementById('dt-target-premium-min').value),
             target_premium_max: parseFloat(document.getElementById('dt-target-premium-max').value),
+            target_delta_min: parseFloat(document.getElementById('dt-target-delta-min').value),
+            target_delta_max: parseFloat(document.getElementById('dt-target-delta-max').value),
             strike_width: parseInt(document.getElementById('dt-strike-width').value),
             default_contracts: parseInt(document.getElementById('dt-default-contracts').value),
             profit_target_percent: parseInt(document.getElementById('dt-profit-target-percent').value),
