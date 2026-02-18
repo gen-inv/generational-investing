@@ -6728,7 +6728,7 @@ async function openEditTradeModal(tradeId) {
             return
         }
         
-        // Populate form fields
+        // Populate ENTRY form fields
         document.getElementById('edit-trade-id').value = trade.id
         document.getElementById('edit-trade-date').value = trade.trade_date
         document.getElementById('edit-entry-time').value = trade.entry_time || ''
@@ -6736,7 +6736,7 @@ async function openEditTradeModal(tradeId) {
         document.getElementById('edit-vix-entry').value = trade.vix_entry_price || ''
         document.getElementById('edit-contracts').value = trade.contracts
         document.getElementById('edit-strike-width').value = trade.strike_width || 5
-        document.getElementById('edit-commission').value = trade.commission || 1.30
+        document.getElementById('edit-entry-commission').value = trade.commission || 1.30
         document.getElementById('edit-trade-notes').value = trade.notes || ''
         
         // Set strategy type
@@ -6754,6 +6754,20 @@ async function openEditTradeModal(tradeId) {
         document.getElementById('edit-call-credit').value = trade.call_total_credit || ''
         document.getElementById('edit-put-short-strike').value = trade.put_short_strike || ''
         document.getElementById('edit-put-credit').value = trade.put_total_credit || ''
+        
+        // Show/hide EXIT section based on trade status
+        const exitSection = document.getElementById('edit-exit-section')
+        if (trade.is_open === 0 || trade.is_open === false) {
+            // Trade is closed - show exit data
+            exitSection.classList.remove('hidden')
+            document.getElementById('edit-exit-time').value = trade.exit_time || ''
+            document.getElementById('edit-exit-cost').value = trade.total_debit || ''
+            document.getElementById('edit-exit-commission').value = trade.close_commission || 1.30
+            document.getElementById('edit-exit-reason').value = trade.exit_reason || 'MANUAL'
+        } else {
+            // Trade is open - hide exit section
+            exitSection.classList.add('hidden')
+        }
         
         // Update strike width displays
         updateEditStrikeWidthDisplays()
@@ -6832,6 +6846,7 @@ async function updateTrade(event) {
     
     try {
         const tradeId = document.getElementById('edit-trade-id').value
+        const trade = allTradesData.find(t => t.id == tradeId)
         const strategyType = document.getElementById('edit-strategy-type').value
         const callEnabled = document.getElementById('edit-enable-call-spread').checked
         const putEnabled = document.getElementById('edit-enable-put-spread').checked
@@ -6843,7 +6858,7 @@ async function updateTrade(event) {
             vix_entry_price: parseFloat(document.getElementById('edit-vix-entry').value) || null,
             contracts: parseInt(document.getElementById('edit-contracts').value),
             strike_width: parseInt(document.getElementById('edit-strike-width').value) || 5,
-            commission: parseFloat(document.getElementById('edit-commission').value) || 1.30,
+            commission: parseFloat(document.getElementById('edit-entry-commission').value) || 1.30,
             strategy_type: strategyType,
             notes: document.getElementById('edit-trade-notes').value
         }
@@ -6872,6 +6887,22 @@ async function updateTrade(event) {
         
         // Calculate new total credit
         updateData.total_credit = (updateData.call_total_credit || 0) + (updateData.put_total_credit || 0)
+        
+        // Add exit data if trade is closed
+        const exitSection = document.getElementById('edit-exit-section')
+        if (!exitSection.classList.contains('hidden')) {
+            updateData.exit_time = document.getElementById('edit-exit-time').value
+            updateData.total_debit = parseFloat(document.getElementById('edit-exit-cost').value) || 0
+            updateData.close_commission = parseFloat(document.getElementById('edit-exit-commission').value) || 0
+            updateData.exit_reason = document.getElementById('edit-exit-reason').value
+            
+            // Recalculate profit/loss
+            const entryCredit = updateData.total_credit * updateData.contracts * 100
+            const exitDebit = updateData.total_debit * updateData.contracts * 100
+            const entryCommission = updateData.commission || 0
+            const closeCommission = updateData.close_commission || 0
+            updateData.profit_loss = entryCredit - exitDebit - entryCommission - closeCommission
+        }
         
         await api.put(`/api/daily-trades/${tradeId}`, updateData)
         

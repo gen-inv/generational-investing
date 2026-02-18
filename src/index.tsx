@@ -2857,7 +2857,8 @@ app.put('/api/daily-trades/:id', authMiddleware, async (c) => {
     const tradeId = c.req.param('id')
     const data = await c.req.json()
 
-    await env.DB.prepare(`
+    // Check if exit data is provided (for closed trades)
+    let updateQuery = `
       UPDATE daily_trades SET
         trade_date = ?,
         entry_time = ?,
@@ -2874,10 +2875,9 @@ app.put('/api/daily-trades/:id', authMiddleware, async (c) => {
         vix_entry_price = ?,
         total_credit = ?,
         commission = ?,
-        notes = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `).bind(
+        notes = ?`
+    
+    const bindings: any[] = [
       data.trade_date,
       data.entry_time,
       data.strategy_type || 'IRON_CONDOR',
@@ -2893,10 +2893,34 @@ app.put('/api/daily-trades/:id', authMiddleware, async (c) => {
       data.vix_entry_price || null,
       data.total_credit || 0,
       data.commission || 1.30,
-      data.notes || null,
-      tradeId,
-      userId
-    ).run()
+      data.notes || null
+    ]
+    
+    // Add exit fields if provided
+    if (data.exit_time !== undefined) {
+      updateQuery += `,
+        exit_time = ?,
+        total_debit = ?,
+        close_commission = ?,
+        profit_loss = ?,
+        exit_reason = ?`
+      
+      bindings.push(
+        data.exit_time || null,
+        data.total_debit || 0,
+        data.close_commission || 0,
+        data.profit_loss || 0,
+        data.exit_reason || 'MANUAL'
+      )
+    }
+    
+    updateQuery += `,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?`
+    
+    bindings.push(tradeId, userId)
+    
+    await env.DB.prepare(updateQuery).bind(...bindings).run()
 
     return c.json({ 
       success: true,
@@ -4333,35 +4357,42 @@ app.get('/', (c) => {
                     <form id="edit-trade-form" onsubmit="updateTrade(event)">
                         <input type="hidden" id="edit-trade-id">
                         
-                        <!-- Compressed Top Row: Date, Time, SPX, VIX, Contracts, Strike Width, Commission -->
-                        <div class="grid grid-cols-7 gap-3 mb-4">
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Entry Date</label>
-                                <input type="date" id="edit-trade-date" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Entry Time</label>
-                                <input type="time" id="edit-entry-time" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2 text-sm">SPX Price</label>
-                                <input type="number" step="0.01" id="edit-spx-entry" placeholder="5856.20" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2 text-sm">VIX Price</label>
-                                <input type="number" step="0.01" id="edit-vix-entry" placeholder="15.50" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Contracts</label>
-                                <input type="number" id="edit-contracts" required min="1" value="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Strike Width</label>
-                                <input type="number" id="edit-strike-width" required min="1" value="5" onchange="updateEditStrikeWidthDisplays()" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-gray-700 font-semibold mb-2 text-sm">Commission ($)</label>
-                                <input type="number" step="0.01" id="edit-commission" value="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                        <!-- ENTRY DATA SECTION -->
+                        <div class="mb-4 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
+                            <h4 class="font-bold text-lg text-blue-700 mb-3">
+                                <i class="fas fa-arrow-right mr-2"></i>ENTRY DATA
+                            </h4>
+                            
+                            <!-- Compressed Entry Row: Date, Time, SPX, VIX, Contracts, Strike Width, Entry Commission -->
+                            <div class="grid grid-cols-7 gap-3">
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">Entry Date</label>
+                                    <input type="date" id="edit-trade-date" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">Entry Time</label>
+                                    <input type="time" id="edit-entry-time" required class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">SPX Price</label>
+                                    <input type="number" step="0.01" id="edit-spx-entry" placeholder="5856.20" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">VIX Price</label>
+                                    <input type="number" step="0.01" id="edit-vix-entry" placeholder="15.50" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">Contracts</label>
+                                    <input type="number" id="edit-contracts" required min="1" value="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">Strike Width</label>
+                                    <input type="number" id="edit-strike-width" required min="1" value="5" onchange="updateEditStrikeWidthDisplays()" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">Entry Commission ($)</label>
+                                    <input type="number" step="0.01" id="edit-entry-commission" value="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                </div>
                             </div>
                         </div>
                         
@@ -4417,6 +4448,40 @@ app.get('/', (c) => {
                                 <div>
                                     <label class="block text-gray-700 font-semibold mb-2">Total Credit ($)</label>
                                     <input type="number" step="0.01" id="edit-put-credit" placeholder="3.00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- EXIT DATA SECTION (for closed trades) -->
+                        <div id="edit-exit-section" class="mb-4 p-4 bg-orange-50 border-2 border-orange-300 rounded-lg hidden">
+                            <h4 class="font-bold text-lg text-orange-700 mb-3">
+                                <i class="fas fa-arrow-left mr-2"></i>EXIT DATA (Trade Closed)
+                            </h4>
+                            
+                            <!-- Exit Row: Exit Time, Exit Cost, Exit Commission, Exit Reason -->
+                            <div class="grid grid-cols-4 gap-3">
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">Exit Time</label>
+                                    <input type="time" id="edit-exit-time" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">Exit Cost ($)</label>
+                                    <input type="number" step="0.01" id="edit-exit-cost" placeholder="0.00" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    <small class="text-gray-500 text-xs">Debit paid to close</small>
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">Exit Commission ($)</label>
+                                    <input type="number" step="0.01" id="edit-exit-commission" placeholder="1.30" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-2 text-sm">Exit Reason</label>
+                                    <select id="edit-exit-reason" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                        <option value="PROFIT_TARGET">Profit Target</option>
+                                        <option value="TIME_EXIT">Time Exit</option>
+                                        <option value="STOP_LOSS">Stop Loss</option>
+                                        <option value="ATM_PROXIMITY">ATM Proximity</option>
+                                        <option value="MANUAL">Manual</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>
