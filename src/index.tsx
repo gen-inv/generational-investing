@@ -2833,6 +2833,15 @@ app.post('/api/daily-trades', authMiddleware, async (c) => {
     const { env } = c
     const data = await c.req.json()
 
+    // Get default account if not provided
+    let accountId = data.account_id
+    if (!accountId) {
+      const config = await env.DB.prepare(`
+        SELECT default_account_id FROM daily_trade_config WHERE user_id = ?
+      `).bind(userId).first() as any
+      accountId = config?.default_account_id || null
+    }
+
     const result = await env.DB.prepare(`
       INSERT INTO daily_trades (
         user_id, account_id, trade_date, entry_time, strategy_type, contracts, strike_width,
@@ -2842,7 +2851,7 @@ app.post('/api/daily-trades', authMiddleware, async (c) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     `).bind(
       userId,
-      data.account_id || null,
+      accountId,
       data.trade_date,
       data.entry_time,
       data.strategy_type,
