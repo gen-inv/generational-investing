@@ -3909,8 +3909,8 @@ app.get('/', (c) => {
                                 <h3 class="text-xl font-bold text-gray-800 mb-4" id="dt-chart-title">
                                     <i class="fas fa-chart-line mr-2 text-orange-600"></i>P/L Trend (Last 50 Trades)
                                 </h3>
-                                <div class="bg-white rounded-lg p-4">
-                                    <canvas id="dt-pl-trend-chart" height="80"></canvas>
+                                <div class="bg-white rounded-lg p-4" style="height: 400px;">
+                                    <canvas id="dt-pl-trend-chart"></canvas>
                                 </div>
                             </div>
                             

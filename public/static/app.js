@@ -5991,14 +5991,22 @@ async function renderPLTrendChart(period) {
             cumulativeData.push(cumulativePL)
         })
         
-        // Calculate reasonable Y-axis range based on cumulative P/L
-        const maxCumulative = Math.max(...cumulativeData, 0)
-        const minCumulative = Math.min(...cumulativeData, 0)
+        // Calculate reasonable Y-axis range based on ALL data (individual + cumulative)
+        const allValues = [...plData, ...cumulativeData]
+        const maxValue = Math.max(...allValues, 0)
+        const minValue = Math.min(...allValues, 0)
         
-        // Add 10% padding above max and below min
-        const range = Math.max(Math.abs(maxCumulative), Math.abs(minCumulative))
-        const yMax = maxCumulative + (range * 0.10)
-        const yMin = minCumulative - (range * 0.10)
+        // Calculate range with minimum threshold
+        let range = maxValue - minValue
+        const minRange = 500 // Minimum $500 range to avoid flat-looking charts
+        if (range < minRange) {
+            range = minRange
+        }
+        
+        // Add 15% padding for better visibility
+        const padding = range * 0.15
+        const yMax = maxValue + padding
+        const yMin = minValue - padding
         
         // Destroy existing chart if it exists
         if (plTrendChart) {
