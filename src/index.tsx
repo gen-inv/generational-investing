@@ -1435,7 +1435,17 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
         AND close_date LIKE ?
       `).bind(userId, account.account_type, `${currentYear}%`).first() as any;
 
-      const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0);
+      // Get YTD P/L from closed daily trades (0DTE)
+      const dailyPL = await DB.prepare(`
+        SELECT COALESCE(SUM(profit_loss), 0) as total_pl
+        FROM daily_trades
+        WHERE user_id = ?
+        AND account_id = ?
+        AND is_open = 0
+        AND strftime('%Y', trade_date) = ?
+      `).bind(userId, account.id, currentYear.toString()).first() as any;
+
+      const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0) + (dailyPL?.total_pl || 0);
       const currentValue = account.default_currency === 'CAD' 
         ? (account.balance_cad || 0) 
         : (account.balance_usd || 0);
