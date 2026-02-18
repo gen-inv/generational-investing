@@ -3085,13 +3085,88 @@ app.get('/api/daily-trades/stats', authMiddleware, async (c) => {
 
     const result = await env.DB.prepare(query).bind(...params).first()
 
+    // Get best trade date
+    let bestTradeQuery = `
+      SELECT trade_date, entry_time 
+      FROM daily_trades 
+      WHERE user_id = ? AND is_open = 0 AND profit_loss = ?
+    `
+    if (period === 'rolling') {
+      bestTradeQuery = `
+        SELECT trade_date, entry_time 
+        FROM (
+          SELECT trade_date, entry_time, profit_loss 
+          FROM daily_trades 
+          WHERE user_id = ? AND is_open = 0 
+          ORDER BY trade_date DESC, entry_time DESC 
+          LIMIT ?
+        )
+        WHERE profit_loss = ?
+      `
+    } else if (period === 'month') {
+      bestTradeQuery += ` AND strftime('%Y-%m', trade_date) = strftime('%Y-%m', 'now')`
+    } else if (period === 'year') {
+      bestTradeQuery += ` AND strftime('%Y', trade_date) = strftime('%Y', 'now')`
+    }
+    bestTradeQuery += ` LIMIT 1`
+
+    // Get worst trade date
+    let worstTradeQuery = `
+      SELECT trade_date, entry_time 
+      FROM daily_trades 
+      WHERE user_id = ? AND is_open = 0 AND profit_loss = ?
+    `
+    if (period === 'rolling') {
+      worstTradeQuery = `
+        SELECT trade_date, entry_time 
+        FROM (
+          SELECT trade_date, entry_time, profit_loss 
+          FROM daily_trades 
+          WHERE user_id = ? AND is_open = 0 
+          ORDER BY trade_date DESC, entry_time DESC 
+          LIMIT ?
+        )
+        WHERE profit_loss = ?
+      `
+    } else if (period === 'month') {
+      worstTradeQuery += ` AND strftime('%Y-%m', trade_date) = strftime('%Y-%m', 'now')`
+    } else if (period === 'year') {
+      worstTradeQuery += ` AND strftime('%Y', trade_date) = strftime('%Y', 'now')`
+    }
+    worstTradeQuery += ` LIMIT 1`
+
+    let bestTradeDate = null
+    let worstTradeDate = null
+
+    if (result.best_trade !== null) {
+      const bestTradeParams = period === 'rolling' 
+        ? [userId, limit, result.best_trade]
+        : [userId, result.best_trade]
+      const bestTradeResult = await env.DB.prepare(bestTradeQuery).bind(...bestTradeParams).first()
+      if (bestTradeResult) {
+        bestTradeDate = bestTradeResult.trade_date
+      }
+    }
+
+    if (result.worst_trade !== null) {
+      const worstTradeParams = period === 'rolling'
+        ? [userId, limit, result.worst_trade]
+        : [userId, result.worst_trade]
+      const worstTradeResult = await env.DB.prepare(worstTradeQuery).bind(...worstTradeParams).first()
+      if (worstTradeResult) {
+        worstTradeDate = worstTradeResult.trade_date
+      }
+    }
+
     const winRate = result.total_trades > 0 
       ? ((result.winning_trades / result.total_trades) * 100).toFixed(1)
       : 0
 
     return c.json({ 
       ...result,
-      win_rate: winRate
+      win_rate: winRate,
+      best_trade_date: bestTradeDate,
+      worst_trade_date: worstTradeDate
     })
   } catch (error) {
     console.error('Error fetching stats:', error)
@@ -3896,10 +3971,12 @@ app.get('/', (c) => {
                                     <div class="text-center p-4 bg-blue-50 rounded-lg">
                                         <div id="dt-perf-best-trade" class="text-2xl font-bold text-blue-600">-</div>
                                         <div class="text-sm text-gray-600">Best Trade</div>
+                                        <div id="dt-perf-best-trade-date" class="text-xs text-gray-500 mt-1">-</div>
                                     </div>
                                     <div class="text-center p-4 bg-red-50 rounded-lg">
                                         <div id="dt-perf-worst-trade" class="text-2xl font-bold text-red-600">-</div>
                                         <div class="text-sm text-gray-600">Worst Trade</div>
+                                        <div id="dt-perf-worst-trade-date" class="text-xs text-gray-500 mt-1">-</div>
                                     </div>
                                 </div>
                             </div>

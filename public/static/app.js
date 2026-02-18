@@ -5916,8 +5916,17 @@ async function loadPerformanceStats(period) {
             avgPLElement.className = 'text-2xl font-bold text-gray-900'
         }
         
+        // Best trade with date
         document.getElementById('dt-perf-best-trade').textContent = stats.best_trade ? '+' + formatCurrency(stats.best_trade) : '-'
+        document.getElementById('dt-perf-best-trade-date').textContent = stats.best_trade_date 
+            ? formatDate(stats.best_trade_date) 
+            : '-'
+        
+        // Worst trade with date
         document.getElementById('dt-perf-worst-trade').textContent = stats.worst_trade ? formatCurrency(stats.worst_trade) : '-'
+        document.getElementById('dt-perf-worst-trade-date').textContent = stats.worst_trade_date 
+            ? formatDate(stats.worst_trade_date) 
+            : '-'
         
         // Update chart title
         let chartTitle = 'P/L Trend'
@@ -5945,8 +5954,18 @@ async function loadPerformanceStats(period) {
         document.getElementById('dt-perf-net-pl').textContent = '-'
         document.getElementById('dt-perf-avg-pl').textContent = '-'
         document.getElementById('dt-perf-best-trade').textContent = '-'
+        document.getElementById('dt-perf-best-trade-date').textContent = '-'
         document.getElementById('dt-perf-worst-trade').textContent = '-'
+        document.getElementById('dt-perf-worst-trade-date').textContent = '-'
     }
+}
+
+// Format date helper (YYYY-MM-DD to Mon DD, YYYY)
+function formatDate(dateStr) {
+    if (!dateStr) return '-'
+    const date = new Date(dateStr + 'T00:00:00')
+    const options = { month: 'short', day: 'numeric', year: 'numeric' }
+    return date.toLocaleDateString('en-US', options)
 }
 
 // Format currency helper
