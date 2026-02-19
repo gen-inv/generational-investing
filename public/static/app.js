@@ -385,6 +385,8 @@ function showSection(sectionName) {
             // Show default tab (Performance) and load config
             showDailyTradeTab('performance')
             loadDailyTradeConfig()
+            // Check for monthly expiration alert on initial load
+            checkMonthlyExpirationAlert()
             break
     }
 }
@@ -478,6 +480,8 @@ function showDailyTradeTab(tabName) {
     
     // Update rolling window labels when showing performance tab
     if (tabName === 'performance') {
+        // Check for monthly expiration warning
+        checkMonthlyExpirationAlert()
         updateRollingWindowLabels()
         // Load performance stats (default to 'rolling' to match the "Last X Trades" button as default active state)
         loadPerformanceStats(currentPerformancePeriod || 'rolling')
