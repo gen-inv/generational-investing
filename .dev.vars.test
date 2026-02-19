@@ -1,0 +1,11 @@
+# Test Environment Variables
+# This file is used specifically during testing
+# Wrangler will use this when tests are running
+
+# Set environment to test mode - uses mock data, NO external API calls
+ENVIRONMENT=test
+
+# API keys are not needed in test mode (mock data is used)
+# But we keep them defined to avoid errors
+RAPIDAPI_KEY=test_key_not_used
+EOD_API_KEY=test_key_not_used

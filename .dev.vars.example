@@ -1,0 +1,26 @@
+# Local development environment variables - EXAMPLE
+# Copy this to .dev.vars and configure with your keys
+# For production deployment, use: wrangler secret put VARIABLE_NAME
+
+# Environment mode:
+# - ENVIRONMENT=test    → Use mock data (for testing/sandbox)
+# - ENVIRONMENT=dev     → Use real APIs (for local manual testing)
+# - (not set)           → Use real APIs (production default)
+ENVIRONMENT=test
+
+# RapidAPI Key (for FinanceBird - PRIMARY SOURCE)
+# Sign up: https://rapidapi.com
+# Subscribe to FinanceBird: https://rapidapi.com/shareefbassam3/api/financebird
+RAPIDAPI_KEY=your_rapidapi_key_here
+
+# EOD Historical Data API (FALLBACK - Demo or paid $19.99/month)
+# Sign up: https://eodhd.com
+EOD_API_KEY=demo
+
+# Finnhub API (BACKUP - Free: 60 calls/min)
+# Sign up: https://finnhub.io/register
+# FINNHUB_API_KEY=your_finnhub_key_here
+
+# Financial Modeling Prep API (BACKUP - Free: 250 calls/day)
+# Sign up: https://site.financialmodelingprep.com/developer/docs
+# FMP_API_KEY=your_fmp_key_here
