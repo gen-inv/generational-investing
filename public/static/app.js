@@ -6516,14 +6516,18 @@ async function loadActivePositions() {
 let allTradesData = []
 let filteredTradesData = []
 
-// Load active trades table
+// Load active trades table (displays in Active Positions section)
 async function loadActiveTrades() {
     const section = document.getElementById('dt-active-trades-section')
     const tbody = document.getElementById('dt-active-trades-tbody')
     const countBadge = document.getElementById('dt-active-trade-count')
+    const openPositionDisplay = document.getElementById('dt-open-position-display')
+    const noOpenPositionDisplay = document.getElementById('dt-no-open-position')
     
     if (!token) {
         section.classList.add('hidden')
+        if (openPositionDisplay) openPositionDisplay.classList.add('hidden')
+        if (noOpenPositionDisplay) noOpenPositionDisplay.classList.remove('hidden')
         return
     }
     
@@ -6540,12 +6544,18 @@ async function loadActiveTrades() {
         
         if (activeTrades.length === 0) {
             section.classList.add('hidden')
+            if (openPositionDisplay) openPositionDisplay.classList.add('hidden')
+            if (noOpenPositionDisplay) noOpenPositionDisplay.classList.remove('hidden')
             return
         }
         
         // Show section and update count
         section.classList.remove('hidden')
         countBadge.textContent = `${activeTrades.length} open`
+        
+        // Hide the "no position" message, show the active trades section
+        if (openPositionDisplay) openPositionDisplay.classList.add('hidden')
+        if (noOpenPositionDisplay) noOpenPositionDisplay.classList.add('hidden')
         
         // Build table rows
         tbody.innerHTML = activeTrades.map(trade => {
@@ -6579,13 +6589,13 @@ async function loadActiveTrades() {
                     <td class="px-4 py-3 text-right text-gray-600">$${parseFloat(trade.commission || 0).toFixed(2)}</td>
                     <td class="px-4 py-3">
                         <div class="flex justify-center gap-2">
-                            <button onclick="openEditTradeModal(${trade.id})" class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs" title="Edit">
+                            <button onclick="openEditTradeModal(${trade.id})" class="text-blue-600 hover:text-blue-800" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </button>
-                            <button onclick="openCloseTradeModal(${trade.id})" class="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 text-xs" title="Close">
-                                <i class="fas fa-door-open"></i>
+                            <button onclick="openCloseTradeModal(${trade.id})" class="text-green-600 hover:text-green-800" title="Close Trade">
+                                <i class="fas fa-check-circle"></i>
                             </button>
-                            <button onclick="deleteTrade(${trade.id})" class="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs" title="Delete">
+                            <button onclick="deleteTrade(${trade.id})" class="text-red-600 hover:text-red-800" title="Delete Trade">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -6597,6 +6607,8 @@ async function loadActiveTrades() {
     } catch (error) {
         console.error('Error loading active trades:', error)
         section.classList.add('hidden')
+        if (openPositionDisplay) openPositionDisplay.classList.add('hidden')
+        if (noOpenPositionDisplay) noOpenPositionDisplay.classList.remove('hidden')
     }
 }
 

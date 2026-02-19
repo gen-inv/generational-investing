@@ -4242,6 +4242,39 @@ app.get('/', (c) => {
                                     </div>
                                 </div>
                                 
+                                <!-- Active Positions Section (shown when there are active trades) -->
+                                <div id="dt-active-trades-section" class="hidden">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h3 class="text-xl font-bold text-gray-800">
+                                            <i class="fas fa-list text-orange-600 mr-2"></i>Active Positions
+                                        </h3>
+                                        <span id="dt-active-trade-count" class="px-3 py-1 bg-orange-100 text-orange-600 rounded-full font-semibold text-sm">0 open</span>
+                                    </div>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="bg-gray-100">
+                                                    <th class="px-4 py-3 text-left">Entry</th>
+                                                    <th class="px-4 py-3 text-left">Strategy</th>
+                                                    <th class="px-4 py-3 text-center">Contracts</th>
+                                                    <th class="px-4 py-3 text-left">Call Spread</th>
+                                                    <th class="px-4 py-3 text-left">Put Spread</th>
+                                                    <th class="px-4 py-3 text-right">Credit</th>
+                                                    <th class="px-4 py-3 text-right">Commission</th>
+                                                    <th class="px-4 py-3 text-center">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="dt-active-trades-tbody">
+                                                <tr>
+                                                    <td colspan="8" class="px-4 py-8 text-center text-gray-500 italic">
+                                                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading active trades...
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                
                                 <!-- No Open Position State (shown when no active trades) -->
                                 <div id="dt-no-open-position" class="text-center py-8">
                                     <div class="mb-4">
@@ -4249,39 +4282,6 @@ app.get('/', (c) => {
                                         <h3 class="text-lg font-semibold text-gray-700 mb-2">Ready to Start Trading</h3>
                                         <p class="text-gray-500 text-sm">No active positions yet. Use the Quick Entry Form below to enter your first trade.</p>
                                     </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Active Trades Section -->
-                            <div id="dt-active-trades-section" class="card mb-6 hidden">
-                                <div class="flex justify-between items-center mb-4">
-                                    <h3 class="text-xl font-bold text-gray-800">
-                                        <i class="fas fa-list text-orange-600 mr-2"></i>Active Trades
-                                    </h3>
-                                    <span id="dt-active-trade-count" class="px-3 py-1 bg-orange-100 text-orange-600 rounded-full font-semibold text-sm">0 open</span>
-                                </div>
-                                <div class="overflow-x-auto">
-                                    <table class="w-full text-sm">
-                                        <thead>
-                                            <tr class="bg-gray-100">
-                                                <th class="px-4 py-3 text-left">Entry</th>
-                                                <th class="px-4 py-3 text-left">Strategy</th>
-                                                <th class="px-4 py-3 text-center">Contracts</th>
-                                                <th class="px-4 py-3 text-left">Call Spread</th>
-                                                <th class="px-4 py-3 text-left">Put Spread</th>
-                                                <th class="px-4 py-3 text-right">Credit</th>
-                                                <th class="px-4 py-3 text-right">Commission</th>
-                                                <th class="px-4 py-3 text-center">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody id="dt-active-trades-tbody">
-                                            <tr>
-                                                <td colspan="8" class="px-4 py-8 text-center text-gray-500 italic">
-                                                    <i class="fas fa-spinner fa-spin mr-2"></i>Loading active trades...
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
                                 </div>
                             </div>
                             
