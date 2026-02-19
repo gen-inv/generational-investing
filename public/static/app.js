@@ -393,6 +393,55 @@ function showSection(sectionName) {
 // DAILY TRADE (0DTE) FUNCTIONS
 // ============================================================================
 
+// Check if today is the Thursday before the 3rd Friday (monthly expiration)
+function isThursdayBeforeMonthlyExpiration() {
+    const today = new Date()
+    const dayOfWeek = today.getDay() // 0 = Sunday, 4 = Thursday
+    
+    // Only check on Thursdays
+    if (dayOfWeek !== 4) {
+        return false
+    }
+    
+    // Get the current month and year
+    const year = today.getFullYear()
+    const month = today.getMonth()
+    
+    // Find the third Friday of the current month
+    // Start with the first day of the month
+    const firstDay = new Date(year, month, 1)
+    
+    // Find the first Friday (day 5)
+    let firstFriday = 1
+    while (new Date(year, month, firstFriday).getDay() !== 5) {
+        firstFriday++
+    }
+    
+    // Third Friday is 14 days after first Friday
+    const thirdFriday = firstFriday + 14
+    const thirdFridayDate = new Date(year, month, thirdFriday)
+    
+    // Thursday before third Friday
+    const thursdayBefore = new Date(thirdFridayDate)
+    thursdayBefore.setDate(thirdFridayDate.getDate() - 1)
+    
+    // Check if today is that Thursday
+    return today.getDate() === thursdayBefore.getDate() &&
+           today.getMonth() === thursdayBefore.getMonth() &&
+           today.getFullYear() === thursdayBefore.getFullYear()
+}
+
+function checkMonthlyExpirationAlert() {
+    const alertElement = document.getElementById('dt-monthly-expiration-alert')
+    if (!alertElement) return
+    
+    if (isThursdayBeforeMonthlyExpiration()) {
+        alertElement.classList.remove('hidden')
+    } else {
+        alertElement.classList.add('hidden')
+    }
+}
+
 function showDailyTradeTab(tabName) {
     // Hide all tab contents
     document.querySelectorAll('.daily-trade-tab-content').forEach(content => {
@@ -427,6 +476,9 @@ function showDailyTradeTab(tabName) {
     
     // Special handling for Today's Trading tab
     if (tabName === 'today') {
+        // Check for monthly expiration warning
+        checkMonthlyExpirationAlert()
+        
         // Set entry date and time to current date/time
         const now = new Date()
         const year = now.getFullYear()

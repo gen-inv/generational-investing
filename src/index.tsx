@@ -4065,6 +4065,41 @@ app.get('/', (c) => {
                         
                         <!-- Today's Trading Tab -->
                         <div id="dt-today-tab" class="daily-trade-tab-content hidden">
+                            <!-- Monthly Expiration Warning Alert (shown only on Thursday before 3rd Friday) -->
+                            <div id="dt-monthly-expiration-alert" class="hidden mb-6 bg-red-50 border-2 border-red-500 rounded-lg p-6 shadow-lg">
+                                <div class="flex items-start gap-4">
+                                    <div class="flex-shrink-0">
+                                        <i class="fas fa-exclamation-triangle text-red-600 text-4xl"></i>
+                                    </div>
+                                    <div class="flex-1">
+                                        <h3 class="text-2xl font-bold text-red-800 mb-3">
+                                            ⚠️ MONTHLY EXPIRATION WARNING - DO NOT TRADE TODAY
+                                        </h3>
+                                        <div class="space-y-3 text-red-900">
+                                            <p class="text-lg font-semibold">
+                                                Today is <span class="font-bold bg-red-200 px-2 py-1 rounded">Thursday before the 3rd Friday of the month</span>
+                                            </p>
+                                            <p class="text-base">
+                                                <strong>Critical Risk:</strong> SPX options that appear to be 0DTE today are actually <strong>MONTHLY options</strong> 
+                                                that expire <strong>TOMORROW MORNING AT MARKET OPEN</strong> (not 4:15 PM today).
+                                            </p>
+                                            <div class="bg-red-100 border border-red-400 rounded-lg p-4 mt-3">
+                                                <p class="font-semibold mb-2">Why This is Dangerous:</p>
+                                                <ul class="list-disc list-inside space-y-1 text-sm">
+                                                    <li><strong>Overnight Risk:</strong> Your position carries significant overnight exposure</li>
+                                                    <li><strong>Gap Risk:</strong> Market can gap significantly overnight before you can close</li>
+                                                    <li><strong>Max Loss Potential:</strong> Could realize full max loss before market opens</li>
+                                                    <li><strong>No Intraday Management:</strong> Cannot manage position until tomorrow's open</li>
+                                                </ul>
+                                            </div>
+                                            <p class="text-base font-bold mt-4 text-red-800">
+                                                🛑 <strong>ACTION REQUIRED:</strong> Avoid all SPX 0DTE trades today. Resume normal trading tomorrow (Friday) with true 0DTE options.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
                             <!-- Position Summary Card -->
                             <div class="card mb-6 bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-200">
                                 <!-- Open Position Display (shown when there's an active trade) -->
