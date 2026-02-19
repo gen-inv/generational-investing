@@ -4478,18 +4478,6 @@ app.get('/', (c) => {
                                 </div>
                             </div>
                             
-                            <!-- Active Positions -->
-                            <div class="card mb-6">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4">
-                                    <i class="fas fa-chart-line text-blue-600 mr-2"></i>Active Positions
-                                </h3>
-                                <div id="dt-active-positions-container" class="overflow-x-auto">
-                                    <div class="text-center py-8 text-gray-500 italic">
-                                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading active positions...
-                                    </div>
-                                </div>
-                            </div>
-                            
                             <!-- Closed Positions Today -->
                             <div class="card mb-6">
                                 <h3 class="text-xl font-bold text-gray-800 mb-4">
