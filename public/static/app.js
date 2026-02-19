@@ -6448,6 +6448,10 @@ async function loadActivePositions() {
     }
 }
 
+// Store all trades data for modal access (shared with Full History)
+let allTradesData = []
+let filteredTradesData = []
+
 // Load active trades table
 async function loadActiveTrades() {
     const section = document.getElementById('dt-active-trades-section')
@@ -6463,6 +6467,9 @@ async function loadActiveTrades() {
         // Get ALL open trades, not just today's
         const response = await api.get('/api/daily-trades')
         const trades = response.data.trades || []
+        
+        // Update shared data (for modals)
+        allTradesData = trades
         
         // Filter only open trades
         const activeTrades = trades.filter(trade => trade.is_open)
@@ -6514,7 +6521,7 @@ async function loadActiveTrades() {
                             <button onclick="openCloseTradeModal(${trade.id})" class="px-3 py-1 bg-orange-500 text-white rounded hover:bg-orange-600 text-xs" title="Close">
                                 <i class="fas fa-door-open"></i>
                             </button>
-                            <button onclick="deleteDailyTrade(${trade.id})" class="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs" title="Delete">
+                            <button onclick="deleteTrade(${trade.id})" class="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-xs" title="Delete">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -6919,8 +6926,7 @@ function resetDailyTradeForm() {
 }
 
 // Full History Modal Functions
-let allTradesData = []
-let filteredTradesData = []
+// (allTradesData and filteredTradesData are declared earlier with Active Trades)
 
 async function openFullHistoryModal() {
     const modal = document.getElementById('full-history-modal')
@@ -7253,6 +7259,7 @@ async function updateTrade(event) {
             loadRecentTrades()
         }
         if (document.getElementById('dt-today-tab').classList.contains('hidden') === false) {
+            loadActiveTrades()
             loadActivePositions()
             loadClosedPositionsToday()
         }
@@ -7425,6 +7432,7 @@ async function submitCloseTrade(event) {
             loadRecentTrades()
         }
         if (document.getElementById('dt-today-tab').classList.contains('hidden') === false) {
+            loadActiveTrades()
             loadActivePositions()
             loadClosedPositionsToday()
         }
@@ -7473,6 +7481,7 @@ async function deleteTrade(tradeId) {
             loadDayOfWeekStats()
         }
         if (document.getElementById('dt-today-tab').classList.contains('hidden') === false) {
+            loadActiveTrades()
             loadActivePositions()
             loadClosedPositionsToday()
         }
