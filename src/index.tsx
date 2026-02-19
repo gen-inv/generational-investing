@@ -4317,20 +4317,6 @@ app.get('/', (c) => {
                                     </div>
                                 </div>
                                 
-                                <!-- Profit-Based Sizing Info (shown when enabled) -->
-                                <div id="dt-profit-sizing-info" class="hidden mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                                    <div class="flex items-center justify-between">
-                                        <div>
-                                            <div class="text-sm text-gray-600">Rolling Profit (Last <span id="dt-profit-window-display">50</span> Trades)</div>
-                                            <div class="text-2xl font-bold text-orange-600" id="dt-rolling-profit-display">$0.00</div>
-                                        </div>
-                                        <div class="text-right">
-                                            <div class="text-xs text-gray-500">Formula</div>
-                                            <div class="text-sm font-mono text-gray-700" id="dt-contract-formula">$0.00 ÷ ($5 × 100) = 1</div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
                                 <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
                                     <div>
                                         <label class="block text-gray-700 font-semibold mb-1 text-sm">Entry Date</label>

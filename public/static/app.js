@@ -5877,7 +5877,6 @@ function toggleProfitSizing() {
     const hint = document.getElementById('dt-contracts-hint')
     const minusBtn = document.getElementById('dt-contracts-minus')
     const plusBtn = document.getElementById('dt-contracts-plus')
-    const profitInfo = document.getElementById('dt-profit-sizing-info')
     
     if (toggle.checked) {
         // Profit-based sizing ON
@@ -5886,10 +5885,7 @@ function toggleProfitSizing() {
         if (minusBtn) minusBtn.disabled = true
         if (plusBtn) plusBtn.disabled = true
         contractsInput.classList.add('bg-gray-100', 'cursor-not-allowed')
-        hint.textContent = 'Profit-based sizing (auto)'
-        hint.classList.remove('text-gray-500')
-        hint.classList.add('text-orange-600', 'font-semibold')
-        if (profitInfo) profitInfo.classList.remove('hidden')
+        // Hint will be updated by calculateProfitBasedContracts with profit info
     } else {
         // Manual sizing ON
         const defaultContracts = parseInt(document.getElementById('dt-default-contracts')?.value || 1)
@@ -5901,25 +5897,26 @@ function toggleProfitSizing() {
         hint.textContent = 'Manual sizing'
         hint.classList.remove('text-orange-600', 'font-semibold')
         hint.classList.add('text-gray-500')
-        if (profitInfo) profitInfo.classList.add('hidden')
         updateTotalRiskAndDistance() // Recalculate with manual value
     }
 }
 
 // Calculate profit-based contracts
 async function calculateProfitBasedContracts() {
+    const hint = document.getElementById('dt-contracts-hint')
+    
     try {
         const rollingWindow = parseInt(document.getElementById('dt-rolling-profit-window')?.value || 50)
         const maxContractLimit = parseInt(document.getElementById('dt-max-contract-limit')?.value || 25)
         const strikeWidth = parseInt(document.getElementById('dt-strike-width')?.value || 5)
         
-        // Get stats for the rolling window period
+        // Get stats for the rolling window period using the "Last X Trades" filter
         const response = await api.get(`/api/daily-trades/stats?period=rolling&limit=${rollingWindow}`)
         const stats = response.data
         
         // Calculate contracts based on net P/L and strike width
         // Formula: Profit ÷ (Strike Width × 100) = Contracts (truncated, not rounded)
-        const netPL = stats.net_pl || 0
+        const netPL = parseFloat(stats.net_pl) || 0
         let calculatedContracts = 1 // Default minimum
         
         if (netPL > 0) {
@@ -5936,42 +5933,26 @@ async function calculateProfitBasedContracts() {
             updateTotalRiskAndDistance() // Recalculate risk with new contract count
         }
         
-        // Update profit display
-        const profitDisplay = document.getElementById('dt-rolling-profit-display')
-        const windowDisplay = document.getElementById('dt-profit-window-display')
-        const formulaDisplay = document.getElementById('dt-contract-formula')
-        
-        if (profitDisplay) {
+        // Update hint with profit info
+        if (hint) {
             const profitSign = netPL >= 0 ? '+' : ''
-            profitDisplay.textContent = `${profitSign}${formatCurrency(netPL)}`
-            profitDisplay.className = netPL >= 0 ? 'text-2xl font-bold text-green-600' : 'text-2xl font-bold text-red-600'
+            const profitColor = netPL >= 0 ? 'text-green-600' : 'text-red-600'
+            hint.innerHTML = `Profit-based: ${profitSign}${formatCurrency(netPL)} (last ${rollingWindow}) → ${calculatedContracts} contracts`
+            hint.classList.remove('text-gray-500')
+            hint.classList.add('text-orange-600', 'font-semibold')
         }
         
-        if (windowDisplay) {
-            windowDisplay.textContent = rollingWindow
-        }
-        
-        if (formulaDisplay) {
-            const profitStr = formatCurrency(Math.max(0, netPL))
-            formulaDisplay.textContent = `${profitStr} ÷ ($${strikeWidth} × 100) = ${calculatedContracts}`
-        }
-        
-        console.log(`Profit-based sizing: Net P/L=${netPL}, Strike Width=${strikeWidth}, Calculated contracts=${calculatedContracts} (truncated, not rounded)`)
+        console.log(`Profit-based sizing: Net P/L=${netPL}, Window=${rollingWindow}, Strike Width=${strikeWidth}, Calculated contracts=${calculatedContracts} (truncated, not rounded)`)
     } catch (error) {
         console.error('Error calculating profit-based contracts:', error)
         // Fallback to minimum
         document.getElementById('dt-contracts').value = 1
         
-        // Update displays with error state
-        const profitDisplay = document.getElementById('dt-rolling-profit-display')
-        const formulaDisplay = document.getElementById('dt-contract-formula')
-        if (profitDisplay) {
-            profitDisplay.textContent = '$0.00'
-            profitDisplay.className = 'text-2xl font-bold text-gray-600'
-        }
-        if (formulaDisplay) {
-            const strikeWidth = parseInt(document.getElementById('dt-strike-width')?.value || 5)
-            formulaDisplay.textContent = `$0.00 ÷ ($${strikeWidth} × 100) = 1`
+        // Update hint with error state
+        if (hint) {
+            hint.textContent = 'Profit-based: $0.00 → 1 contract'
+            hint.classList.remove('text-gray-500')
+            hint.classList.add('text-orange-600', 'font-semibold')
         }
     }
 }
