@@ -5897,7 +5897,7 @@ function toggleProfitSizing() {
         hint.textContent = 'Manual sizing'
         hint.classList.remove('text-orange-600', 'font-semibold')
         hint.classList.add('text-gray-500')
-        updateTotalRiskAndDistance() // Recalculate with manual value
+        updateTradeSummary() // Recalculate with manual value
     }
 }
 
@@ -5941,7 +5941,7 @@ async function calculateProfitBasedContracts() {
         const contractsInput = document.getElementById('dt-contracts')
         if (contractsInput) {
             contractsInput.value = calculatedContracts
-            updateTotalRiskAndDistance() // Recalculate risk with new contract count
+            updateTradeSummary() // Recalculate risk with new contract count
         }
         
         // Update hint with profit info
