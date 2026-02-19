@@ -5910,20 +5910,31 @@ async function calculateProfitBasedContracts() {
         const maxContractLimit = parseInt(document.getElementById('dt-max-contract-limit')?.value || 25)
         const strikeWidth = parseInt(document.getElementById('dt-strike-width')?.value || 5)
         
+        console.log('Profit-based sizing configuration:', { rollingWindow, maxContractLimit, strikeWidth })
+        
         // Get stats for the rolling window period using the "Last X Trades" filter
         const response = await api.get(`/api/daily-trades/stats?period=rolling&limit=${rollingWindow}`)
         const stats = response.data
+        
+        console.log('API response stats:', stats)
+        console.log('Raw net_pl value:', stats.net_pl, 'Type:', typeof stats.net_pl)
         
         // Calculate contracts based on net P/L and strike width
         // Formula: Profit ÷ (Strike Width × 100) = Contracts (truncated, not rounded)
         const netPL = parseFloat(stats.net_pl) || 0
         let calculatedContracts = 1 // Default minimum
         
+        console.log('Parsed net_pl:', netPL)
+        
         if (netPL > 0) {
             // Calculate contracts: profit / (strikeWidth * 100)
             const rawContracts = netPL / (strikeWidth * 100)
+            console.log('Raw contracts before truncation:', rawContracts)
             // Truncate (not round) and apply limits
             calculatedContracts = Math.max(1, Math.min(Math.floor(rawContracts), maxContractLimit))
+            console.log('Final contracts after truncation and limits:', calculatedContracts)
+        } else {
+            console.log('Net P/L is not positive, using minimum 1 contract')
         }
         
         // Update the contracts input
@@ -5942,15 +5953,16 @@ async function calculateProfitBasedContracts() {
             hint.classList.add('text-orange-600', 'font-semibold')
         }
         
-        console.log(`Profit-based sizing: Net P/L=${netPL}, Window=${rollingWindow}, Strike Width=${strikeWidth}, Calculated contracts=${calculatedContracts} (truncated, not rounded)`)
+        console.log(`✅ Profit-based sizing complete: Net P/L=${netPL}, Window=${rollingWindow}, Strike Width=${strikeWidth}, Raw=${netPL / (strikeWidth * 100)}, Calculated contracts=${calculatedContracts} (truncated, not rounded)`)
     } catch (error) {
-        console.error('Error calculating profit-based contracts:', error)
+        console.error('❌ Error calculating profit-based contracts:', error)
+        console.error('Error details:', error.message, error.stack)
         // Fallback to minimum
         document.getElementById('dt-contracts').value = 1
         
         // Update hint with error state
         if (hint) {
-            hint.textContent = 'Profit-based: $0.00 → 1 contract'
+            hint.textContent = `Profit-based: Error loading data → 1 contract`
             hint.classList.remove('text-gray-500')
             hint.classList.add('text-orange-600', 'font-semibold')
         }
