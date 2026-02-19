@@ -433,12 +433,24 @@ function isThursdayBeforeMonthlyExpiration() {
 
 function checkMonthlyExpirationAlert() {
     const alertElement = document.getElementById('dt-monthly-expiration-alert')
-    if (!alertElement) return
+    const alertElementPerf = document.getElementById('dt-monthly-expiration-alert-perf')
     
-    if (isThursdayBeforeMonthlyExpiration()) {
-        alertElement.classList.remove('hidden')
-    } else {
-        alertElement.classList.add('hidden')
+    const shouldShow = isThursdayBeforeMonthlyExpiration()
+    
+    if (alertElement) {
+        if (shouldShow) {
+            alertElement.classList.remove('hidden')
+        } else {
+            alertElement.classList.add('hidden')
+        }
+    }
+    
+    if (alertElementPerf) {
+        if (shouldShow) {
+            alertElementPerf.classList.remove('hidden')
+        } else {
+            alertElementPerf.classList.add('hidden')
+        }
     }
 }
 
