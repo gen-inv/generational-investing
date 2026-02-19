@@ -7,6 +7,10 @@ export default defineConfig({
     testTimeout: 30000, // 30 seconds per test
     hookTimeout: 30000,
     teardownTimeout: 30000,
+    env: {
+      NODE_ENV: 'test',
+      ENVIRONMENT: 'test'
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
