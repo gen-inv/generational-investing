@@ -3189,7 +3189,8 @@ app.get('/api/daily-trades/stats', authMiddleware, async (c) => {
           LIMIT ?
         )
       `
-      params.push(limit)
+      params.length = 0 // Clear params array
+      params.push(userId, limit) // Push both userId and limit
     } else if (period === 'month') {
       query += ` AND strftime('%Y-%m', trade_date) = strftime('%Y-%m', 'now')`
     } else if (period === 'year') {
