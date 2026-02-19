@@ -2710,6 +2710,7 @@ app.get('/api/daily-trade/config', authMiddleware, async (c) => {
       return c.json({
         max_contract_limit: 25,
         rolling_profit_window: 50,
+        enable_profit_sizing_default: false,
         target_premium_min: 10.00,
         target_premium_max: 15.00,
         guideline_delta: -0.10,
@@ -2747,6 +2748,7 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
         UPDATE daily_trade_config SET
           max_contract_limit = ?,
           rolling_profit_window = ?,
+          enable_profit_sizing_default = ?,
           target_premium_min = ?,
           target_premium_max = ?,
           guideline_delta = ?,
@@ -2761,6 +2763,7 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
       `).bind(
         data.max_contract_limit,
         data.rolling_profit_window,
+        data.enable_profit_sizing_default ? 1 : 0,
         data.target_premium_min,
         data.target_premium_max,
         data.guideline_delta || -0.10,
@@ -2779,6 +2782,7 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
           user_id,
           max_contract_limit,
           rolling_profit_window,
+          enable_profit_sizing_default,
           target_premium_min,
           target_premium_max,
           guideline_delta,
@@ -2788,11 +2792,12 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
           atm_proximity_limit,
           time_exit,
           default_account_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         userId,
         data.max_contract_limit,
         data.rolling_profit_window,
+        data.enable_profit_sizing_default ? 1 : 0,
         data.target_premium_min,
         data.target_premium_max,
         data.guideline_delta || -0.10,
@@ -3946,11 +3951,23 @@ app.get('/', (c) => {
                                             <input type="number" id="dt-rolling-profit-window" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
                                             <small class="text-gray-500">Number of recent trades to calculate profit-based contract sizing</small>
                                         </div>
+                                        <div>
+                                            <label class="flex items-center justify-between p-3 bg-gray-50 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100">
+                                                <div>
+                                                    <div class="font-semibold text-gray-700">Enable Profit-Based Sizing by Default</div>
+                                                    <div class="text-sm text-gray-500">Automatically enable profit-based sizing on the Quick Entry Form</div>
+                                                </div>
+                                                <div class="relative inline-block w-12 h-6">
+                                                    <input type="checkbox" id="dt-enable-profit-sizing-default" class="sr-only peer">
+                                                    <div class="w-full h-full bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                                                </div>
+                                            </label>
+                                        </div>
                                         <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
                                             <div class="flex items-start">
                                                 <i class="fas fa-info-circle text-blue-600 mr-2 mt-1"></i>
                                                 <div class="text-sm text-gray-700">
-                                                    <strong>Profit-Based Contract Sizing:</strong> Contract limit per trade is calculated based on profit from the configured rolling window of recent trades. Minimum starts at 1 contract. Max risk per trade is auto-calculated each time based on configured credit strike width. <em>No daily trade maximums or daily loss limits.</em>
+                                                    <strong>Profit-Based Contract Sizing:</strong> Contract limit per trade is calculated based on profit from the configured rolling window of recent trades. Formula: <code>Profit ÷ (Strike Width × 100) = Contracts</code> (truncated, not rounded). Minimum starts at 1 contract. Max risk per trade is auto-calculated each time based on configured credit strike width. <em>No daily trade maximums or daily loss limits.</em>
                                                 </div>
                                             </div>
                                         </div>
@@ -4297,6 +4314,20 @@ app.get('/', (c) => {
                                             <input type="checkbox" id="dt-profit-sizing-toggle" class="sr-only peer" onchange="toggleProfitSizing()">
                                             <div class="w-full h-full bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
                                         </label>
+                                    </div>
+                                </div>
+                                
+                                <!-- Profit-Based Sizing Info (shown when enabled) -->
+                                <div id="dt-profit-sizing-info" class="hidden mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <div class="text-sm text-gray-600">Rolling Profit (Last <span id="dt-profit-window-display">50</span> Trades)</div>
+                                            <div class="text-2xl font-bold text-orange-600" id="dt-rolling-profit-display">$0.00</div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div class="text-xs text-gray-500">Formula</div>
+                                            <div class="text-sm font-mono text-gray-700" id="dt-contract-formula">$0.00 ÷ ($5 × 100) = 1</div>
+                                        </div>
                                     </div>
                                 </div>
                                 
