@@ -4294,7 +4294,7 @@ app.get('/', (c) => {
                                 </div>
                                 
                                 <!-- No Open Position State (shown when no active trades) -->
-                                <div id="dt-no-open-position" class="text-center py-8">
+                                <div id="dt-no-open-position" class="hidden text-center py-8">
                                     <div class="mb-4">
                                         <i class="fas fa-chart-line text-gray-300 text-5xl mb-3"></i>
                                         <h3 class="text-lg font-semibold text-gray-700 mb-2">Ready to Start Trading</h3>
