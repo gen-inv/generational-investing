@@ -3156,6 +3156,7 @@ async function addStockToPosition(stockId) {
             const data = {
                 company_id: parseInt(formData.get('company_id')),
                 account_id: parseInt(formData.get('account_id')),
+                ticker: stock.ticker,
                 trade_type: formData.get('trade_type'),
                 quantity: parseInt(formData.get('quantity')),
                 price: parseFloat(formData.get('price')),
@@ -3338,6 +3339,7 @@ async function sellStockFromPosition(stockId) {
             const data = {
                 company_id: parseInt(formData.get('company_id')),
                 account_id: parseInt(formData.get('account_id')),
+                ticker: stock.ticker,
                 trade_type: formData.get('trade_type'),
                 quantity: quantity,
                 price: parseFloat(formData.get('price')),
