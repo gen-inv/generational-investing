@@ -2410,6 +2410,49 @@ app.get('/api/covered-calls/:id', authMiddleware, async (c) => {
   }
 })
 
+// Get stock purchase history for a specific stock (all buys/sells for that ticker+account)
+app.get('/api/stocks/:id/purchase-history', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Get the stock trade to extract ticker and account_id
+    const stock = await DB.prepare(`
+      SELECT id, ticker, account_id FROM stock_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first() as any
+    
+    if (!stock) {
+      return c.json({ error: 'Stock trade not found' }, 404)
+    }
+    
+    // Get all stock trades for this ticker and account (both open and closed)
+    // that contribute to the current position
+    const trades = await DB.prepare(`
+      SELECT 
+        st.id,
+        st.trade_type,
+        st.quantity,
+        st.price,
+        st.trade_date,
+        st.is_open,
+        st.notes,
+        a.account_name
+      FROM stock_trades st
+      LEFT JOIN accounts a ON st.account_id = a.id
+      WHERE st.user_id = ? 
+        AND st.ticker = ? 
+        AND st.account_id = ?
+      ORDER BY st.trade_date DESC, st.id DESC
+    `).bind(userId, stock.ticker, stock.account_id).all()
+    
+    return c.json(trades.results || [])
+  } catch (error) {
+    console.error('Get purchase history error:', error)
+    return c.json({ error: 'Failed to fetch purchase history' }, 500)
+  }
+})
+
 // ============================================================================
 // OPTION TRADES ROUTES
 // ============================================================================
