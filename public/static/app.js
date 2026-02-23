@@ -3045,56 +3045,104 @@ async function addStockToPosition(stockId) {
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
         modal.id = 'add-position-modal'
         modal.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full">
-                <h3 class="text-2xl font-bold text-brand-teal mb-6">
-                    <i class="fas fa-plus-circle mr-2"></i>Add to Position - ${stock.ticker}
-                </h3>
-                
-                <div class="mb-4 p-4 bg-gray-100 rounded-lg">
-                    <p class="text-sm text-gray-600">Current Position: <span class="font-semibold">${stock.quantity} shares @ $${stock.price.toFixed(2)}</span></p>
-                    <p class="text-sm text-gray-600">Account: <span class="font-semibold">${stock.account_name}</span></p>
-                    <p class="text-sm text-gray-600">Avg Price: <span class="font-semibold">$${(stock.avg_price || stock.price).toFixed(2)}</span></p>
+            <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-green-600 to-green-700 text-white p-4 sticky top-0 z-10">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-2xl font-bold flex items-center">
+                                <i class="fas fa-plus-circle mr-2"></i>Add to Position - ${stock.ticker}
+                            </h3>
+                            <p class="text-green-100 text-sm">Buy Additional Shares</p>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-green-200 text-xl">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                 </div>
                 
-                <form id="addPositionForm">
-                    <input type="hidden" name="company_id" value="${stock.company_id}">
-                    <input type="hidden" name="account_id" value="${stock.account_id}">
-                    <input type="hidden" name="trade_type" value="BUY">
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2 font-semibold">Additional Shares *</label>
-                        <input type="number" name="quantity" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                        <small class="text-gray-500">Number of additional shares to purchase</small>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2 font-semibold">Purchase Price per Share *</label>
-                        <input type="number" step="0.01" name="price" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                        <small class="text-gray-500">Price you're paying per share</small>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Trade Date *</label>
-                        <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${new Date().toISOString().split('T')[0]}">
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Commission</label>
-                        <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Notes</label>
-                        <textarea name="notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2" placeholder="Optional notes"></textarea>
-                    </div>
-                    
-                    <div class="flex gap-4">
-                        <button type="submit" class="btn-primary flex-1">
-                            <i class="fas fa-plus mr-2"></i>Add to Position
-                        </button>
-                        <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="btn-secondary flex-1">Cancel</button>
-                    </div>
-                </form>
+                <!-- Content -->
+                <div class="p-4">
+                    <form id="addPositionForm">
+                        <input type="hidden" name="company_id" value="${stock.company_id}">
+                        <input type="hidden" name="account_id" value="${stock.account_id}">
+                        <input type="hidden" name="trade_type" value="BUY">
+                        
+                        <!-- Current Position Summary -->
+                        <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-lg border border-gray-300 mb-4">
+                            <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center">
+                                <i class="fas fa-info-circle mr-1 text-blue-600"></i>Current Position
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                <div>
+                                    <p class="text-gray-600">Shares Held</p>
+                                    <p class="font-semibold text-gray-900">${stock.quantity} shares</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-600">Average Price</p>
+                                    <p class="font-semibold text-gray-900">$${(stock.avg_price || stock.price).toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-600">Account</p>
+                                    <p class="font-semibold text-gray-900">${stock.account_name}</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Purchase Details Section -->
+                        <div class="bg-gradient-to-br from-green-50 to-green-100 p-3 rounded-lg border border-green-300 mb-4">
+                            <h4 class="text-sm font-bold text-green-800 mb-3 flex items-center">
+                                <i class="fas fa-shopping-cart mr-1"></i>Purchase Details
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                        <i class="fas fa-hashtag mr-1 text-green-600"></i>Additional Shares *
+                                    </label>
+                                    <input type="number" name="quantity" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-green-600 focus:ring-1 focus:ring-green-600 focus:outline-none transition text-sm" required>
+                                    <small class="text-gray-500 text-xs">Number of shares to purchase</small>
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                        <i class="fas fa-dollar-sign mr-1 text-green-600"></i>Price per Share *
+                                    </label>
+                                    <input type="number" step="0.01" name="price" min="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-green-600 focus:ring-1 focus:ring-green-600 focus:outline-none transition text-sm" required>
+                                    <small class="text-gray-500 text-xs">Purchase price per share</small>
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                        <i class="fas fa-calendar mr-1 text-blue-600"></i>Trade Date *
+                                    </label>
+                                    <input type="date" name="trade_date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-green-600 focus:ring-1 focus:ring-green-600 focus:outline-none transition text-sm" required value="${new Date().toISOString().split('T')[0]}">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                        <i class="fas fa-receipt mr-1 text-purple-600"></i>Commission
+                                    </label>
+                                    <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-green-600 focus:ring-1 focus:ring-green-600 focus:outline-none transition text-sm">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Notes Section -->
+                        <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 p-3 rounded-lg border border-yellow-300 mb-4">
+                            <h4 class="text-sm font-bold text-yellow-800 mb-3 flex items-center">
+                                <i class="fas fa-sticky-note mr-1"></i>Notes (Optional)
+                            </h4>
+                            <textarea name="notes" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-yellow-600 focus:ring-1 focus:ring-yellow-600 focus:outline-none transition text-sm" rows="2" placeholder="Optional notes about this purchase"></textarea>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex gap-3">
+                            <button type="submit" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition">
+                                <i class="fas fa-plus mr-2"></i>Add to Position
+                            </button>
+                            <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition">
+                                <i class="fas fa-times mr-2"></i>Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         `
         
@@ -3157,64 +3205,118 @@ async function sellStockFromPosition(stockId) {
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
         modal.id = 'sell-position-modal'
         modal.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full">
-                <h3 class="text-2xl font-bold text-orange-600 mb-6">
-                    <i class="fas fa-minus-circle mr-2"></i>Sell from Position - ${stock.ticker}
-                </h3>
-                
-                <div class="mb-4 p-4 bg-gray-100 rounded-lg">
-                    <p class="text-sm text-gray-600">Current Position: <span class="font-semibold">${stock.quantity} shares @ $${stock.price.toFixed(2)}</span></p>
-                    <p class="text-sm text-gray-600">Account: <span class="font-semibold">${stock.account_name}</span></p>
-                    <p class="text-sm text-gray-600">Avg Price: <span class="font-semibold">$${(stock.avg_price || stock.price).toFixed(2)}</span></p>
-                    <p class="text-sm text-gray-600">Cost Basis: <span class="font-semibold">$${(stock.cost_basis || stock.price).toFixed(2)}</span></p>
+            <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-orange-600 to-orange-700 text-white p-4 sticky top-0 z-10">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-2xl font-bold flex items-center">
+                                <i class="fas fa-minus-circle mr-2"></i>Sell from Position - ${stock.ticker}
+                            </h3>
+                            <p class="text-orange-100 text-sm">Reduce Position Size</p>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-orange-200 text-xl">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                 </div>
                 
-                <form id="sellPositionForm">
-                    <input type="hidden" name="company_id" value="${stock.company_id}">
-                    <input type="hidden" name="account_id" value="${stock.account_id}">
-                    <input type="hidden" name="trade_type" value="SELL">
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2 font-semibold">Shares to Sell *</label>
-                        <input type="number" name="quantity" min="1" max="${stock.quantity}" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                        <small class="text-gray-500">Number of shares to sell (max: ${stock.quantity})</small>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2 font-semibold">Sale Price per Share *</label>
-                        <input type="number" step="0.01" name="price" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                        <small class="text-gray-500">Price you're receiving per share</small>
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Trade Date *</label>
-                        <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${new Date().toISOString().split('T')[0]}">
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Commission</label>
-                        <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 mb-2">Notes</label>
-                        <textarea name="notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2" placeholder="Optional notes (e.g., partial sale, profit-taking)"></textarea>
-                    </div>
-                    
-                    <div class="bg-yellow-50 border-l-4 border-yellow-500 p-3 mb-4">
-                        <p class="text-xs text-yellow-800">
-                            <i class="fas fa-info-circle mr-1"></i>
-                            <strong>Note:</strong> This will create a SELL trade. If selling all shares, consider using "Close Position" instead.
-                        </p>
-                    </div>
-                    
-                    <div class="flex gap-4">
-                        <button type="submit" class="btn-primary flex-1 bg-orange-600 hover:bg-orange-700">
-                            <i class="fas fa-minus mr-2"></i>Sell Shares
-                        </button>
-                        <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="btn-secondary flex-1">Cancel</button>
-                    </div>
-                </form>
+                <!-- Content -->
+                <div class="p-4">
+                    <form id="sellPositionForm">
+                        <input type="hidden" name="company_id" value="${stock.company_id}">
+                        <input type="hidden" name="account_id" value="${stock.account_id}">
+                        <input type="hidden" name="trade_type" value="SELL">
+                        
+                        <!-- Current Position Summary -->
+                        <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-lg border border-gray-300 mb-4">
+                            <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center">
+                                <i class="fas fa-info-circle mr-1 text-blue-600"></i>Current Position
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+                                <div>
+                                    <p class="text-gray-600">Shares Held</p>
+                                    <p class="font-semibold text-gray-900">${stock.quantity} shares</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-600">Average Price</p>
+                                    <p class="font-semibold text-gray-900">$${(stock.avg_price || stock.price).toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-600">Cost Basis</p>
+                                    <p class="font-semibold text-gray-900">$${(stock.cost_basis || stock.price).toFixed(2)}</p>
+                                </div>
+                                <div>
+                                    <p class="text-gray-600">Account</p>
+                                    <p class="font-semibold text-gray-900">${stock.account_name}</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Sale Details Section -->
+                        <div class="bg-gradient-to-br from-orange-50 to-orange-100 p-3 rounded-lg border border-orange-300 mb-4">
+                            <h4 class="text-sm font-bold text-orange-800 mb-3 flex items-center">
+                                <i class="fas fa-hand-holding-usd mr-1"></i>Sale Details
+                            </h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                        <i class="fas fa-hashtag mr-1 text-orange-600"></i>Shares to Sell *
+                                    </label>
+                                    <input type="number" name="quantity" min="1" max="${stock.quantity}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-orange-600 focus:ring-1 focus:ring-orange-600 focus:outline-none transition text-sm" required>
+                                    <small class="text-gray-500 text-xs">Maximum: ${stock.quantity} shares</small>
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                        <i class="fas fa-dollar-sign mr-1 text-orange-600"></i>Sale Price per Share *
+                                    </label>
+                                    <input type="number" step="0.01" name="price" min="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-orange-600 focus:ring-1 focus:ring-orange-600 focus:outline-none transition text-sm" required>
+                                    <small class="text-gray-500 text-xs">Selling price per share</small>
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                        <i class="fas fa-calendar mr-1 text-blue-600"></i>Trade Date *
+                                    </label>
+                                    <input type="date" name="trade_date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-orange-600 focus:ring-1 focus:ring-orange-600 focus:outline-none transition text-sm" required value="${new Date().toISOString().split('T')[0]}">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 font-semibold mb-1 text-sm">
+                                        <i class="fas fa-receipt mr-1 text-purple-600"></i>Commission
+                                    </label>
+                                    <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-orange-600 focus:ring-1 focus:ring-orange-600 focus:outline-none transition text-sm">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Notes Section -->
+                        <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 p-3 rounded-lg border border-yellow-300 mb-4">
+                            <h4 class="text-sm font-bold text-yellow-800 mb-3 flex items-center">
+                                <i class="fas fa-sticky-note mr-1"></i>Notes (Optional)
+                            </h4>
+                            <textarea name="notes" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-yellow-600 focus:ring-1 focus:ring-yellow-600 focus:outline-none transition text-sm" rows="2" placeholder="e.g., Partial sale, profit-taking, rebalancing"></textarea>
+                        </div>
+                        
+                        <!-- Warning Section -->
+                        <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-3 rounded-lg border border-blue-300 mb-4">
+                            <h4 class="text-xs font-bold text-blue-800 mb-2 flex items-center">
+                                <i class="fas fa-info-circle mr-1"></i>Important Information
+                            </h4>
+                            <p class="text-xs text-blue-700">
+                                This will create a SELL trade and reduce your position. If selling all shares, consider using <strong>"Close Position"</strong> instead for proper position closure.
+                            </p>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex gap-3">
+                            <button type="submit" class="flex-1 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 px-6 rounded-lg transition">
+                                <i class="fas fa-minus mr-2"></i>Sell Shares
+                            </button>
+                            <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition">
+                                <i class="fas fa-times mr-2"></i>Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         `
         
