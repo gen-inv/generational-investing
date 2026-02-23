@@ -2695,17 +2695,20 @@ async function showStockDetails(id) {
         const company = companies.find(c => c.id === stock.company_id)
         const buyPrice = company?.buy_price
         
-        // Fetch dividend history and covered call history for this position
+        // Fetch dividend history, covered call history, and purchase history for this position
         const dividendHistoryPromise = api.get(`/api/stocks/${id}/dividends`).catch(() => ({ data: [] }))
         const coveredCallHistoryPromise = api.get(`/api/stocks/${id}/covered-calls`).catch(() => ({ data: [] }))
+        const purchaseHistoryPromise = api.get(`/api/stocks/${id}/purchase-history`).catch(() => ({ data: [] }))
         
-        const [dividendHistory, coveredCallHistory] = await Promise.all([
+        const [dividendHistory, coveredCallHistory, purchaseHistory] = await Promise.all([
             dividendHistoryPromise,
-            coveredCallHistoryPromise
+            coveredCallHistoryPromise,
+            purchaseHistoryPromise
         ])
         
         const dividends = dividendHistory.data || []
         const coveredCalls = coveredCallHistory.data || []
+        const purchaseHistoryData = purchaseHistory.data || []
         
         const avgPrice = stock.avg_price || stock.price
         const costBasis = stock.cost_basis || stock.price
@@ -2801,6 +2804,71 @@ async function showStockDetails(id) {
                                     <p class="text-sm mt-1">${stock.notes}</p>
                                 </div>
                             ` : ''}
+                        </div>
+                        
+                        <!-- Share Ownership History -->
+                        <div class="mb-6">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <i class="fas fa-chart-pie text-indigo-600 mr-2"></i>
+                                Share Ownership History
+                            </h4>
+                            ${purchaseHistoryData.length > 0 ? `
+                                <div class="overflow-x-auto bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl border-2 border-indigo-300 p-4">
+                                    <table class="w-full text-sm">
+                                        <thead class="bg-indigo-200 border-b-2 border-indigo-400">
+                                            <tr>
+                                                <th class="px-4 py-3 text-left text-indigo-800 font-semibold">Date</th>
+                                                <th class="px-4 py-3 text-left text-indigo-800 font-semibold">Type</th>
+                                                <th class="px-4 py-3 text-right text-indigo-800 font-semibold">Shares</th>
+                                                <th class="px-4 py-3 text-right text-indigo-800 font-semibold">Price</th>
+                                                <th class="px-4 py-3 text-right text-indigo-800 font-semibold">Total</th>
+                                                <th class="px-4 py-3 text-center text-indigo-800 font-semibold">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-indigo-200">
+                                            ${purchaseHistoryData.map(trade => {
+                                                const total = trade.quantity * trade.price
+                                                const typeColor = trade.trade_type === 'BUY' ? 'text-green-700' : 'text-red-700'
+                                                const typeBg = trade.trade_type === 'BUY' ? 'bg-green-100' : 'bg-red-100'
+                                                const statusColor = trade.is_open ? 'text-blue-700 bg-blue-100' : 'text-gray-600 bg-gray-100'
+                                                const statusText = trade.is_open ? 'Open' : 'Closed'
+                                                return `
+                                                    <tr class="hover:bg-indigo-100">
+                                                        <td class="px-4 py-3 text-gray-700">${trade.trade_date}</td>
+                                                        <td class="px-4 py-3">
+                                                            <span class="px-2 py-1 rounded ${typeBg} ${typeColor} font-semibold text-xs">
+                                                                ${trade.trade_type}
+                                                            </span>
+                                                        </td>
+                                                        <td class="px-4 py-3 text-right font-semibold text-gray-800">${trade.quantity}</td>
+                                                        <td class="px-4 py-3 text-right text-gray-700">$${trade.price.toFixed(2)}</td>
+                                                        <td class="px-4 py-3 text-right font-semibold text-gray-800">$${total.toFixed(2)}</td>
+                                                        <td class="px-4 py-3 text-center">
+                                                            <span class="px-2 py-1 rounded ${statusColor} text-xs font-medium">
+                                                                ${statusText}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                `
+                                            }).join('')}
+                                        </tbody>
+                                    </table>
+                                    <div class="mt-4 pt-4 border-t-2 border-indigo-300 flex justify-between items-center">
+                                        <p class="text-sm text-indigo-700 font-medium">
+                                            <i class="fas fa-info-circle mr-1"></i>
+                                            Showing all purchases/sales for ${stock.ticker} in ${stock.account_name || 'this account'}
+                                        </p>
+                                        <p class="text-sm text-indigo-700 font-semibold">
+                                            Total Transactions: ${purchaseHistoryData.length}
+                                        </p>
+                                    </div>
+                                </div>
+                            ` : `
+                                <div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border-2 border-gray-200">
+                                    <i class="fas fa-inbox text-3xl mb-2"></i>
+                                    <p>No purchase history recorded yet</p>
+                                </div>
+                            `}
                         </div>
                         
                         <!-- Covered Call History -->
@@ -3280,15 +3348,6 @@ async function viewCoveredCallDetails(ccId) {
             return
         }
         
-        // Fetch purchase history for this stock
-        let purchaseHistory = []
-        try {
-            const historyResponse = await api.get(`/api/stocks/${stockId}/purchase-history`)
-            purchaseHistory = historyResponse.data || []
-        } catch (error) {
-            console.error('Failed to fetch purchase history:', error)
-        }
-        
         // Calculate days until expiration
         const expDate = new Date(cc.expiration_date)
         const today = new Date()
@@ -3336,67 +3395,6 @@ async function viewCoveredCallDetails(ccId) {
                             <i class="fas fa-${cc.is_open ? 'lock-open' : 'lock'} mr-2"></i>${cc.is_open ? 'OPEN' : 'CLOSED'}
                         </span>
                     </div>
-                    
-                    <!-- Share Ownership Section -->
-                    ${purchaseHistory.length > 0 ? `
-                        <div class="bg-gradient-to-br from-indigo-50 to-indigo-100 p-5 rounded-xl border-2 border-indigo-300 mb-6">
-                            <h4 class="text-lg font-bold text-indigo-800 mb-4 flex items-center">
-                                <i class="fas fa-chart-pie mr-2"></i>Share Ownership History
-                            </h4>
-                            <div class="overflow-x-auto">
-                                <table class="w-full text-sm">
-                                    <thead>
-                                        <tr class="border-b-2 border-indigo-300">
-                                            <th class="text-left py-2 px-3 text-indigo-700 font-semibold">Date</th>
-                                            <th class="text-left py-2 px-3 text-indigo-700 font-semibold">Type</th>
-                                            <th class="text-right py-2 px-3 text-indigo-700 font-semibold">Shares</th>
-                                            <th class="text-right py-2 px-3 text-indigo-700 font-semibold">Price</th>
-                                            <th class="text-right py-2 px-3 text-indigo-700 font-semibold">Total</th>
-                                            <th class="text-left py-2 px-3 text-indigo-700 font-semibold">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${purchaseHistory.map(trade => {
-                                            const total = trade.quantity * trade.price
-                                            const typeColor = trade.trade_type === 'BUY' ? 'text-green-700' : 'text-red-700'
-                                            const typeBg = trade.trade_type === 'BUY' ? 'bg-green-100' : 'bg-red-100'
-                                            const statusColor = trade.is_open ? 'text-blue-700 bg-blue-100' : 'text-gray-600 bg-gray-100'
-                                            const statusText = trade.is_open ? 'Open' : 'Closed'
-                                            return `
-                                                <tr class="border-b border-indigo-200 hover:bg-indigo-50">
-                                                    <td class="py-2 px-3 text-gray-700">${trade.trade_date}</td>
-                                                    <td class="py-2 px-3">
-                                                        <span class="px-2 py-1 rounded ${typeBg} ${typeColor} font-semibold text-xs">
-                                                            ${trade.trade_type}
-                                                        </span>
-                                                    </td>
-                                                    <td class="py-2 px-3 text-right font-semibold text-gray-800">${trade.quantity}</td>
-                                                    <td class="py-2 px-3 text-right text-gray-700">$${trade.price.toFixed(2)}</td>
-                                                    <td class="py-2 px-3 text-right font-semibold text-gray-800">$${total.toFixed(2)}</td>
-                                                    <td class="py-2 px-3">
-                                                        <span class="px-2 py-1 rounded ${statusColor} text-xs">
-                                                            ${statusText}
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            `
-                                        }).join('')}
-                                    </tbody>
-                                </table>
-                            </div>
-                            ${purchaseHistory.length > 0 ? `
-                                <div class="mt-4 pt-4 border-t-2 border-indigo-300 flex justify-between items-center">
-                                    <p class="text-sm text-indigo-700 font-medium">
-                                        <i class="fas fa-info-circle mr-1"></i>
-                                        Showing all purchases/sales for ${cc.ticker} in this account
-                                    </p>
-                                    <p class="text-sm text-indigo-700 font-semibold">
-                                        Total Transactions: ${purchaseHistory.length}
-                                    </p>
-                                </div>
-                            ` : ''}
-                        </div>
-                    ` : ''}
                     
                     <!-- Premium & Contracts Summary -->
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
