@@ -1526,15 +1526,28 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
         AND strftime('%Y', trade_date) = ?
       `).bind(userId, account.id, currentYear.toString()).first() as any;
 
+      // Get YTD dividends for this account
+      // Join with stock_trades to get the account_type for each dividend
+      const dividends = await DB.prepare(`
+        SELECT COALESCE(SUM(cba.amount), 0) as total_dividends
+        FROM cost_basis_adjustments cba
+        INNER JOIN stock_trades st ON cba.stock_trade_id = st.id
+        WHERE cba.user_id = ?
+        AND st.account_type = ?
+        AND cba.adjustment_type = 'DIVIDEND'
+        AND cba.adjustment_date LIKE ?
+      `).bind(userId, account.account_type, `${currentYear}%`).first() as any;
+
       console.log(`YTD Performance for ${account.account_name}:`, {
         stockPL: stockPL?.total_pl || 0,
         optionPL: optionPL?.total_pl || 0,
         dailyPL: dailyPL?.total_pl || 0,
+        dividends: dividends?.total_dividends || 0,
         account_id: account.id,
         currentYear
       });
 
-      const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0) + (dailyPL?.total_pl || 0);
+      const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0) + (dailyPL?.total_pl || 0) + (dividends?.total_dividends || 0);
       const currentValue = account.default_currency === 'CAD' 
         ? (account.balance_cad || 0) 
         : (account.balance_usd || 0);
