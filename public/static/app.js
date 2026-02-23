@@ -3033,11 +3033,100 @@ async function addStockToPosition(stockId) {
         }
         
         // Close the details modal
-        const modal = document.getElementById('stock-details-modal')
-        if (modal) modal.remove()
+        const detailsModal = document.getElementById('stock-details-modal')
+        if (detailsModal) detailsModal.remove()
         
-        // Show add stock form (similar to buy stock but updates existing position)
-        showAddToPositionForm(stock)
+        // Get accounts for the dropdown
+        const accountsResponse = await api.get('/api/accounts')
+        const accounts = accountsResponse.data.accounts || accountsResponse.data
+        
+        // Show add to position form
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'add-position-modal'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                <h3 class="text-2xl font-bold text-brand-teal mb-6">
+                    <i class="fas fa-plus-circle mr-2"></i>Add to Position - ${stock.ticker}
+                </h3>
+                
+                <div class="mb-4 p-4 bg-gray-100 rounded-lg">
+                    <p class="text-sm text-gray-600">Current Position: <span class="font-semibold">${stock.quantity} shares @ $${stock.price.toFixed(2)}</span></p>
+                    <p class="text-sm text-gray-600">Account: <span class="font-semibold">${stock.account_name}</span></p>
+                    <p class="text-sm text-gray-600">Avg Price: <span class="font-semibold">$${(stock.avg_price || stock.price).toFixed(2)}</span></p>
+                </div>
+                
+                <form id="addPositionForm">
+                    <input type="hidden" name="company_id" value="${stock.company_id}">
+                    <input type="hidden" name="account_id" value="${stock.account_id}">
+                    <input type="hidden" name="trade_type" value="BUY">
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2 font-semibold">Additional Shares *</label>
+                        <input type="number" name="quantity" min="1" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <small class="text-gray-500">Number of additional shares to purchase</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2 font-semibold">Purchase Price per Share *</label>
+                        <input type="number" step="0.01" name="price" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <small class="text-gray-500">Price you're paying per share</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Trade Date *</label>
+                        <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Commission</label>
+                        <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Notes</label>
+                        <textarea name="notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2" placeholder="Optional notes"></textarea>
+                    </div>
+                    
+                    <div class="flex gap-4">
+                        <button type="submit" class="btn-primary flex-1">
+                            <i class="fas fa-plus mr-2"></i>Add to Position
+                        </button>
+                        <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="btn-secondary flex-1">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        // Handle form submission
+        document.getElementById('addPositionForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target)
+            
+            const data = {
+                company_id: parseInt(formData.get('company_id')),
+                account_id: parseInt(formData.get('account_id')),
+                trade_type: formData.get('trade_type'),
+                quantity: parseInt(formData.get('quantity')),
+                price: parseFloat(formData.get('price')),
+                trade_date: formData.get('trade_date'),
+                commission: parseFloat(formData.get('commission')) || 0,
+                notes: formData.get('notes')
+            }
+            
+            try {
+                await api.post('/api/stocks', data)
+                modal.remove()
+                loadStocks()
+                loadDashboard()
+                alert('Successfully added to position!')
+                showStockDetails(stockId)
+            } catch (error) {
+                alert(error.response?.data?.error || 'Failed to add to position')
+            }
+        })
     } catch (error) {
         console.error('Error:', error)
         alert('Failed to load stock information')
@@ -3056,11 +3145,116 @@ async function sellStockFromPosition(stockId) {
         }
         
         // Close the details modal
-        const modal = document.getElementById('stock-details-modal')
-        if (modal) modal.remove()
+        const detailsModal = document.getElementById('stock-details-modal')
+        if (detailsModal) detailsModal.remove()
         
-        // Show sell stock form
-        showSellFromPositionForm(stock)
+        // Get accounts for the dropdown
+        const accountsResponse = await api.get('/api/accounts')
+        const accounts = accountsResponse.data.accounts || accountsResponse.data
+        
+        // Show sell from position form
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.id = 'sell-position-modal'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                <h3 class="text-2xl font-bold text-orange-600 mb-6">
+                    <i class="fas fa-minus-circle mr-2"></i>Sell from Position - ${stock.ticker}
+                </h3>
+                
+                <div class="mb-4 p-4 bg-gray-100 rounded-lg">
+                    <p class="text-sm text-gray-600">Current Position: <span class="font-semibold">${stock.quantity} shares @ $${stock.price.toFixed(2)}</span></p>
+                    <p class="text-sm text-gray-600">Account: <span class="font-semibold">${stock.account_name}</span></p>
+                    <p class="text-sm text-gray-600">Avg Price: <span class="font-semibold">$${(stock.avg_price || stock.price).toFixed(2)}</span></p>
+                    <p class="text-sm text-gray-600">Cost Basis: <span class="font-semibold">$${(stock.cost_basis || stock.price).toFixed(2)}</span></p>
+                </div>
+                
+                <form id="sellPositionForm">
+                    <input type="hidden" name="company_id" value="${stock.company_id}">
+                    <input type="hidden" name="account_id" value="${stock.account_id}">
+                    <input type="hidden" name="trade_type" value="SELL">
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2 font-semibold">Shares to Sell *</label>
+                        <input type="number" name="quantity" min="1" max="${stock.quantity}" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <small class="text-gray-500">Number of shares to sell (max: ${stock.quantity})</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2 font-semibold">Sale Price per Share *</label>
+                        <input type="number" step="0.01" name="price" min="0.01" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <small class="text-gray-500">Price you're receiving per share</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Trade Date *</label>
+                        <input type="date" name="trade_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${new Date().toISOString().split('T')[0]}">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Commission</label>
+                        <input type="number" step="0.01" name="commission" value="0" min="0" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-gray-700 mb-2">Notes</label>
+                        <textarea name="notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg" rows="2" placeholder="Optional notes (e.g., partial sale, profit-taking)"></textarea>
+                    </div>
+                    
+                    <div class="bg-yellow-50 border-l-4 border-yellow-500 p-3 mb-4">
+                        <p class="text-xs text-yellow-800">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            <strong>Note:</strong> This will create a SELL trade. If selling all shares, consider using "Close Position" instead.
+                        </p>
+                    </div>
+                    
+                    <div class="flex gap-4">
+                        <button type="submit" class="btn-primary flex-1 bg-orange-600 hover:bg-orange-700">
+                            <i class="fas fa-minus mr-2"></i>Sell Shares
+                        </button>
+                        <button type="button" onclick="this.closest('.fixed').remove(); showStockDetails(${stockId})" class="btn-secondary flex-1">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        // Handle form submission
+        document.getElementById('sellPositionForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target)
+            
+            const quantity = parseInt(formData.get('quantity'))
+            
+            // Validate quantity
+            if (quantity > stock.quantity) {
+                alert(`Cannot sell more than ${stock.quantity} shares`)
+                return
+            }
+            
+            const data = {
+                company_id: parseInt(formData.get('company_id')),
+                account_id: parseInt(formData.get('account_id')),
+                trade_type: formData.get('trade_type'),
+                quantity: quantity,
+                price: parseFloat(formData.get('price')),
+                trade_date: formData.get('trade_date'),
+                commission: parseFloat(formData.get('commission')) || 0,
+                notes: formData.get('notes')
+            }
+            
+            try {
+                await api.post('/api/stocks', data)
+                modal.remove()
+                loadStocks()
+                loadDashboard()
+                alert('Successfully sold shares from position!')
+                showStockDetails(stockId)
+            } catch (error) {
+                alert(error.response?.data?.error || 'Failed to sell from position')
+            }
+        })
     } catch (error) {
         console.error('Error:', error)
         alert('Failed to load stock information')
