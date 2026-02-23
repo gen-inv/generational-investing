@@ -1527,13 +1527,14 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
       `).bind(userId, account.id, currentYear.toString()).first() as any;
 
       // Get YTD dividends for this account
-      // Join with stock_trades to get the account_type for each dividend
+      // Join with stock_holdings to get the account_id for each dividend
       const dividends = await DB.prepare(`
         SELECT COALESCE(SUM(cba.amount), 0) as total_dividends
         FROM cost_basis_adjustments cba
-        INNER JOIN stock_trades st ON cba.stock_trade_id = st.id
+        INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
+        INNER JOIN accounts a ON sh.account_id = a.id
         WHERE cba.user_id = ?
-        AND st.account_type = ?
+        AND a.account_type = ?
         AND cba.adjustment_type = 'DIVIDEND'
         AND cba.adjustment_date LIKE ?
       `).bind(userId, account.account_type, `${currentYear}%`).first() as any;
@@ -1674,43 +1675,43 @@ app.get('/api/stocks', authMiddleware, async (c) => {
   
   let query = `
     SELECT 
-      st.*,
+      sh.*,
       a.account_name,
       c.ticker as company_ticker,
       c.company_name,
       (SELECT COALESCE(SUM(amount), 0) 
-       FROM cost_basis_adjustments 
-       WHERE stock_trade_id = st.id AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL')) as total_adjustments,
+       FROM cost_basis_adjustments cba
+       WHERE cba.holding_id = sh.id AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL')) as total_adjustments,
       (SELECT MIN(expiration_date)
        FROM option_trades
-       WHERE user_id = st.user_id 
-         AND ticker = st.ticker 
+       WHERE user_id = sh.user_id 
+         AND ticker = sh.ticker 
          AND strategy_type = 'COVERED_CALL' 
          AND is_open = 1) as nearest_cc_expiration
-    FROM stock_trades st
-    LEFT JOIN accounts a ON st.account_id = a.id
-    LEFT JOIN companies c ON st.company_id = c.id
-    WHERE st.user_id = ?
+    FROM stock_holdings sh
+    LEFT JOIN accounts a ON sh.account_id = a.id
+    LEFT JOIN companies c ON sh.company_id = c.id
+    WHERE sh.user_id = ?
   `
   let params = [userId]
   
   if (isOpen !== undefined) {
-    query += ' AND st.is_open = ?'
+    query += ' AND sh.is_open = ?'
     params.push(isOpen === 'true' ? 1 : 0)
   } else if (isClosed !== undefined) {
-    query += ' AND st.is_open = ?'
+    query += ' AND sh.is_open = ?'
     params.push(isClosed === 'true' ? 0 : 1)
   }
   
-  query += ' ORDER BY st.trade_date DESC'
+  query += ' ORDER BY sh.opened_date DESC'
   
   const stmt = DB.prepare(query)
   const stocks = await stmt.bind(...params).all()
   
-  // Calculate avg price, cost basis, and covered call status for each stock
+  // Calculate avg price, cost basis, and covered call status for each holding
   const enhancedStocks = stocks.results.map((stock: any) => {
-    const avgPrice = stock.price
-    const costBasis = avgPrice - (stock.total_adjustments / stock.quantity || 0)
+    const avgPrice = stock.average_price
+    const costBasis = avgPrice - (stock.total_adjustments / stock.total_shares || 0)
     
     // Calculate days until covered call expiration
     let ccStatus = null
@@ -1730,6 +1731,10 @@ app.get('/api/stocks', authMiddleware, async (c) => {
     
     return {
       ...stock,
+      // Map new field names to old field names for backwards compatibility
+      price: avgPrice,
+      quantity: stock.total_shares,
+      trade_date: stock.opened_date,
       avg_price: avgPrice,
       cost_basis: costBasis,
       cc_status: ccStatus,
@@ -1778,28 +1783,100 @@ app.post('/api/stocks', authMiddleware, async (c) => {
       return c.json({ error: 'Account not found' }, 404)
     }
     
-    const result = await DB.prepare(`
-      INSERT INTO stock_trades (
-        user_id, company_id, ticker, trade_type, quantity, price, 
-        account_id, account_type, trade_date, commission, notes, is_open
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    // Check if holding exists for this ticker + account
+    const holding = await DB.prepare(`
+      SELECT * FROM stock_holdings 
+      WHERE user_id = ? AND ticker = ? AND account_id = ? AND is_open = 1
+    `).bind(userId, data.ticker, data.account_id).first()
+    
+    let holdingId
+    const quantity = parseInt(data.quantity)
+    const price = parseFloat(data.price)
+    const commission = parseFloat(data.commission || 0)
+    
+    if (holding) {
+      // Update existing holding
+      holdingId = holding.id
+      const currentShares = holding.total_shares
+      const currentAvg = holding.average_price
+      
+      if (data.trade_type === 'BUY') {
+        // Add to position - recalculate weighted average
+        const newTotalShares = currentShares + quantity
+        const newAvgPrice = ((currentShares * currentAvg) + (quantity * price)) / newTotalShares
+        
+        await DB.prepare(`
+          UPDATE stock_holdings 
+          SET total_shares = ?, average_price = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(newTotalShares, newAvgPrice, holdingId).run()
+      } else if (data.trade_type === 'SELL') {
+        // Remove from position - keep same average price
+        const newTotalShares = currentShares - quantity
+        
+        if (newTotalShares < 0) {
+          return c.json({ error: 'Cannot sell more shares than you own' }, 400)
+        }
+        
+        if (newTotalShares === 0) {
+          // Close the holding
+          await DB.prepare(`
+            UPDATE stock_holdings 
+            SET total_shares = 0, is_open = 0, closed_date = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(data.trade_date, holdingId).run()
+        } else {
+          // Reduce shares
+          await DB.prepare(`
+            UPDATE stock_holdings 
+            SET total_shares = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(newTotalShares, holdingId).run()
+        }
+      }
+    } else {
+      // Create new holding (first purchase)
+      if (data.trade_type !== 'BUY') {
+        return c.json({ error: 'Cannot sell without an open position' }, 400)
+      }
+      
+      const result = await DB.prepare(`
+        INSERT INTO stock_holdings (
+          user_id, company_id, ticker, account_id, total_shares, average_price, is_open, opened_date
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+      `).bind(
+        userId,
+        data.company_id,
+        data.ticker,
+        data.account_id,
+        quantity,
+        price,
+        data.trade_date
+      ).run()
+      
+      holdingId = result.meta.last_row_id
+    }
+    
+    // Create transaction record
+    const txResult = await DB.prepare(`
+      INSERT INTO stock_transactions (
+        user_id, holding_id, transaction_type, shares, price_per_share, 
+        transaction_date, commission, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       userId,
-      data.company_id,
-      data.ticker,
+      holdingId,
       data.trade_type,
-      data.quantity,
-      data.price,
-      data.account_id,
-      account.account_type,  // Get from accounts table
+      quantity,
+      price,
       data.trade_date,
-      data.commission || 0,
-      data.notes || null,
-      1  // Always open when created
+      commission,
+      data.notes || null
     ).run()
     
     return c.json({ 
-      id: result.meta.last_row_id,
+      id: holdingId,
+      transaction_id: txResult.meta.last_row_id,
       ...data,
       is_open: true
     }, 201)
@@ -2026,24 +2103,24 @@ app.delete('/api/stocks/:id', authMiddleware, async (c) => {
 app.get('/api/stocks/:id/dividends', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
-    const tradeId = c.req.param('id')
+    const holdingId = c.req.param('id')
     const { DB } = c.env
     
-    // Verify trade belongs to user
-    const trade = await DB.prepare(`
-      SELECT id FROM stock_trades WHERE id = ? AND user_id = ?
-    `).bind(tradeId, userId).first()
+    // Verify holding belongs to user
+    const holding = await DB.prepare(`
+      SELECT id FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).first()
     
-    if (!trade) {
-      return c.json({ error: 'Trade not found' }, 404)
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
     }
     
     // Get dividend adjustments
     const dividends = await DB.prepare(`
       SELECT * FROM cost_basis_adjustments
-      WHERE stock_trade_id = ? AND adjustment_type = 'DIVIDEND'
+      WHERE holding_id = ? AND adjustment_type = 'DIVIDEND'
       ORDER BY adjustment_date DESC
-    `).bind(tradeId).all()
+    `).bind(holdingId).all()
     
     return c.json(dividends.results || [])
   } catch (error) {
@@ -2056,7 +2133,7 @@ app.get('/api/stocks/:id/dividends', authMiddleware, async (c) => {
 app.post('/api/stocks/:id/dividends', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
-    const tradeId = c.req.param('id')
+    const holdingId = c.req.param('id')
     const data = await c.req.json()
     const { DB } = c.env
     
@@ -2065,23 +2142,23 @@ app.post('/api/stocks/:id/dividends', authMiddleware, async (c) => {
       return c.json({ error: 'Amount and payment date are required' }, 400)
     }
     
-    // Verify trade belongs to user
-    const trade = await DB.prepare(`
-      SELECT id FROM stock_trades WHERE id = ? AND user_id = ?
-    `).bind(tradeId, userId).first()
+    // Verify holding belongs to user
+    const holding = await DB.prepare(`
+      SELECT id FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).first()
     
-    if (!trade) {
-      return c.json({ error: 'Trade not found' }, 404)
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
     }
     
     // Insert dividend adjustment
     const result = await DB.prepare(`
       INSERT INTO cost_basis_adjustments (
-        user_id, stock_trade_id, adjustment_type, amount, adjustment_date, notes
+        user_id, holding_id, adjustment_type, amount, adjustment_date, notes
       ) VALUES (?, ?, 'DIVIDEND', ?, ?, ?)
     `).bind(
       userId,
-      tradeId,
+      holdingId,
       data.amount,
       data.payment_date,
       data.notes || null
@@ -2101,16 +2178,16 @@ app.post('/api/stocks/:id/dividends', authMiddleware, async (c) => {
 app.get('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
-    const tradeId = c.req.param('id')
+    const holdingId = c.req.param('id')
     const { DB } = c.env
     
-    // Verify trade belongs to user
-    const trade = await DB.prepare(`
-      SELECT id, ticker FROM stock_trades WHERE id = ? AND user_id = ?
-    `).bind(tradeId, userId).first()
+    // Verify holding belongs to user
+    const holding = await DB.prepare(`
+      SELECT id, ticker FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).first()
     
-    if (!trade) {
-      return c.json({ error: 'Trade not found' }, 404)
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
     }
     
     // Get covered calls for this ticker in the same account
@@ -2119,7 +2196,7 @@ app.get('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
       SELECT * FROM option_trades
       WHERE user_id = ? AND ticker = ? AND strategy_type = 'COVERED_CALL'
       ORDER BY trade_date DESC
-    `).bind(userId, trade.ticker).all()
+    `).bind(userId, holding.ticker).all()
     
     return c.json(coveredCalls.results || [])
   } catch (error) {
@@ -2132,7 +2209,7 @@ app.get('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
 app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
-    const tradeId = c.req.param('id')
+    const holdingId = c.req.param('id')
     const data = await c.req.json()
     const { DB } = c.env
     
@@ -2141,39 +2218,43 @@ app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
       return c.json({ error: 'All fields are required' }, 400)
     }
     
-    // Verify trade belongs to user and get details
-    const trade = await DB.prepare(`
-      SELECT id, ticker, quantity, company_id, account_id FROM stock_trades WHERE id = ? AND user_id = ?
-    `).bind(tradeId, userId).first()
+    // Verify holding belongs to user and get details
+    const holding = await DB.prepare(`
+      SELECT id, ticker, total_shares, company_id, account_id FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).first()
     
-    if (!trade) {
-      return c.json({ error: 'Trade not found' }, 404)
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
     }
     
     // Verify user has enough shares (need 100 shares per contract)
     const sharesNeeded = data.quantity * 100
-    if (trade.quantity < sharesNeeded) {
+    if (holding.total_shares < sharesNeeded) {
       return c.json({ 
-        error: `Insufficient shares. Need ${sharesNeeded} shares, have ${trade.quantity}` 
+        error: `Insufficient shares. Need ${sharesNeeded} shares, have ${holding.total_shares}` 
       }, 400)
     }
+    
+    // Get account_type from accounts table
+    const account = await DB.prepare(`
+      SELECT account_type FROM accounts WHERE id = ?
+    `).bind(holding.account_id).first()
     
     // Insert covered call as an option trade
     const optionResult = await DB.prepare(`
       INSERT INTO option_trades (
         user_id, company_id, ticker, strategy_type, strike_price, premium, quantity,
         expiration_date, account_type, trade_date, is_open, commission, notes
-      ) VALUES (?, ?, ?, 'COVERED_CALL', ?, ?, ?, ?, 
-        (SELECT account_type FROM stock_trades WHERE id = ?), ?, 1, ?, ?)
+      ) VALUES (?, ?, ?, 'COVERED_CALL', ?, ?, ?, ?, ?, ?, 1, ?, ?)
     `).bind(
       userId,
-      trade.company_id,
-      trade.ticker,
+      holding.company_id,
+      holding.ticker,
       data.strike_price,
       data.premium,
       data.quantity,
       data.expiration_date,
-      trade.id, // Get account_type from the stock trade
+      account?.account_type,
       data.trade_date,
       data.commission || 0,
       data.notes || null
@@ -2184,11 +2265,11 @@ app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
     const totalPremium = data.premium * data.quantity * 100
     await DB.prepare(`
       INSERT INTO cost_basis_adjustments (
-        user_id, stock_trade_id, adjustment_type, amount, adjustment_date, notes
+        user_id, holding_id, adjustment_type, amount, adjustment_date, notes
       ) VALUES (?, ?, 'COVERED_CALL', ?, ?, ?)
     `).bind(
       userId,
-      tradeId,
+      holdingId,
       totalPremium,
       data.trade_date,
       `Covered call: ${data.quantity} contracts @ $${data.strike_price} strike, premium $${data.premium}/share ($${totalPremium} total), exp ${data.expiration_date}`
@@ -2214,9 +2295,9 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
     
     // Verify covered call belongs to user and get details
     const cc = await DB.prepare(`
-      SELECT ot.*, st.id as stock_trade_id
+      SELECT ot.*, sh.id as holding_id
       FROM option_trades ot
-      LEFT JOIN stock_trades st ON st.ticker = ot.ticker AND st.user_id = ot.user_id AND st.is_open = 1
+      LEFT JOIN stock_holdings sh ON sh.ticker = ot.ticker AND sh.user_id = ot.user_id AND sh.is_open = 1
       WHERE ot.id = ? AND ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
     `).bind(ccId, userId).first()
     
@@ -2261,17 +2342,17 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
     // Update the existing cost basis adjustment with the net P/L
     // When the covered call was opened, we created an adjustment with the premium received
     // Now we need to update it to reflect the actual profit/loss after closing
-    if (cc.stock_trade_id && profitLoss !== undefined) {
+    if (cc.holding_id && profitLoss !== undefined) {
       // Find the existing adjustment created when this covered call was opened
       const existingAdjustment = await DB.prepare(`
         SELECT id, amount FROM cost_basis_adjustments
-        WHERE stock_trade_id = ? 
+        WHERE holding_id = ? 
           AND adjustment_type = 'COVERED_CALL'
           AND notes LIKE ?
         ORDER BY created_at DESC
         LIMIT 1
       `).bind(
-        cc.stock_trade_id,
+        cc.holding_id,
         `%${cc.quantity} contracts%$${cc.strike_price} strike%`
       ).first()
       
@@ -2293,11 +2374,11 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
       } else {
         // If no existing adjustment found, create a new one
         await DB.prepare(`
-          INSERT INTO cost_basis_adjustments (user_id, stock_trade_id, adjustment_type, amount, adjustment_date, notes)
+          INSERT INTO cost_basis_adjustments (user_id, holding_id, adjustment_type, amount, adjustment_date, notes)
           VALUES (?, ?, 'COVERED_CALL', ?, ?, ?)
         `).bind(
           userId,
-          cc.stock_trade_id,
+          cc.holding_id,
           profitLoss,
           data.close_date || new Date().toISOString().split('T')[0],
           `Covered call closed - P/L: $${profitLoss.toFixed(2)}`
@@ -2427,39 +2508,37 @@ app.get('/api/covered-calls/:id', authMiddleware, async (c) => {
 app.get('/api/stocks/:id/purchase-history', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
-    const tradeId = c.req.param('id')
+    const holdingId = c.req.param('id')
     const { DB } = c.env
     
-    // Get the stock trade to extract ticker and account_id
-    const stock = await DB.prepare(`
-      SELECT id, ticker, account_id FROM stock_trades WHERE id = ? AND user_id = ?
-    `).bind(tradeId, userId).first() as any
+    // Get the holding to extract ticker and account_id
+    const holding = await DB.prepare(`
+      SELECT id, ticker, account_id FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).first() as any
     
-    if (!stock) {
-      return c.json({ error: 'Stock trade not found' }, 404)
+    if (!holding) {
+      return c.json({ error: 'Stock holding not found' }, 404)
     }
     
-    // Get all stock trades for this ticker and account (both open and closed)
-    // that contribute to the current position
-    const trades = await DB.prepare(`
+    // Get all transactions for this holding
+    const transactions = await DB.prepare(`
       SELECT 
         st.id,
-        st.trade_type,
-        st.quantity,
-        st.price,
-        st.trade_date,
-        st.is_open,
+        st.transaction_type as trade_type,
+        st.shares as quantity,
+        st.price_per_share as price,
+        st.transaction_date as trade_date,
+        st.commission,
         st.notes,
-        a.account_name
-      FROM stock_trades st
-      LEFT JOIN accounts a ON st.account_id = a.id
-      WHERE st.user_id = ? 
-        AND st.ticker = ? 
-        AND st.account_id = ?
-      ORDER BY st.trade_date DESC, st.id DESC
-    `).bind(userId, stock.ticker, stock.account_id).all()
+        a.account_name,
+        1 as is_open
+      FROM stock_transactions st
+      LEFT JOIN accounts a ON a.id = ?
+      WHERE st.holding_id = ?
+      ORDER BY st.transaction_date DESC, st.id DESC
+    `).bind(holding.account_id, holdingId).all()
     
-    return c.json(trades.results || [])
+    return c.json(transactions.results || [])
   } catch (error) {
     console.error('Get purchase history error:', error)
     return c.json({ error: 'Failed to fetch purchase history' }, 500)
