@@ -3962,6 +3962,13 @@ app.get('/', (c) => {
                             </button>
                         </div>
                         
+                        <!-- Account Tabs -->
+                        <div class="mb-6">
+                            <div class="flex flex-wrap gap-2" id="stock-account-tabs">
+                                <!-- Tabs will be dynamically generated -->
+                            </div>
+                        </div>
+                        
                         <div class="card">
                             <div class="overflow-x-auto">
                                 <table class="w-full">

@@ -2055,20 +2055,31 @@ async function deleteAccount(accountId) {
 // STOCK TRADE FUNCTIONS
 // ============================================================================
 
+// Current filter state for stocks
+let currentStockAccountFilter = 'all'
+
 async function loadStocks() {
     try {
         const response = await api.get('/api/stocks?open=true')
         const stocks = response.data
         
+        // Generate account tabs
+        await generateStockAccountTabs(stocks)
+        
+        // Filter stocks based on current account filter
+        const filteredStocks = currentStockAccountFilter === 'all' 
+            ? stocks 
+            : stocks.filter(stock => stock.account_id === currentStockAccountFilter)
+        
         const table = document.getElementById('stocks-table')
         table.innerHTML = ''
         
-        if (stocks.length === 0) {
-            table.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No open stock trades found</td></tr>'
+        if (filteredStocks.length === 0) {
+            table.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">No open stock trades found</td></tr>'
             return
         }
         
-        stocks.forEach(stock => {
+        filteredStocks.forEach(stock => {
             const avgPrice = stock.avg_price || stock.price
             const costBasis = stock.cost_basis || stock.price
             const accountName = stock.account_name || 'N/A'
@@ -2109,6 +2120,52 @@ async function loadStocks() {
     } catch (error) {
         console.error('Error loading stocks:', error)
     }
+}
+
+// Generate account tabs for stock trades
+async function generateStockAccountTabs(stocks) {
+    const tabsContainer = document.getElementById('stock-account-tabs')
+    if (!tabsContainer) return
+    
+    // Get unique accounts from stocks
+    const accountMap = new Map()
+    stocks.forEach(stock => {
+        if (stock.account_id && stock.account_name) {
+            accountMap.set(stock.account_id, stock.account_name)
+        }
+    })
+    
+    // Build tabs HTML
+    let tabsHTML = ''
+    
+    // All Trades tab
+    const allActive = currentStockAccountFilter === 'all' ? 'bg-brand-teal text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+    tabsHTML += `
+        <button onclick="filterStocksByAccount('all')" 
+                class="px-4 py-2 rounded-lg font-medium transition-colors ${allActive}">
+            All Trades (${stocks.length})
+        </button>
+    `
+    
+    // Individual account tabs
+    accountMap.forEach((accountName, accountId) => {
+        const accountStocks = stocks.filter(s => s.account_id === accountId)
+        const isActive = currentStockAccountFilter === accountId ? 'bg-brand-teal text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+        tabsHTML += `
+            <button onclick="filterStocksByAccount(${accountId})" 
+                    class="px-4 py-2 rounded-lg font-medium transition-colors ${isActive}">
+                ${accountName} (${accountStocks.length})
+            </button>
+        `
+    })
+    
+    tabsContainer.innerHTML = tabsHTML
+}
+
+// Filter stocks by account
+function filterStocksByAccount(accountId) {
+    currentStockAccountFilter = accountId
+    loadStocks()
 }
 
 // New Stock Trade Form Functions
