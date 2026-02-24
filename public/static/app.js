@@ -528,7 +528,6 @@ function showDailyTradeTab(tabName) {
         
         // Load today's data
         loadActiveTrades()
-        loadActivePositions()
         loadClosedPositionsToday()
         loadTodayJournal()
     }
@@ -6799,133 +6798,6 @@ async function loadDayOfWeekStats() {
 // Global variable to store today's journal entries
 let todayJournalEntries = []
 
-// Load active positions
-async function loadActivePositions() {
-    const container = document.getElementById('dt-active-positions-container')
-    const openPositionDisplay = document.getElementById('dt-open-position-display')
-    const noOpenPositionDisplay = document.getElementById('dt-no-open-position')
-    
-    // If no token, show friendly empty state immediately
-    if (!token) {
-        // Hide open position display, show no position message
-        if (openPositionDisplay) openPositionDisplay.classList.add('hidden')
-        if (noOpenPositionDisplay) noOpenPositionDisplay.classList.remove('hidden')
-        
-        container.innerHTML = `
-            <div class="text-center py-12">
-                <i class="fas fa-bed text-gray-300 text-6xl mb-4"></i>
-                <p class="text-gray-500 text-lg">No active positions</p>
-                <p class="text-gray-400 text-sm mt-2">Use the Quick Entry Form above to enter a new trade</p>
-            </div>
-        `
-        return
-    }
-    
-    try {
-        const response = await api.get('/api/daily-trades/today')
-        const trades = response.data.trades || []
-        
-        // Filter only open trades
-        const activePositions = trades.filter(trade => trade.is_open)
-        
-        if (activePositions.length === 0) {
-            // Hide open position display, show no position message
-            if (openPositionDisplay) openPositionDisplay.classList.add('hidden')
-            if (noOpenPositionDisplay) noOpenPositionDisplay.classList.remove('hidden')
-            
-            container.innerHTML = `
-                <div class="text-center py-12">
-                    <i class="fas fa-bed text-gray-300 text-6xl mb-4"></i>
-                    <p class="text-gray-500 text-lg">No active positions</p>
-                    <p class="text-gray-400 text-sm mt-2">Use the Quick Entry Form above to enter a new trade</p>
-                </div>
-            `
-            return
-        }
-        
-        // Show open position display, hide no position message
-        if (openPositionDisplay) openPositionDisplay.classList.remove('hidden')
-        if (noOpenPositionDisplay) noOpenPositionDisplay.classList.add('hidden')
-        
-        // TODO: Update the SPX summary box with real data from first active position
-        // For now, we'll just show the position exists
-        
-        // Build table with active positions
-        let tableHTML = `
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="bg-gray-100">
-                        <th class="px-4 py-3 text-left">Entry</th>
-                        <th class="px-4 py-3 text-left">Strategy</th>
-                        <th class="px-4 py-3 text-left">Strikes</th>
-                        <th class="px-4 py-3 text-right">Credit</th>
-                        <th class="px-4 py-3 text-center">Contracts</th>
-                        <th class="px-4 py-3 text-right">Max Risk</th>
-                        <th class="px-4 py-3 text-center">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-        `
-        
-        activePositions.forEach(trade => {
-            const entryTime = trade.entry_time ? trade.entry_time.substring(0, 5) : '-'
-            const strategyLabel = trade.strategy_type === 'IRON_CONDOR' ? 'Iron Condor' 
-                : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Spread'
-                : 'Put Spread'
-            
-            // Build strikes display
-            let strikesDisplay = ''
-            if (trade.call_enabled && trade.put_enabled) {
-                strikesDisplay = `C: ${trade.call_short_strike || '-'} | P: ${trade.put_short_strike || '-'}`
-            } else if (trade.call_enabled) {
-                strikesDisplay = `Call: ${trade.call_short_strike || '-'}`
-            } else if (trade.put_enabled) {
-                strikesDisplay = `Put: ${trade.put_short_strike || '-'}`
-            }
-            
-            const strikeWidth = parseInt(document.getElementById('dt-strike-width')?.value || 5)
-            const maxRisk = ((strikeWidth - trade.total_credit) * 100 * trade.contracts).toFixed(2)
-            
-            tableHTML += `
-                <tr class="border-b border-gray-200 hover:bg-gray-50">
-                    <td class="px-4 py-3 font-semibold">${entryTime}</td>
-                    <td class="px-4 py-3">${strategyLabel}</td>
-                    <td class="px-4 py-3">${strikesDisplay}</td>
-                    <td class="px-4 py-3 text-right text-green-600 font-semibold">${formatCurrency(trade.total_credit)}</td>
-                    <td class="px-4 py-3 text-center font-bold">${trade.contracts}</td>
-                    <td class="px-4 py-3 text-right text-red-600 font-semibold">${formatCurrency(maxRisk)}</td>
-                    <td class="px-4 py-3 text-center">
-                        <button onclick="closeTrade(${trade.id})" class="text-green-600 hover:text-green-800 mr-2" title="Close Trade">
-                            <i class="fas fa-lock"></i>
-                        </button>
-                        <button onclick="editTradeNotes(${trade.id})" class="text-gray-600 hover:text-gray-800" title="Edit Notes">
-                            <i class="fas fa-sticky-note"></i>
-                        </button>
-                    </td>
-                </tr>
-            `
-        })
-        
-        tableHTML += '</tbody></table>'
-        container.innerHTML = tableHTML
-        
-        console.log('Active positions loaded:', activePositions.length)
-    } catch (error) {
-        console.error('Error loading active positions:', error)
-        console.log('Error response:', error.response)
-        
-        // Always show friendly message for any error when loading positions
-        // Common scenarios: auth errors, network errors, empty database
-        container.innerHTML = `
-            <div class="text-center py-12">
-                <i class="fas fa-bed text-gray-300 text-6xl mb-4"></i>
-                <p class="text-gray-500 text-lg">No active positions</p>
-                <p class="text-gray-400 text-sm mt-2">Use the Quick Entry Form above to enter a new trade</p>
-            </div>
-        `
-    }
-}
-
 // Store all trades data for modal access (shared with Full History)
 let allTradesData = []
 let filteredTradesData = []
@@ -7342,7 +7214,6 @@ async function submitDailyTrade() {
         
         // Reload active positions
         await loadActiveTrades()
-        await loadActivePositions()
         
     } catch (error) {
         console.error('Error submitting trade:', error)
@@ -7362,7 +7233,6 @@ async function deleteDailyTrade(tradeId) {
         
         // Reload all daily trade data
         await loadActiveTrades()
-        await loadActivePositions()
         await loadClosedPositionsToday()
         
         // If on full history, reload that too
@@ -7750,7 +7620,6 @@ async function updateTrade(event) {
         }
         if (document.getElementById('dt-today-tab').classList.contains('hidden') === false) {
             loadActiveTrades()
-            loadActivePositions()
             loadClosedPositionsToday()
         }
         
@@ -7923,7 +7792,6 @@ async function submitCloseTrade(event) {
         }
         if (document.getElementById('dt-today-tab').classList.contains('hidden') === false) {
             loadActiveTrades()
-            loadActivePositions()
             loadClosedPositionsToday()
         }
         
@@ -7972,7 +7840,6 @@ async function deleteTrade(tradeId) {
         }
         if (document.getElementById('dt-today-tab').classList.contains('hidden') === false) {
             loadActiveTrades()
-            loadActivePositions()
             loadClosedPositionsToday()
         }
         
