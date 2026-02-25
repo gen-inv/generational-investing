@@ -6161,11 +6161,11 @@ async function loadClosedTrades() {
                     const plClass = stock.profit_loss >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'
                     return `
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-4 py-3">${stock.trade_date}</td>
+                            <td class="px-4 py-3">${stock.opened_date || stock.trade_date}</td>
                             <td class="px-4 py-3 font-semibold text-brand-teal">${stock.ticker}</td>
-                            <td class="px-4 py-3">${stock.trade_type}</td>
-                            <td class="px-4 py-3 text-right">${stock.quantity}</td>
-                            <td class="px-4 py-3 text-right">$${parseFloat(stock.price).toFixed(2)}</td>
+                            <td class="px-4 py-3">${stock.closed_date || '-'}</td>
+                            <td class="px-4 py-3 text-right">${stock.total_shares || stock.quantity}</td>
+                            <td class="px-4 py-3 text-right">$${parseFloat(stock.average_price || stock.price).toFixed(3)}</td>
                             <td class="px-4 py-3">${stock.account_name || stock.account_type || 'N/A'}</td>
                             <td class="px-4 py-3 text-right ${plClass}">
                                 ${stock.profit_loss !== null && stock.profit_loss !== undefined ? '$' + parseFloat(stock.profit_loss).toFixed(2) : '-'}

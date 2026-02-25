@@ -1708,10 +1708,40 @@ app.get('/api/stocks', authMiddleware, async (c) => {
   const stmt = DB.prepare(query)
   const stocks = await stmt.bind(...params).all()
   
-  // Calculate avg price, cost basis, and covered call status for each holding
-  const enhancedStocks = stocks.results.map((stock: any) => {
+  // Calculate avg price, cost basis, P/L, and covered call status for each holding
+  const enhancedStocks = await Promise.all(stocks.results.map(async (stock: any) => {
     const avgPrice = stock.average_price
     const costBasis = avgPrice - (stock.total_adjustments / stock.total_shares || 0)
+    
+    // Calculate P/L for closed positions
+    let profitLoss = null
+    if (stock.is_open === 0) {
+      // Get all transactions for this holding
+      const transactions = await DB.prepare(`
+        SELECT transaction_type, shares, price_per_share, commission
+        FROM stock_transactions
+        WHERE holding_id = ?
+        ORDER BY transaction_date ASC
+      `).bind(stock.id).all()
+      
+      let totalBuyValue = 0
+      let totalBuyCommissions = 0
+      let totalSellValue = 0
+      let totalSellCommissions = 0
+      
+      transactions.results.forEach((tx: any) => {
+        if (tx.transaction_type === 'BUY') {
+          totalBuyValue += tx.shares * tx.price_per_share
+          totalBuyCommissions += tx.commission || 0
+        } else if (tx.transaction_type === 'SELL') {
+          totalSellValue += tx.shares * tx.price_per_share
+          totalSellCommissions += tx.commission || 0
+        }
+      })
+      
+      // P/L = Sale Proceeds - Cost Basis - All Commissions
+      profitLoss = totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
+    }
     
     // Calculate days until covered call expiration
     let ccStatus = null
@@ -1737,11 +1767,12 @@ app.get('/api/stocks', authMiddleware, async (c) => {
       trade_date: stock.opened_date,
       avg_price: avgPrice,
       cost_basis: costBasis,
+      profit_loss: profitLoss,
       cc_status: ccStatus,
       cc_expiration: stock.nearest_cc_expiration,
       days_until_cc_expiration: daysUntilExpiration
     }
-  })
+  }))
   
   return c.json(enhancedStocks)
 })
@@ -4754,11 +4785,11 @@ app.get('/', (c) => {
                                         <table class="w-full text-sm">
                                             <thead>
                                                 <tr class="bg-gray-100">
-                                                    <th class="px-4 py-3 text-left">Trade Date</th>
+                                                    <th class="px-4 py-3 text-left">Opened Date</th>
                                                     <th class="px-4 py-3 text-left">Ticker</th>
-                                                    <th class="px-4 py-3 text-left">Type</th>
-                                                    <th class="px-4 py-3 text-right">Quantity</th>
-                                                    <th class="px-4 py-3 text-right">Price</th>
+                                                    <th class="px-4 py-3 text-left">Closed Date</th>
+                                                    <th class="px-4 py-3 text-right">Shares</th>
+                                                    <th class="px-4 py-3 text-right">Avg Price</th>
                                                     <th class="px-4 py-3 text-left">Account</th>
                                                     <th class="px-4 py-3 text-right">P/L</th>
                                                     <th class="px-4 py-3 text-center">Actions</th>
