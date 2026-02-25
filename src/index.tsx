@@ -2029,12 +2029,14 @@ app.put('/api/stocks/:id/close', authMiddleware, async (c) => {
         is_open = 0,
         close_date = ?,
         close_price = ?,
+        close_commission = ?,
         profit_loss = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).bind(
       data.close_date,
       data.close_price,
+      closingCommission,
       profitLoss,
       tradeId,
       userId

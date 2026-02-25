@@ -2526,6 +2526,8 @@ async function showStockForm(stockId = null) {
 
 async function closeStock(id) {
     try {
+        console.log('closeStock called with id:', id)
+        
         // Fetch stock details
         const response = await api.get('/api/stocks')
         const stock = response.data.find(s => s.id === id)
@@ -2535,10 +2537,14 @@ async function closeStock(id) {
             return
         }
         
+        console.log('Stock found:', stock)
+        
         // Check for open covered calls on this position
         const coveredCallsResponse = await api.get(`/api/stocks/${id}/covered-calls`)
         const coveredCalls = coveredCallsResponse.data || []
         const openCoveredCalls = coveredCalls.filter(cc => cc.is_open === 1)
+        
+        console.log('Covered calls:', coveredCalls, 'Open:', openCoveredCalls)
         
         if (openCoveredCalls.length > 0) {
             alert('Cannot close stock position while open covered calls exist. Please close the covered call(s) first.')
@@ -2706,6 +2712,8 @@ async function closeStock(id) {
         // Handle form submission
         document.getElementById('closeStockForm').addEventListener('submit', async (e) => {
             e.preventDefault()
+            console.log('Close stock form submitted')
+            
             const formData = new FormData(e.target)
             
             const data = {
@@ -2714,8 +2722,13 @@ async function closeStock(id) {
                 commission: parseFloat(formData.get('commission'))
             }
             
+            console.log('Form data:', data)
+            
             try {
-                await api.put(`/api/stocks/${id}/close`, data)
+                console.log('Calling API to close stock:', id)
+                const response = await api.put(`/api/stocks/${id}/close`, data)
+                console.log('API response:', response)
+                
                 modal.remove()
                 
                 // Close stock details modal if open
@@ -2726,6 +2739,8 @@ async function closeStock(id) {
                 loadDashboard()
                 alert('Position closed successfully!')
             } catch (error) {
+                console.error('Error closing position:', error)
+                console.error('Error response:', error.response)
                 alert(error.response?.data?.error || 'Failed to close position')
             }
         })
