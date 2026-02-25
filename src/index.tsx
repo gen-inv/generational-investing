@@ -1999,53 +1999,77 @@ app.put('/api/stocks/:id', authMiddleware, async (c) => {
 app.put('/api/stocks/:id/close', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
-    const tradeId = c.req.param('id')
+    const holdingId = c.req.param('id')
     const data = await c.req.json()
     const { DB } = c.env
     
-    // Verify trade belongs to user and is open
-    const trade = await DB.prepare(`
-      SELECT * FROM stock_trades WHERE id = ? AND user_id = ?
-    `).bind(tradeId, userId).first()
+    // Verify holding belongs to user and is open
+    const holding = await DB.prepare(`
+      SELECT * FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).first()
     
-    if (!trade) {
-      return c.json({ error: 'Trade not found' }, 404)
+    if (!holding) {
+      return c.json({ error: 'Stock holding not found' }, 404)
     }
     
-    if (trade.is_open === 0) {
-      return c.json({ error: 'Trade is already closed' }, 400)
+    if (holding.is_open === 0) {
+      return c.json({ error: 'Position is already closed' }, 400)
     }
+    
+    // Create a SELL transaction for the full position
+    const sellTransaction = await DB.prepare(`
+      INSERT INTO stock_transactions 
+        (user_id, holding_id, transaction_type, shares, price_per_share, transaction_date, commission, notes)
+      VALUES (?, ?, 'SELL', ?, ?, ?, ?, ?)
+    `).bind(
+      userId,
+      holdingId,
+      holding.total_shares,
+      data.close_price,
+      data.close_date,
+      data.commission || 0,
+      'Position closed'
+    ).run()
     
     // Calculate P/L
-    const saleProceeds = data.close_price * trade.quantity
-    const costBasis = trade.price * trade.quantity
-    const openingCommission = trade.commission || 0
-    const closingCommission = data.commission || 0
-    const profitLoss = saleProceeds - costBasis - openingCommission - closingCommission
+    const saleProceeds = data.close_price * holding.total_shares
+    const costBasis = holding.average_price * holding.total_shares
     
-    // Close the trade with data
+    // Get total opening commissions from all BUY transactions
+    const buyCommissionsResult = await DB.prepare(`
+      SELECT COALESCE(SUM(commission), 0) as total_buy_commissions
+      FROM stock_transactions
+      WHERE holding_id = ? AND transaction_type = 'BUY'
+    `).bind(holdingId).first()
+    
+    const openingCommissions = buyCommissionsResult?.total_buy_commissions || 0
+    const closingCommission = data.commission || 0
+    const profitLoss = saleProceeds - costBasis - openingCommissions - closingCommission
+    
+    // Close the holding
     await DB.prepare(`
-      UPDATE stock_trades SET
+      UPDATE stock_holdings SET
         is_open = 0,
-        close_date = ?,
-        close_price = ?,
-        close_commission = ?,
-        profit_loss = ?,
+        closed_date = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
     `).bind(
       data.close_date,
-      data.close_price,
-      closingCommission,
-      profitLoss,
-      tradeId,
+      holdingId,
       userId
     ).run()
     
-    return c.json({ success: true, message: 'Trade closed successfully', profit_loss: profitLoss })
+    return c.json({ 
+      success: true, 
+      message: 'Position closed successfully', 
+      profit_loss: profitLoss,
+      sale_proceeds: saleProceeds,
+      cost_basis: costBasis,
+      total_commissions: openingCommissions + closingCommission
+    })
   } catch (error) {
-    console.error('Close stock trade error:', error)
-    return c.json({ error: 'Failed to close stock trade' }, 500)
+    console.error('Close stock position error:', error)
+    return c.json({ error: 'Failed to close stock position' }, 500)
   }
 })
 
