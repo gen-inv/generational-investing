@@ -2104,8 +2104,8 @@ async function loadStocks() {
                     <td class="px-4 py-3 font-semibold text-brand-teal">${ccIndicator}${stock.ticker}</td>
                     <td class="px-4 py-3">${stock.trade_date}</td>
                     <td class="px-4 py-3 text-right">${stock.quantity}</td>
-                    <td class="px-4 py-3 text-right">$${parseFloat(avgPrice).toFixed(2)}</td>
-                    <td class="px-4 py-3 text-right">$${parseFloat(costBasis).toFixed(2)}</td>
+                    <td class="px-4 py-3 text-right">$${parseFloat(avgPrice).toFixed(3)}</td>
+                    <td class="px-4 py-3 text-right">$${parseFloat(costBasis).toFixed(3)}</td>
                     <td class="px-4 py-3 text-center">
                         <button onclick="manageStock(${stock.id})" class="text-brand-teal hover:text-brand-gold mr-2 font-semibold" title="Manage Trade">
                             <i class="fas fa-cog mr-1"></i>Manage
@@ -2291,7 +2291,7 @@ async function showStockForm(stockId = null) {
                                 <label class="block text-gray-700 font-semibold mb-1 text-sm">
                                     <i class="fas fa-dollar-sign mr-1 text-green-600"></i>Price per Share *
                                 </label>
-                                <input type="number" step="0.01" name="price" id="price_input" min="0.01" class="stock-field w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm" required>
+                                <input type="number" step="0.001" name="price" id="price_input" min="0.001" class="stock-field w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm" required>
                             </div>
                             <div>
                                 <label class="block text-gray-700 font-semibold mb-1 text-sm">
@@ -2325,7 +2325,7 @@ async function showStockForm(stockId = null) {
                             </div>
                             <div>
                                 <label class="block text-gray-700 font-semibold mb-1 text-sm">Close Price *</label>
-                                <input type="number" step="0.01" name="close_price" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required>
+                                <input type="number" step="0.001" name="close_price" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required>
                             </div>
                             <div>
                                 <label class="block text-gray-700 font-semibold mb-1 text-sm">Close Commission</label>
@@ -2610,9 +2610,9 @@ async function closeStock(id) {
                                 <label class="block text-gray-700 font-semibold mb-1 text-sm">
                                     <i class="fas fa-dollar-sign mr-1 text-green-600"></i>Close Price/Share *
                                 </label>
-                                <input type="number" step="0.01" name="close_price" 
+                                <input type="number" step="0.001" name="close_price" 
                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-1 focus:ring-brand-teal focus:outline-none transition text-sm" 
-                                    required placeholder="0.00">
+                                    required placeholder="0.000">
                             </div>
                             
                             <!-- Commission -->
@@ -2977,9 +2977,9 @@ async function showStockDetails(id) {
                                                 return `
                                                 <tr class="hover:bg-gray-50">
                                                     <td class="px-4 py-2">${cc.trade_date}</td>
-                                                    <td class="px-4 py-2 text-center font-semibold">$${cc.strike_price.toFixed(2)}</td>
+                                                    <td class="px-4 py-2 text-center font-semibold">$${cc.strike_price.toFixed(3)}</td>
                                                     <td class="px-4 py-2 ${expirationClass}">${cc.expiration_date}${expirationWarning}</td>
-                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${cc.premium.toFixed(2)}</td>
+                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${cc.premium.toFixed(3)}</td>
                                                     <td class="px-4 py-2 text-center">${cc.quantity}</td>
                                                     <td class="px-4 py-2 text-right ${plClass}">${closedPL}</td>
                                                     <td class="px-4 py-2 text-center">
@@ -3042,7 +3042,7 @@ async function showStockDetails(id) {
                                             ${dividends.map(div => `
                                                 <tr class="hover:bg-gray-50">
                                                     <td class="px-4 py-2">${div.adjustment_date}</td>
-                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${div.amount.toFixed(2)}</td>
+                                                    <td class="px-4 py-2 text-right font-semibold text-green-600">$${div.amount.toFixed(4)}</td>
                                                     <td class="px-4 py-2 text-right">$${(div.amount / stock.quantity).toFixed(4)}</td>
                                                     <td class="px-4 py-2 text-center">${stock.quantity}</td>
                                                     <td class="px-4 py-2 text-gray-600">${div.notes || '-'}</td>
@@ -3454,8 +3454,8 @@ async function recordDividend(stockId) {
                 <form id="dividendForm">
                     <div class="mb-4">
                         <label class="block text-gray-700 mb-2">Dividend Amount (Total) *</label>
-                        <input type="number" step="0.01" name="amount" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-                        <small class="text-gray-500">Total dividend received</small>
+                        <input type="number" step="0.0001" name="amount" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
+                        <small class="text-gray-500">Total dividend received (4 decimal places)</small>
                     </div>
                     
                     <div class="mb-4">
@@ -3563,12 +3563,12 @@ async function initiateCoveredCall(stockId) {
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                         <div>
                             <label class="block text-gray-700 font-semibold mb-2">Strike Price *</label>
-                            <input type="number" step="0.01" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" required>
+                            <input type="number" step="0.001" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" required>
                         </div>
                         
                         <div>
                             <label class="block text-gray-700 font-semibold mb-2">Premium Per Share *</label>
-                            <input type="number" step="0.01" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" required>
+                            <input type="number" step="0.001" name="premium" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-2 focus:ring-brand-teal focus:outline-none" required>
                             <small class="text-gray-500 text-xs">1 contract = 100 shares</small>
                         </div>
                         
@@ -3756,12 +3756,12 @@ async function viewCoveredCallDetails(ccId) {
                             <p class="text-sm text-green-700 mb-1 font-medium">Total Premium Received</p>
                             <p class="text-3xl font-bold text-green-700">$${(cc.premium * cc.quantity * 100).toFixed(2)}</p>
                             <p class="text-xs text-green-600 mt-2">
-                                <i class="fas fa-info-circle mr-1"></i>$${cc.premium.toFixed(2)}/share × ${cc.quantity} contracts × 100 shares
+                                <i class="fas fa-info-circle mr-1"></i>$${cc.premium.toFixed(3)}/share × ${cc.quantity} contracts × 100 shares
                             </p>
                         </div>
                         <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl border-2 border-blue-300">
                             <p class="text-sm text-blue-700 mb-1 font-medium">Strike Price</p>
-                            <p class="text-3xl font-bold text-blue-700">$${cc.strike_price.toFixed(2)}</p>
+                            <p class="text-3xl font-bold text-blue-700">$${cc.strike_price.toFixed(3)}</p>
                             <p class="text-xs text-blue-600 mt-2">
                                 <i class="fas fa-bullseye mr-1"></i>Target assignment price
                             </p>
@@ -3909,7 +3909,7 @@ async function editCoveredCall(ccId) {
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="mb-4">
                             <label class="block text-gray-700 mb-2">Strike Price *</label>
-                            <input type="number" step="0.01" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.strike_price}">
+                            <input type="number" step="0.001" name="strike_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required value="${cc.strike_price}">
                         </div>
                         
                         <div class="mb-4">
@@ -3950,7 +3950,7 @@ async function editCoveredCall(ccId) {
                             
                             <div class="mb-4">
                                 <label class="block text-gray-700 mb-2">Close Price (per share) ${!cc.is_open ? '*' : ''}</label>
-                                <input type="number" step="0.01" name="close_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" ${!cc.is_open ? 'required' : ''} value="${cc.close_price || ''}">
+                                <input type="number" step="0.001" name="close_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg" ${!cc.is_open ? 'required' : ''} value="${cc.close_price || ''}">
                             </div>
                             
                             <div class="mb-4">
@@ -4068,7 +4068,7 @@ async function closeCoveredCall(ccId, stockId) {
                         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                             <div>
                                 <p class="text-xs text-gray-600">Strike</p>
-                                <p class="font-semibold text-gray-900">$${cc.strike_price.toFixed(2)}</p>
+                                <p class="font-semibold text-gray-900">$${cc.strike_price.toFixed(3)}</p>
                             </div>
                             <div>
                                 <p class="text-xs text-gray-600">Premium</p>
@@ -4106,9 +4106,9 @@ async function closeCoveredCall(ccId, stockId) {
                                 <label class="block text-gray-700 font-semibold mb-1 text-sm">
                                     <i class="fas fa-dollar-sign mr-1 text-green-600"></i>Close Price/Share *
                                 </label>
-                                <input type="number" step="0.01" name="close_price" 
+                                <input type="number" step="0.001" name="close_price" 
                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-brand-teal focus:ring-1 focus:ring-brand-teal focus:outline-none transition text-sm" 
-                                    required placeholder="0.00" value="0">
+                                    required placeholder="0.000" value="0">
                             </div>
                             
                             <!-- Commission -->
@@ -4357,8 +4357,8 @@ async function loadOptions() {
                     <td class="px-4 py-3">${option.trade_date}</td>
                     <td class="px-4 py-3 font-semibold text-brand-teal">${option.ticker}</td>
                     <td class="px-4 py-3">${strategyLabel}</td>
-                    <td class="px-4 py-3 text-right">$${parseFloat(option.strike_price).toFixed(2)}</td>
-                    <td class="px-4 py-3 text-right">$${parseFloat(option.premium).toFixed(2)}</td>
+                    <td class="px-4 py-3 text-right">$${parseFloat(option.strike_price).toFixed(3)}</td>
+                    <td class="px-4 py-3 text-right">$${parseFloat(option.premium).toFixed(3)}</td>
                     <td class="px-4 py-3 text-center font-semibold">${option.quantity}</td>
                     <td class="px-4 py-3">${option.expiration_date}</td>
                     <td class="px-4 py-3 text-center">
@@ -4546,7 +4546,7 @@ async function showOptionForm(optionId = null) {
                             </div>
                             <div>
                                 <label class="block text-gray-700 font-semibold mb-1 text-sm">Close Price *</label>
-                                <input type="number" step="0.01" name="close_price" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required>
+                                <input type="number" step="0.001" name="close_price" min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" required>
                             </div>
                             <div>
                                 <label class="block text-gray-700 font-semibold mb-1 text-sm">Close Commission</label>
@@ -5387,12 +5387,12 @@ function renderLegDetails(option, strategyConfig) {
                 <div class="grid grid-cols-2 gap-4">
                     <div>
                         <span class="text-sm text-gray-600">Strike Price</span>
-                        <div class="text-xl font-bold text-gray-900">$${parseFloat(option.strike_price).toFixed(2)}</div>
+                        <div class="text-xl font-bold text-gray-900">$${parseFloat(option.strike_price).toFixed(3)}</div>
                     </div>
                     <div>
                         <span class="text-sm text-gray-600">Premium per Share</span>
                         <div class="text-xl font-bold ${strategyConfig.isPremiumCredit ? 'text-green-600' : 'text-red-600'}">
-                            ${strategyConfig.isPremiumCredit ? '+' : '-'}$${parseFloat(option.premium).toFixed(2)}
+                            ${strategyConfig.isPremiumCredit ? '+' : '-'}$${parseFloat(option.premium).toFixed(3)}
                         </div>
                     </div>
                     <div>
@@ -5422,11 +5422,11 @@ function renderLegDetails(option, strategyConfig) {
                     <div class="grid grid-cols-3 gap-3 text-sm">
                         <div>
                             <span class="text-gray-600">Strike</span>
-                            <div class="font-bold text-gray-900 text-lg">$${parseFloat(option.short_strike).toFixed(2)}</div>
+                            <div class="font-bold text-gray-900 text-lg">$${parseFloat(option.short_strike).toFixed(3)}</div>
                         </div>
                         <div>
                             <span class="text-gray-600">Premium</span>
-                            <div class="font-bold text-green-600 text-lg">+$${parseFloat(option.short_premium).toFixed(2)}</div>
+                            <div class="font-bold text-green-600 text-lg">+$${parseFloat(option.short_premium).toFixed(3)}</div>
                         </div>
                         <div>
                             <span class="text-gray-600">Total</span>
@@ -5443,11 +5443,11 @@ function renderLegDetails(option, strategyConfig) {
                     <div class="grid grid-cols-3 gap-3 text-sm">
                         <div>
                             <span class="text-gray-600">Strike</span>
-                            <div class="font-bold text-gray-900 text-lg">$${parseFloat(option.long_strike).toFixed(2)}</div>
+                            <div class="font-bold text-gray-900 text-lg">$${parseFloat(option.long_strike).toFixed(3)}</div>
                         </div>
                         <div>
                             <span class="text-gray-600">Premium</span>
-                            <div class="font-bold text-red-600 text-lg">-$${parseFloat(option.long_premium).toFixed(2)}</div>
+                            <div class="font-bold text-red-600 text-lg">-$${parseFloat(option.long_premium).toFixed(3)}</div>
                         </div>
                         <div>
                             <span class="text-gray-600">Total</span>
