@@ -382,11 +382,12 @@ function showSection(sectionName) {
             loadClosedTrades()
             break
         case 'daily-trade':
-            // Show default tab (Performance) and load config
-            showDailyTradeTab('performance')
-            loadDailyTradeConfig()
-            // Check for monthly expiration alert on initial load
-            checkMonthlyExpirationAlert()
+            // Load config first, then show default tab (Performance)
+            loadDailyTradeConfig().then(() => {
+                showDailyTradeTab('performance')
+                // Check for monthly expiration alert on initial load
+                checkMonthlyExpirationAlert()
+            })
             break
     }
 }
