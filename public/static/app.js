@@ -6598,6 +6598,25 @@ async function renderPLTrendChart(period) {
         yMaxIndividual = Math.ceil(yMaxIndividual / 100) * 100
         yMinIndividual = Math.floor(yMinIndividual / 100) * 100
         
+        // Normalize both axes so zero appears at the same vertical position
+        // The ratio (max / range) should be equal for both axes
+        // ratio = max / (max - min)
+        const cumulativeRatio = Math.abs(yMaxCumulative) / (yMaxCumulative - yMinCumulative)
+        const individualRatio = Math.abs(yMaxIndividual) / (yMaxIndividual - yMinIndividual)
+        
+        // Adjust axes to match ratios
+        if (cumulativeRatio > individualRatio) {
+            // Individual axis needs more negative range
+            const targetRange = yMaxIndividual / cumulativeRatio
+            yMinIndividual = yMaxIndividual - targetRange
+            yMinIndividual = Math.floor(yMinIndividual / 100) * 100
+        } else if (individualRatio > cumulativeRatio) {
+            // Cumulative axis needs more negative range
+            const targetRange = yMaxCumulative / individualRatio
+            yMinCumulative = yMaxCumulative - targetRange
+            yMinCumulative = Math.floor(yMinCumulative / 1000) * 1000
+        }
+        
         // Destroy existing chart if it exists
         if (plTrendChart) {
             plTrendChart.destroy()
