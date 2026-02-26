@@ -6618,20 +6618,10 @@ async function renderPLTrendChart(period) {
                 datasets: [
                     {
                         type: 'bar',
-                        label: 'Individual P/L Profit',
-                        data: plData.map(val => val >= 0 ? val : null),
-                        backgroundColor: 'rgba(34, 197, 94, 0.7)',
-                        borderColor: 'rgb(34, 197, 94)',
-                        borderWidth: 1,
-                        yAxisID: 'y-right',
-                        order: 2
-                    },
-                    {
-                        type: 'bar',
-                        label: 'Individual P/L Loss',
-                        data: plData.map(val => val < 0 ? val : null),
-                        backgroundColor: 'rgba(239, 68, 68, 0.7)',
-                        borderColor: 'rgb(239, 68, 68)',
+                        label: 'Individual P/L',
+                        data: plData,
+                        backgroundColor: plData.map(val => val >= 0 ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)'),
+                        borderColor: plData.map(val => val >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'),
                         borderWidth: 1,
                         yAxisID: 'y-right',
                         order: 2
@@ -6668,7 +6658,36 @@ async function renderPLTrendChart(period) {
                                 size: 12
                             },
                             usePointStyle: true,
-                            padding: 15
+                            padding: 15,
+                            generateLabels: function(chart) {
+                                // Custom legend to show profit, loss, and cumulative
+                                return [
+                                    {
+                                        text: 'Individual P/L Profit',
+                                        fillStyle: 'rgba(34, 197, 94, 0.7)',
+                                        strokeStyle: 'rgb(34, 197, 94)',
+                                        lineWidth: 1,
+                                        hidden: false,
+                                        index: 0
+                                    },
+                                    {
+                                        text: 'Individual P/L Loss',
+                                        fillStyle: 'rgba(239, 68, 68, 0.7)',
+                                        strokeStyle: 'rgb(239, 68, 68)',
+                                        lineWidth: 1,
+                                        hidden: false,
+                                        index: 1
+                                    },
+                                    {
+                                        text: 'Cumulative P/L',
+                                        fillStyle: 'rgba(59, 130, 246, 0.1)',
+                                        strokeStyle: 'rgb(59, 130, 246)',
+                                        lineWidth: 3,
+                                        hidden: false,
+                                        index: 2
+                                    }
+                                ]
+                            }
                         }
                     },
                     tooltip: {
