@@ -6561,28 +6561,42 @@ async function renderPLTrendChart(period) {
             cumulativeData.push(cumulativePL)
         })
         
-        // Calculate reasonable Y-axis range based on ALL data (individual + cumulative)
-        const allValues = [...plData, ...cumulativeData]
-        const maxValue = Math.max(...allValues, 0)
-        const minValue = Math.min(...allValues, 0)
+        // Calculate Y-axis ranges
+        // Left axis (cumulative): based on cumulative data
+        const cumulativeMax = Math.max(...cumulativeData, 0)
+        const cumulativeMin = Math.min(...cumulativeData, 0)
         
-        // Calculate range with minimum threshold
-        let range = maxValue - minValue
-        const minRange = 500 // Minimum $500 range to avoid flat-looking charts
-        if (range < minRange) {
-            range = minRange
+        let cumulativeRange = cumulativeMax - cumulativeMin
+        const minCumulativeRange = 500 // Minimum $500 range
+        if (cumulativeRange < minCumulativeRange) {
+            cumulativeRange = minCumulativeRange
         }
         
-        // Add 15% padding for better visibility
-        const padding = range * 0.15
-        let yMax = maxValue + padding
-        let yMin = minValue - padding
+        // Add 15% padding for cumulative axis
+        const cumulativePadding = cumulativeRange * 0.15
+        let yMaxCumulative = cumulativeMax + cumulativePadding
+        let yMinCumulative = cumulativeMin - cumulativePadding
         
-        // Round yMax up to nearest $1000
-        yMax = Math.ceil(yMax / 1000) * 1000
+        // Round to nearest $1000
+        yMaxCumulative = Math.ceil(yMaxCumulative / 1000) * 1000
+        yMinCumulative = Math.floor(yMinCumulative / 1000) * 1000
         
-        // Round yMin down to nearest $1000 (for symmetry)
-        yMin = Math.floor(yMin / 1000) * 1000
+        // Right axis (individual trades): based on individual P/L data
+        const maxProfit = Math.max(...plData.filter(v => v > 0), 0)
+        const maxLoss = Math.min(...plData.filter(v => v < 0), 0)
+        
+        // Max value: double the current max profit (or $500 minimum)
+        let yMaxIndividual = Math.max(maxProfit * 2, 500)
+        
+        // Min value: 20% larger than the largest loss (more negative)
+        let yMinIndividual = maxLoss * 1.2 // 1.2 makes it 20% larger in magnitude
+        if (yMinIndividual === 0) {
+            yMinIndividual = -500 // Default minimum if no losses
+        }
+        
+        // Round individual axis to nice values
+        yMaxIndividual = Math.ceil(yMaxIndividual / 100) * 100
+        yMinIndividual = Math.floor(yMinIndividual / 100) * 100
         
         // Destroy existing chart if it exists
         if (plTrendChart) {
@@ -6609,7 +6623,7 @@ async function renderPLTrendChart(period) {
                         backgroundColor: 'rgba(34, 197, 94, 0.7)',
                         borderColor: 'rgb(34, 197, 94)',
                         borderWidth: 1,
-                        yAxisID: 'y',
+                        yAxisID: 'y-right',
                         order: 2
                     },
                     {
@@ -6619,7 +6633,7 @@ async function renderPLTrendChart(period) {
                         backgroundColor: 'rgba(239, 68, 68, 0.7)',
                         borderColor: 'rgb(239, 68, 68)',
                         borderWidth: 1,
-                        yAxisID: 'y',
+                        yAxisID: 'y-right',
                         order: 2
                     },
                     {
@@ -6695,13 +6709,14 @@ async function renderPLTrendChart(period) {
                         type: 'linear',
                         display: true,
                         position: 'left',
-                        min: yMin,
-                        max: yMax,
+                        min: yMinCumulative,
+                        max: yMaxCumulative,
                         title: {
                             display: true,
-                            text: 'Profit / Loss ($)',
+                            text: 'Cumulative P/L ($)',
                             font: {
-                                size: 12
+                                size: 12,
+                                weight: 'bold'
                             }
                         },
                         ticks: {
@@ -6717,6 +6732,30 @@ async function renderPLTrendChart(period) {
                                 }
                                 return 'rgba(0, 0, 0, 0.05)'
                             }
+                        }
+                    },
+                    'y-right': {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        min: yMinIndividual,
+                        max: yMaxIndividual,
+                        title: {
+                            display: true,
+                            text: 'Individual Trade P/L ($)',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            }
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                const sign = value >= 0 ? '+' : '-'
+                                return sign + '$' + Math.abs(value).toLocaleString()
+                            }
+                        },
+                        grid: {
+                            drawOnChartArea: false // Don't draw grid lines for right axis
                         }
                     }
                 }
