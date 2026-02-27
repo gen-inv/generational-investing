@@ -1508,8 +1508,10 @@ app.get('/api/dashboard/totals', authMiddleware, async (c) => {
     `).bind(month, year).first() as any;
     
     // If not cached, use fallback rate
+    let isDefaultRate = false;
     if (!rates) {
       rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
+      isDefaultRate = true;
     }
 
     // Calculate totals in both currencies
@@ -1547,7 +1549,9 @@ app.get('/api/dashboard/totals', authMiddleware, async (c) => {
         usd_to_cad: rates.usd_to_cad,
         cad_to_usd: rates.cad_to_usd,
         month,
-        year
+        year,
+        is_default: isDefaultRate,
+        source: isDefaultRate ? 'Default Rate' : 'Bank of Canada'
       }
     });
   } catch (error: any) {

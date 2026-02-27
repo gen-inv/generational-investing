@@ -1039,7 +1039,12 @@ async function loadDashboard() {
         // Display exchange rate
         if (totals.exchange_rate) {
             const rateText = `1 USD = ${totals.exchange_rate.usd_to_cad.toFixed(4)} CAD`
-            document.getElementById('exchange-rate-display').textContent = rateText
+            const sourceText = totals.exchange_rate.source || 'Bank of Canada'
+            const sourceColor = totals.exchange_rate.is_default ? 'text-orange-600' : 'text-gray-500'
+            document.getElementById('exchange-rate-display').innerHTML = `
+                ${rateText}
+                <span class="${sourceColor} text-sm ml-2">(${sourceText})</span>
+            `
         }
         
         // Load YTD account performance
