@@ -3804,7 +3804,7 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
       })
     }
     
-    // Generate portfolio value history (monthly snapshots from balance_history)
+    // Generate portfolio value history (monthly snapshots from account_balance_history)
     const portfolioValue = []
     
     for (let i = 11; i >= 0; i--) {
@@ -3813,10 +3813,10 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
       const year = date.getFullYear()
       const month = date.getMonth() + 1
       
-      // Try to get balance snapshot from balance_history
+      // Try to get balance snapshot from account_balance_history
       const snapshot = await DB.prepare(`
-        SELECT SUM(balance_cad + balance_usd) as total_value
-        FROM balance_history
+        SELECT SUM(balance) as total_value
+        FROM account_balance_history
         WHERE user_id = ? AND year = ? AND month = ?
       `).bind(userId, year, month).first() as any
       
@@ -3849,7 +3849,9 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
     
   } catch (error: any) {
     console.error('Portfolio overview error:', error)
-    return c.json({ error: 'Failed to generate portfolio overview' }, 500)
+    console.error('Error stack:', error.stack)
+    console.error('Error message:', error.message)
+    return c.json({ error: 'Failed to generate portfolio overview', details: error.message }, 500)
   }
 })
 
