@@ -1123,6 +1123,21 @@ app.get('/api/accounts/:id/can-update', authMiddleware, async (c) => {
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
+    const currentDay = now.getDate();
+    
+    // Calculate next month/year
+    let targetMonth = currentMonth;
+    let targetYear = currentYear;
+    
+    // Check if we're in the last 5 days of the month (allowing for last trading day flexibility)
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+    const isLastWeekOfMonth = currentDay >= (daysInMonth - 5);
+    
+    // If in last week of month, allow updating for next month
+    if (isLastWeekOfMonth) {
+      targetMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+      targetYear = currentMonth === 12 ? currentYear + 1 : currentYear;
+    }
 
     // Check if account exists and belongs to user
     const account = await DB.prepare(`
@@ -1133,26 +1148,61 @@ app.get('/api/accounts/:id/can-update', authMiddleware, async (c) => {
       return c.json({ error: 'Account not found' }, 404);
     }
 
-    // Check if balance was already updated this month
-    const existingHistory = await DB.prepare(`
+    // Check if balance was already updated for current month
+    const currentMonthHistory = await DB.prepare(`
       SELECT id, created_at FROM account_balance_history
       WHERE account_id = ? AND month = ? AND year = ?
     `).bind(accountId, currentMonth, currentYear).first() as any;
 
-    if (existingHistory) {
+    // Check if balance was already updated for target month (if different)
+    let targetMonthHistory = null;
+    if (targetMonth !== currentMonth || targetYear !== currentYear) {
+      targetMonthHistory = await DB.prepare(`
+        SELECT id, created_at FROM account_balance_history
+        WHERE account_id = ? AND month = ? AND year = ?
+      `).bind(accountId, targetMonth, targetYear).first() as any;
+    }
+
+    // If current month already updated
+    if (currentMonthHistory && !isLastWeekOfMonth) {
       return c.json({
         canUpdate: false,
         month: currentMonth,
         year: currentYear,
-        lastUpdate: existingHistory.created_at,
+        lastUpdate: currentMonthHistory.created_at,
         message: 'Balance already updated this month'
       });
     }
 
+    // If in last week of month
+    if (isLastWeekOfMonth) {
+      // Allow update for next month if not already done
+      if (targetMonthHistory) {
+        return c.json({
+          canUpdate: false,
+          month: targetMonth,
+          year: targetYear,
+          lastUpdate: targetMonthHistory.created_at,
+          message: `Balance already updated for ${targetMonth}/${targetYear}`
+        });
+      }
+      
+      // Can update for next month
+      return c.json({
+        canUpdate: true,
+        month: targetMonth,
+        year: targetYear,
+        isNextMonth: true,
+        message: `Can update balance for next month (${targetMonth}/${targetYear}) - Last week of current month`
+      });
+    }
+
+    // Regular case - can update current month
     return c.json({
       canUpdate: true,
       month: currentMonth,
       year: currentYear,
+      isNextMonth: false,
       message: 'Balance can be updated'
     });
   } catch (error: any) {
@@ -1173,6 +1223,21 @@ app.put('/api/accounts/:id/balance', authMiddleware, async (c) => {
     const now = new Date();
     const currentMonth = now.getMonth() + 1; // 1-12
     const currentYear = now.getFullYear();
+    const currentDay = now.getDate();
+    
+    // Calculate target month/year for the update
+    let targetMonth = currentMonth;
+    let targetYear = currentYear;
+    
+    // Check if we're in the last 5 days of the month (allowing for last trading day flexibility)
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+    const isLastWeekOfMonth = currentDay >= (daysInMonth - 5);
+    
+    // If in last week of month, allow updating for next month
+    if (isLastWeekOfMonth) {
+      targetMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+      targetYear = currentMonth === 12 ? currentYear + 1 : currentYear;
+    }
 
     // Get account details
     const account = await DB.prepare(`
@@ -1186,18 +1251,18 @@ app.put('/api/accounts/:id/balance', authMiddleware, async (c) => {
       return c.json({ error: 'Account not found' }, 404);
     }
 
-    // Check if balance was already updated this month
+    // Check if balance was already updated for the target month
     const existingHistory = await DB.prepare(`
       SELECT id FROM account_balance_history
       WHERE account_id = ? AND month = ? AND year = ?
-    `).bind(accountId, currentMonth, currentYear).first();
+    `).bind(accountId, targetMonth, targetYear).first();
 
     if (existingHistory) {
       return c.json({ 
-        error: 'Balance already updated this month',
+        error: `Balance already updated for ${targetMonth}/${targetYear}`,
         canUpdate: false,
-        month: currentMonth,
-        year: currentYear
+        month: targetMonth,
+        year: targetYear
       }, 400);
     }
 
@@ -1228,13 +1293,13 @@ app.put('/api/accounts/:id/balance', authMiddleware, async (c) => {
       userId
     ).run();
 
-    // Get exchange rates for history
-    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${currentMonth}&year=${currentYear}`, {
+    // Get exchange rates for history using target month/year
+    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${targetMonth}&year=${targetYear}`, {
       headers: { 'Authorization': c.req.header('Authorization') || '' }
     });
     const rates = await rateResponse.json() as any;
 
-    // Save to history
+    // Save to history with target month/year
     await DB.prepare(`
       INSERT INTO account_balance_history (
         user_id, account_id, balance, cash_balance, currency,
@@ -1247,8 +1312,8 @@ app.put('/api/accounts/:id/balance', authMiddleware, async (c) => {
       historyBalance,
       historyCash,
       historyCurrency,
-      currentMonth,
-      currentYear,
+      targetMonth,
+      targetYear,
       rates.cad_to_usd || (1 / rates.usd_to_cad),
       rates.usd_to_cad || 1.35
     ).run();
@@ -1256,9 +1321,13 @@ app.put('/api/accounts/:id/balance', authMiddleware, async (c) => {
     return c.json({ 
       success: true,
       updated: true,
-      month: currentMonth,
-      year: currentYear,
-      historySaved: true
+      month: targetMonth,
+      year: targetYear,
+      isNextMonth: isLastWeekOfMonth,
+      historySaved: true,
+      message: isLastWeekOfMonth 
+        ? `Balance updated for next month (${targetMonth}/${targetYear})` 
+        : `Balance updated for current month (${targetMonth}/${targetYear})`
     });
   } catch (error: any) {
     console.error('Update balance error:', error);
