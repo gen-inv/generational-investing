@@ -3804,34 +3804,42 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
       })
     }
     
-    // Generate portfolio value history (monthly snapshots from account_balance_history)
+    // Generate portfolio value history - get actual available data, trailing 12 months
+    // First, get all available distinct month/year combinations for this user
+    const { results: availableMonths } = await DB.prepare(`
+      SELECT DISTINCT year, month, SUM(balance) as total_value
+      FROM account_balance_history
+      WHERE user_id = ?
+      GROUP BY year, month
+      ORDER BY year DESC, month DESC
+      LIMIT 12
+    `).bind(userId).all() as any
+    
+    // Build portfolio value array from available data
     const portfolioValue = []
     
-    console.log(`Generating portfolio history for last 12 months from ${new Date().toISOString().split('T')[0]}`)
-    
-    for (let i = 11; i >= 0; i--) {
-      const date = new Date()
-      date.setMonth(date.getMonth() - i)
-      const year = date.getFullYear()
-      const month = date.getMonth() + 1
-      
-      // Try to get balance snapshot from account_balance_history
-      const snapshot = await DB.prepare(`
-        SELECT SUM(balance) as total_value
-        FROM account_balance_history
-        WHERE user_id = ? AND year = ? AND month = ?
-      `).bind(userId, year, month).first() as any
-      
-      const value = snapshot?.total_value || totalValue
-      
-      console.log(`  ${monthNames[month - 1]} ${year} (month=${month}, year=${year}): ${value}`)
-      
-      // If no snapshot, use current value (approximate)
-      
-      portfolioValue.push({
-        date: `${monthNames[month - 1]} ${year}`,
-        value: value
-      })
+    if (availableMonths && availableMonths.length > 0) {
+      // We have historical data - use it (reverse to show oldest to newest)
+      for (let i = availableMonths.length - 1; i >= 0; i--) {
+        const record = availableMonths[i]
+        portfolioValue.push({
+          date: `${monthNames[record.month - 1]} ${record.year}`,
+          value: record.total_value || 0
+        })
+      }
+    } else {
+      // No historical data - generate placeholder months with current value
+      for (let i = 11; i >= 0; i--) {
+        const date = new Date()
+        date.setMonth(date.getMonth() - i)
+        const year = date.getFullYear()
+        const month = date.getMonth() + 1
+        
+        portfolioValue.push({
+          date: `${monthNames[month - 1]} ${year}`,
+          value: totalValue
+        })
+      }
     }
     
     return c.json({
