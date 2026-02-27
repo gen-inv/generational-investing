@@ -3,6 +3,11 @@ let token = localStorage.getItem('token') || null
 let currentUser = null
 let accountsList = []
 
+// Chart instances for cleanup
+let portfolioValueChart = null
+let accountDistributionChart = null
+let monthlyPLChart = null
+
 // API Base URL
 const API_BASE = window.location.origin
 
@@ -8080,6 +8085,11 @@ function updateOverviewMetrics(metrics) {
 function renderPortfolioValueChart(portfolioData) {
     const chartElement = document.getElementById('overview-portfolio-chart')
     
+    // Destroy previous chart instance if exists
+    if (portfolioValueChart) {
+        portfolioValueChart.destroy()
+    }
+    
     // Prepare data
     const dates = portfolioData.map(d => d.date)
     const values = portfolioData.map(d => d.value)
@@ -8144,13 +8154,18 @@ function renderPortfolioValueChart(portfolioData) {
         }
     }
     
-    const chart = new ApexCharts(chartElement, options)
-    chart.render()
+    portfolioValueChart = new ApexCharts(chartElement, options)
+    portfolioValueChart.render()
 }
 
 // Render Account Distribution Chart (Donut)
 function renderAccountDistributionChart(accountsData) {
     const chartElement = document.getElementById('overview-account-chart')
+    
+    // Destroy previous chart instance if exists
+    if (accountDistributionChart) {
+        accountDistributionChart.destroy()
+    }
     
     const accountNames = accountsData.map(a => a.name)
     const accountValues = accountsData.map(a => a.value)
@@ -8193,13 +8208,18 @@ function renderAccountDistributionChart(accountsData) {
         }
     }
     
-    const chart = new ApexCharts(chartElement, options)
-    chart.render()
+    accountDistributionChart = new ApexCharts(chartElement, options)
+    accountDistributionChart.render()
 }
 
 // Render Monthly P/L Chart (Bar)
 function renderMonthlyPLChart(monthlyData) {
     const chartElement = document.getElementById('overview-monthly-pl-chart')
+    
+    // Destroy previous chart instance if exists
+    if (monthlyPLChart) {
+        monthlyPLChart.destroy()
+    }
     
     const months = monthlyData.map(m => m.month)
     const plValues = monthlyData.map(m => m.pl)
@@ -8262,7 +8282,7 @@ function renderMonthlyPLChart(monthlyData) {
         }
     }
     
-    const chart = new ApexCharts(chartElement, options)
-    chart.render()
+    monthlyPLChart = new ApexCharts(chartElement, options)
+    monthlyPLChart.render()
 }
 
