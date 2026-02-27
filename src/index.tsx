@@ -2877,7 +2877,7 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
         const closeDebit = (shortClosePremium - longClosePremium) * contracts * 100
         profitLoss = openCredit - closeDebit - openCommission - closeCommission
         
-      } else if (strategyType === 'IRON_CONDOR' || strategyType === 'ZERO_DTE_SPX_IC') {
+      } else if (strategyType === 'IRON_CONDOR') {
         // Four-leg iron condor
         const scOpen = data.premium || 0  // Short Call
         const lcOpen = data.strike_price_2 || 0  // Long Call

@@ -4289,8 +4289,7 @@ const STRATEGY_TYPES = [
     { value: 'COVERED_CALL', label: 'Covered Call' },
     { value: 'CREDIT_SPREAD', label: 'Credit Spread' },
     { value: 'DEBIT_SPREAD', label: 'Debit Spread' },
-    { value: 'IRON_CONDOR', label: 'Iron Condor' },
-    { value: 'ZERO_DTE_SPX_IC', label: '0DTE SPX IC' }
+    { value: 'IRON_CONDOR', label: 'Iron Condor' }
 ]
 
 // Helper function to get strategy configuration
@@ -4303,8 +4302,7 @@ function getStrategyConfig(strategyType) {
         'COVERED_CALL': { legs: 1, isPremiumCredit: true },
         'CREDIT_SPREAD': { legs: 2, isPremiumCredit: true },
         'DEBIT_SPREAD': { legs: 2, isPremiumCredit: false },
-        'IRON_CONDOR': { legs: 4, isPremiumCredit: true },
-        'ZERO_DTE_SPX_IC': { legs: 4, isPremiumCredit: true }
+        'IRON_CONDOR': { legs: 4, isPremiumCredit: true }
     }
     
     return configs[strategyType] || { legs: 1, isPremiumCredit: true }
@@ -4516,7 +4514,6 @@ async function showOptionForm(optionId = null) {
                                         <option value="CREDIT_SPREAD">Credit Spread</option>
                                         <option value="DEBIT_SPREAD">Debit Spread</option>
                                         <option value="IRON_CONDOR">Iron Condor</option>
-                                        <option value="ZERO_DTE_SPX_IC">0DTE SPX IC</option>
                                     </select>
                                 `}
                             </div>
@@ -4704,47 +4701,6 @@ async function showOptionForm(optionId = null) {
             }
         },
         'IRON_CONDOR': {
-            legs: 4,
-            fields: ['short_call_strike', 'short_call_premium', 'long_call_strike', 'long_call_premium', 
-                     'short_put_strike', 'short_put_premium', 'long_put_strike', 'long_put_premium', 'commission'],
-            labels: {
-                short_call_strike: 'Short Call Strike',
-                short_call_premium: 'Short Call Premium/Share',
-                long_call_strike: 'Long Call Strike',
-                long_call_premium: 'Long Call Premium/Share (Paid)',
-                short_put_strike: 'Short Put Strike',
-                short_put_premium: 'Short Put Premium/Share',
-                long_put_strike: 'Long Put Strike',
-                long_put_premium: 'Long Put Premium/Share (Paid)',
-                commission: 'Open Commission'
-            },
-            riskCalc: (data) => {
-                const quantity = parseInt(data.quantity) || 0
-                const commission = parseFloat(data.commission) || 0
-                
-                const shortCallStrike = parseFloat(data.short_call_strike) || 0
-                const longCallStrike = parseFloat(data.long_call_strike) || 0
-                const shortCallPremium = parseFloat(data.short_call_premium) || 0
-                const longCallPremium = parseFloat(data.long_call_premium) || 0
-                const callCredit = (shortCallPremium - longCallPremium) * quantity * 100
-                const callWidth = Math.abs(longCallStrike - shortCallStrike) * quantity * 100
-                
-                const shortPutStrike = parseFloat(data.short_put_strike) || 0
-                const longPutStrike = parseFloat(data.long_put_strike) || 0
-                const shortPutPremium = parseFloat(data.short_put_premium) || 0
-                const longPutPremium = parseFloat(data.long_put_premium) || 0
-                const putCredit = (shortPutPremium - longPutPremium) * quantity * 100
-                const putWidth = Math.abs(shortPutStrike - longPutStrike) * quantity * 100
-                
-                const totalCredit = callCredit + putCredit
-                const maxRisk = Math.max(callWidth, putWidth)
-                const totalRisk = maxRisk - totalCredit + commission
-                const maxProfit = totalCredit - commission
-                
-                return { totalRisk, maxProfit, isPremiumCredit: true, netCredit: totalCredit }
-            }
-        },
-        'ZERO_DTE_SPX_IC': {
             legs: 4,
             fields: ['short_call_strike', 'short_call_premium', 'long_call_strike', 'long_call_premium', 
                      'short_put_strike', 'short_put_premium', 'long_put_strike', 'long_put_premium', 'commission'],
