@@ -56,12 +56,18 @@ function verifyToken(token: string): any | null {
 // Helper function to fetch and cache exchange rates
 async function fetchAndCacheExchangeRate(DB: any, month: number, year: number) {
   try {
-    // Format date as YYYY-MM-DD (first day of month)
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-01`;
-    
-    // Fetch from API
-    const response = await fetch(`https://api.exchangerate-api.com/v4/history/USD/${dateStr}`);
+    // Use the /v4/latest/ endpoint which returns current rates
+    // Note: This API doesn't support historical rates on the free tier
+    // For monthly tracking, we cache the rate when first accessed for that month
+    const response = await fetch(`https://api.exchangerate-api.com/v4/latest/USD`);
     const data = await response.json() as any;
+    
+    console.log('Exchange rate API response:', { 
+      success: !!data, 
+      hasRates: !!data?.rates, 
+      hasCad: !!data?.rates?.CAD,
+      cadRate: data?.rates?.CAD 
+    });
     
     if (data && data.rates && data.rates.CAD) {
       const usdToCad = data.rates.CAD;
@@ -73,7 +79,7 @@ async function fetchAndCacheExchangeRate(DB: any, month: number, year: number) {
         VALUES (?, ?, ?, ?)
       `).bind(month, year, usdToCad, cadToUsd).run();
       
-      console.log(`Exchange rate cached for ${month}/${year}: ${usdToCad} USD to CAD`);
+      console.log(`✅ Exchange rate cached for ${month}/${year}: ${usdToCad} USD to CAD`);
     } else {
       // Use fallback rate
       const defaultRate = 1.35;
@@ -82,10 +88,10 @@ async function fetchAndCacheExchangeRate(DB: any, month: number, year: number) {
         VALUES (?, ?, ?, ?)
       `).bind(month, year, defaultRate, 1 / defaultRate).run();
       
-      console.log(`Fallback exchange rate cached for ${month}/${year}: ${defaultRate} USD to CAD`);
+      console.log(`⚠️ Fallback exchange rate cached for ${month}/${year}: ${defaultRate} USD to CAD (API data missing)`);
     }
   } catch (error) {
-    console.error('Error fetching and caching exchange rate:', error);
+    console.error('❌ Error fetching and caching exchange rate:', error);
     
     // On error, cache fallback rate
     try {
@@ -94,8 +100,10 @@ async function fetchAndCacheExchangeRate(DB: any, month: number, year: number) {
         INSERT OR IGNORE INTO exchange_rates (month, year, usd_to_cad, cad_to_usd)
         VALUES (?, ?, ?, ?)
       `).bind(month, year, defaultRate, 1 / defaultRate).run();
+      
+      console.log(`⚠️ Fallback exchange rate cached for ${month}/${year}: ${defaultRate} USD to CAD (after error)`);
     } catch (insertError) {
-      console.error('Error caching fallback rate:', insertError);
+      console.error('❌ Error caching fallback rate:', insertError);
     }
   }
 }
