@@ -3807,6 +3807,8 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
     // Generate portfolio value history (monthly snapshots from account_balance_history)
     const portfolioValue = []
     
+    console.log(`Generating portfolio history for last 12 months from ${new Date().toISOString().split('T')[0]}`)
+    
     for (let i = 11; i >= 0; i--) {
       const date = new Date()
       date.setMonth(date.getMonth() - i)
@@ -3820,8 +3822,11 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
         WHERE user_id = ? AND year = ? AND month = ?
       `).bind(userId, year, month).first() as any
       
-      // If no snapshot, use current value (approximate)
       const value = snapshot?.total_value || totalValue
+      
+      console.log(`  ${monthNames[month - 1]} ${year} (month=${month}, year=${year}): ${value}`)
+      
+      // If no snapshot, use current value (approximate)
       
       portfolioValue.push({
         date: `${monthNames[month - 1]} ${year}`,
