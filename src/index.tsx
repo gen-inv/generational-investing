@@ -3805,9 +3805,15 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
     }
     
     // Generate portfolio value history - get actual available data, trailing 12 months
-    // First, get all available distinct month/year combinations for this user
+    // Query to get USD and CAD totals separately for each month
     const { results: availableMonths } = await DB.prepare(`
-      SELECT DISTINCT year, month, SUM(balance) as total_value
+      SELECT 
+        year, 
+        month,
+        SUM(CASE WHEN currency = 'USD' THEN balance ELSE 0 END) as total_usd,
+        SUM(CASE WHEN currency = 'CAD' THEN balance ELSE 0 END) as total_cad,
+        MAX(exchange_rate_to_cad) as usd_to_cad,
+        MAX(exchange_rate_to_usd) as cad_to_usd
       FROM account_balance_history
       WHERE user_id = ?
       GROUP BY year, month
@@ -3822,9 +3828,13 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
       // We have historical data - use it (reverse to show oldest to newest)
       for (let i = availableMonths.length - 1; i >= 0; i--) {
         const record = availableMonths[i]
+        const usdToCad = record.usd_to_cad || 1.35
+        
         portfolioValue.push({
           date: `${monthNames[record.month - 1]} ${record.year}`,
-          value: record.total_value || 0
+          valueUSD: record.total_usd || 0,
+          valueCAD: record.total_cad || 0,
+          exchangeRate: usdToCad
         })
       }
     } else {
@@ -3837,7 +3847,9 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
         
         portfolioValue.push({
           date: `${monthNames[month - 1]} ${year}`,
-          value: totalValue
+          valueUSD: totalValueUSD,
+          valueCAD: totalValueCAD,
+          exchangeRate: usdToCad
         })
       }
     }

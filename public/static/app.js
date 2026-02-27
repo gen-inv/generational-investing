@@ -8090,17 +8090,22 @@ function renderPortfolioValueChart(portfolioData) {
         portfolioValueChart.destroy()
     }
     
-    // Prepare data
+    // Prepare data - separate USD and CAD lines
     const dates = portfolioData.map(d => d.date)
-    const values = portfolioData.map(d => d.value)
+    const valuesUSD = portfolioData.map(d => d.valueUSD || 0)
+    const valuesCAD = portfolioData.map(d => d.valueCAD || 0)
+    const exchangeRates = portfolioData.map(d => d.exchangeRate || 1.35)
     
     const options = {
         series: [{
-            name: 'Portfolio Value',
-            data: values
+            name: 'USD Value',
+            data: valuesUSD
+        }, {
+            name: 'CAD Value',
+            data: valuesCAD
         }],
         chart: {
-            type: 'area',
+            type: 'line',
             height: 350,
             zoom: {
                 enabled: true
@@ -8114,16 +8119,13 @@ function renderPortfolioValueChart(portfolioData) {
         },
         stroke: {
             curve: 'smooth',
-            width: 2
+            width: 3
         },
-        colors: ['#0D9488'],
-        fill: {
-            type: 'gradient',
-            gradient: {
-                shadeIntensity: 1,
-                opacityFrom: 0.7,
-                opacityTo: 0.3,
-                stops: [0, 90, 100]
+        colors: ['#10B981', '#0D9488'],
+        markers: {
+            size: 5,
+            hover: {
+                size: 7
             }
         },
         xaxis: {
@@ -8142,11 +8144,35 @@ function renderPortfolioValueChart(portfolioData) {
                 }
             }
         },
+        legend: {
+            position: 'top',
+            horizontalAlign: 'right'
+        },
         tooltip: {
-            y: {
-                formatter: function(value) {
-                    return '$' + value.toFixed(2)
-                }
+            shared: true,
+            intersect: false,
+            custom: function({series, seriesIndex, dataPointIndex, w}) {
+                const date = dates[dataPointIndex]
+                const usdValue = series[0][dataPointIndex]
+                const cadValue = series[1][dataPointIndex]
+                const rate = exchangeRates[dataPointIndex]
+                
+                return '<div class="apexcharts-tooltip-custom" style="padding: 10px; background: white; border: 1px solid #e5e7eb; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">' +
+                    '<div style="font-weight: 600; margin-bottom: 8px; color: #111827;">' + date + '</div>' +
+                    '<div style="display: flex; align-items: center; margin-bottom: 4px;">' +
+                        '<span style="width: 12px; height: 12px; background: #10B981; border-radius: 50%; margin-right: 8px;"></span>' +
+                        '<span style="color: #6B7280;">USD:</span>' +
+                        '<span style="margin-left: auto; font-weight: 600; color: #111827;">$' + usdValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>' +
+                    '</div>' +
+                    '<div style="display: flex; align-items: center; margin-bottom: 8px;">' +
+                        '<span style="width: 12px; height: 12px; background: #0D9488; border-radius: 50%; margin-right: 8px;"></span>' +
+                        '<span style="color: #6B7280;">CAD:</span>' +
+                        '<span style="margin-left: auto; font-weight: 600; color: #111827;">$' + cadValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>' +
+                    '</div>' +
+                    '<div style="padding-top: 8px; border-top: 1px solid #e5e7eb; color: #6B7280; font-size: 12px;">' +
+                        'Exchange Rate: 1 USD = ' + rate.toFixed(4) + ' CAD' +
+                    '</div>' +
+                '</div>'
             }
         },
         grid: {
