@@ -5167,14 +5167,79 @@ app.get('/', (c) => {
                         
                         <!-- Closed Trades Tab -->
                         <div id="report-tab-closed-trades" class="report-tab-content hidden">
-                            <div class="card">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4">
-                                    <i class="fas fa-history text-gray-600 mr-2"></i>
-                                    Closed Trades Report
+                            <div class="flex justify-between items-center mb-6">
+                                <h3 class="text-2xl font-bold text-brand-teal">
+                                    <i class="fas fa-history mr-2"></i>Closed Trades
                                 </h3>
-                                <p class="text-gray-600 italic">
-                                    <i class="fas fa-hammer mr-2"></i>Coming soon: Detailed view of all closed positions with filters
-                                </p>
+                                <div class="flex gap-4">
+                                    <select id="closed-trade-type" class="px-4 py-2 border border-gray-300 rounded-lg" onchange="loadClosedTrades()">
+                                        <option value="all">All Trade Types</option>
+                                        <option value="stocks">Stock Trades</option>
+                                        <option value="options">Option Trades</option>
+                                    </select>
+                                    <button onclick="loadClosedTrades()" class="btn-primary">
+                                        <i class="fas fa-sync mr-2"></i>Refresh
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Closed Stock Trades -->
+                            <div id="closed-stocks-container" class="mb-8">
+                                <div class="card">
+                                    <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                                        <i class="fas fa-chart-line text-brand-teal mr-2"></i>
+                                        Closed Stock Trades
+                                    </h3>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="bg-gray-100">
+                                                    <th class="px-4 py-3 text-left">Opened Date</th>
+                                                    <th class="px-4 py-3 text-left">Ticker</th>
+                                                    <th class="px-4 py-3 text-left">Closed Date</th>
+                                                    <th class="px-4 py-3 text-right">Shares</th>
+                                                    <th class="px-4 py-3 text-right">Avg Price</th>
+                                                    <th class="px-4 py-3 text-left">Account</th>
+                                                    <th class="px-4 py-3 text-right">P/L</th>
+                                                    <th class="px-4 py-3 text-center">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="closed-stocks-table">
+                                                <!-- Dynamic content -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Closed Option Trades -->
+                            <div id="closed-options-container" class="mb-8">
+                                <div class="card">
+                                    <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                                        <i class="fas fa-file-contract text-purple-600 mr-2"></i>
+                                        Closed Option Trades
+                                    </h3>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="bg-gray-100">
+                                                    <th class="px-4 py-3 text-left">Trade Date</th>
+                                                    <th class="px-4 py-3 text-left">Ticker</th>
+                                                    <th class="px-4 py-3 text-left">Strategy</th>
+                                                    <th class="px-4 py-3 text-right">Strike</th>
+                                                    <th class="px-4 py-3 text-right">Premium</th>
+                                                    <th class="px-4 py-3 text-left">Expiration</th>
+                                                    <th class="px-4 py-3 text-left">Account</th>
+                                                    <th class="px-4 py-3 text-right">P/L</th>
+                                                    <th class="px-4 py-3 text-center">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="closed-options-table">
+                                                <!-- Dynamic content -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -8019,7 +8019,7 @@ function showReportTab(tabName) {
             // TODO: Load Position Analysis
             break
         case 'closed-trades':
-            // TODO: Load Closed Trades
+            loadClosedTrades()
             break
     }
 }
