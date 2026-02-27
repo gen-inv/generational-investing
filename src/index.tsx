@@ -3679,6 +3679,181 @@ app.get('/api/daily-trades/day-stats', authMiddleware, async (c) => {
 })
 
 // ============================================================================
+// REPORTS DASHBOARD - NEW TAB-BASED REPORTS
+// ============================================================================
+
+// Portfolio Overview Report
+app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const currentYear = new Date().getFullYear()
+    
+    // Get current account balances
+    const { results: accounts } = await DB.prepare(`
+      SELECT id, account_name, account_type, balance_cad, balance_usd, default_currency
+      FROM accounts
+      WHERE user_id = ?
+    `).bind(userId).all()
+    
+    // Calculate total value
+    let totalValueCAD = 0
+    let totalValueUSD = 0
+    const accountData = []
+    
+    for (const account of accounts as any[]) {
+      const balance = account.default_currency === 'CAD' ? account.balance_cad : account.balance_usd
+      accountData.push({
+        name: account.account_name,
+        value: balance || 0
+      })
+      
+      if (account.default_currency === 'CAD') {
+        totalValueCAD += balance || 0
+      } else {
+        totalValueUSD += balance || 0
+      }
+    }
+    
+    // Get exchange rate for conversion
+    const currentMonth = new Date().getMonth() + 1
+    const rates = await DB.prepare(`
+      SELECT usd_to_cad, cad_to_usd FROM exchange_rates
+      WHERE month = ? AND year = ?
+    `).bind(currentMonth, currentYear).first() as any
+    
+    const usdToCad = rates?.usd_to_cad || 1.35
+    const totalValue = totalValueUSD + (totalValueCAD / usdToCad)
+    
+    // Get YTD P/L from all closed trades
+    const stockPL = await DB.prepare(`
+      SELECT COALESCE(SUM(profit_loss), 0) as total_pl
+      FROM stock_trades
+      WHERE user_id = ? AND is_open = 0 AND close_date LIKE ?
+    `).bind(userId, `${currentYear}%`).first() as any
+    
+    const optionPL = await DB.prepare(`
+      SELECT COALESCE(SUM(profit_loss), 0) as total_pl
+      FROM option_trades
+      WHERE user_id = ? AND is_open = 0 AND close_date LIKE ?
+    `).bind(userId, `${currentYear}%`).first() as any
+    
+    const dailyPL = await DB.prepare(`
+      SELECT COALESCE(SUM(profit_loss), 0) as total_pl
+      FROM daily_trades
+      WHERE user_id = ? AND is_open = 0 AND strftime('%Y', trade_date) = ?
+    `).bind(userId, currentYear.toString()).first() as any
+    
+    const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0) + (dailyPL?.total_pl || 0)
+    const ytdPercentage = totalValue > 0 ? (ytdPL / totalValue) * 100 : 0
+    
+    // Get trade statistics
+    const closedTrades = await DB.prepare(`
+      SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
+        AVG(profit_loss) as avg_pl,
+        MAX(profit_loss) as best_trade
+      FROM (
+        SELECT profit_loss FROM stock_trades WHERE user_id = ? AND is_open = 0
+        UNION ALL
+        SELECT profit_loss FROM option_trades WHERE user_id = ? AND is_open = 0
+        UNION ALL
+        SELECT profit_loss FROM daily_trades WHERE user_id = ? AND is_open = 0
+      )
+    `).bind(userId, userId, userId).first() as any
+    
+    const totalTrades = closedTrades?.total || 0
+    const winningTrades = closedTrades?.wins || 0
+    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0
+    
+    // Generate monthly P/L data (last 12 months)
+    const monthlyPL = []
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date()
+      date.setMonth(date.getMonth() - i)
+      const year = date.getFullYear()
+      const month = date.getMonth() + 1
+      const monthStr = month.toString().padStart(2, '0')
+      
+      const monthlyStockPL = await DB.prepare(`
+        SELECT COALESCE(SUM(profit_loss), 0) as pl
+        FROM stock_trades
+        WHERE user_id = ? AND is_open = 0 AND close_date LIKE ?
+      `).bind(userId, `${year}-${monthStr}%`).first() as any
+      
+      const monthlyOptionPL = await DB.prepare(`
+        SELECT COALESCE(SUM(profit_loss), 0) as pl
+        FROM option_trades
+        WHERE user_id = ? AND is_open = 0 AND close_date LIKE ?
+      `).bind(userId, `${year}-${monthStr}%`).first() as any
+      
+      const monthlyDailyPL = await DB.prepare(`
+        SELECT COALESCE(SUM(profit_loss), 0) as pl
+        FROM daily_trades
+        WHERE user_id = ? AND is_open = 0 AND strftime('%Y-%m', trade_date) = ?
+      `).bind(userId, `${year}-${monthStr}`).first() as any
+      
+      const totalMonthlyPL = (monthlyStockPL?.pl || 0) + (monthlyOptionPL?.pl || 0) + (monthlyDailyPL?.pl || 0)
+      
+      monthlyPL.push({
+        month: monthNames[month - 1],
+        pl: totalMonthlyPL
+      })
+    }
+    
+    // Generate portfolio value history (monthly snapshots from balance_history)
+    const portfolioValue = []
+    
+    for (let i = 11; i >= 0; i--) {
+      const date = new Date()
+      date.setMonth(date.getMonth() - i)
+      const year = date.getFullYear()
+      const month = date.getMonth() + 1
+      
+      // Try to get balance snapshot from balance_history
+      const snapshot = await DB.prepare(`
+        SELECT SUM(balance_cad + balance_usd) as total_value
+        FROM balance_history
+        WHERE user_id = ? AND year = ? AND month = ?
+      `).bind(userId, year, month).first() as any
+      
+      // If no snapshot, use current value (approximate)
+      const value = snapshot?.total_value || totalValue
+      
+      portfolioValue.push({
+        date: `${monthNames[month - 1]} ${year}`,
+        value: value
+      })
+    }
+    
+    return c.json({
+      metrics: {
+        totalValue,
+        totalValueCAD,
+        totalValueUSD,
+        ytdPL,
+        ytdPercentage,
+        winRate,
+        totalTrades,
+        winningTrades,
+        avgPL: closedTrades?.avg_pl || 0,
+        bestTrade: closedTrades?.best_trade || 0
+      },
+      accounts: accountData,
+      monthlyPL,
+      portfolioValue
+    })
+    
+  } catch (error: any) {
+    console.error('Portfolio overview error:', error)
+    return c.json({ error: 'Failed to generate portfolio overview' }, 500)
+  }
+})
+
+// ============================================================================
 // P/L REPORTING ROUTES
 // ============================================================================
 
@@ -3816,6 +3991,7 @@ app.get('/', (c) => {
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
         <style>
             :root {
                 --teal: #004F59;
@@ -4811,127 +4987,194 @@ app.get('/', (c) => {
                     </div>
                     
                     <!-- Reports Section -->
+                    <!-- NEW REPORTS SECTION WITH TABS -->
                     <div id="reports-section" class="section hidden">
-                        <h2 class="text-3xl font-bold text-brand-teal mb-6">P/L Reports</h2>
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-3xl font-bold text-brand-teal">
+                                <i class="fas fa-chart-bar mr-2"></i>Reports Dashboard
+                            </h2>
+                            <div class="text-sm text-gray-600">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Comprehensive portfolio analysis and insights
+                            </div>
+                        </div>
                         
-                        <div class="card mb-6">
-                            <div class="flex gap-4 items-end">
-                                <div>
-                                    <label class="block text-gray-700 mb-2">Year</label>
-                                    <select id="report-year" class="px-4 py-2 border border-gray-300 rounded-lg">
-                                        <option value="">All Years</option>
-                                        <option value="2026">2026</option>
-                                        <option value="2025">2025</option>
-                                        <option value="2024">2024</option>
-                                    </select>
+                        <!-- Tab Navigation -->
+                        <div class="mb-6 border-b border-gray-200">
+                            <nav class="flex flex-wrap gap-2">
+                                <button onclick="showReportTab('overview')" class="report-tab active px-6 py-3 font-semibold text-brand-teal border-b-2 border-brand-teal" data-tab="overview">
+                                    <i class="fas fa-chart-pie mr-2"></i>Portfolio Overview
+                                </button>
+                                <button onclick="showReportTab('pl-summary')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="pl-summary">
+                                    <i class="fas fa-dollar-sign mr-2"></i>P/L Summary
+                                </button>
+                                <button onclick="showReportTab('performance')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="performance">
+                                    <i class="fas fa-chart-line mr-2"></i>Performance
+                                </button>
+                                <button onclick="showReportTab('strategy')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="strategy">
+                                    <i class="fas fa-chess mr-2"></i>Strategy Analysis
+                                </button>
+                                <button onclick="showReportTab('positions')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="positions">
+                                    <i class="fas fa-sitemap mr-2"></i>Position Analysis
+                                </button>
+                                <button onclick="showReportTab('closed-trades')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="closed-trades">
+                                    <i class="fas fa-history mr-2"></i>Closed Trades
+                                </button>
+                            </nav>
+                        </div>
+                        
+                        <!-- Portfolio Overview Tab -->
+                        <div id="report-tab-overview" class="report-tab-content">
+                            <div class="mb-6">
+                                <h3 class="text-2xl font-bold text-gray-800 mb-4">Portfolio Overview</h3>
+                                
+                                <!-- Key Metrics Cards -->
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                    <div class="card bg-gradient-to-br from-teal-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Total Value</p>
+                                                <p class="text-2xl font-bold text-brand-teal" id="overview-total-value">$0.00</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="overview-total-value-subtitle">Combined CAD + USD</p>
+                                            </div>
+                                            <div class="text-3xl text-brand-teal opacity-20">
+                                                <i class="fas fa-wallet"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-green-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">YTD P/L</p>
+                                                <p class="text-2xl font-bold text-green-600" id="overview-ytd-pl">+$0.00</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="overview-ytd-pl-change">↑ 0%</p>
+                                            </div>
+                                            <div class="text-3xl text-green-600 opacity-20">
+                                                <i class="fas fa-chart-line"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-blue-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Win Rate</p>
+                                                <p class="text-2xl font-bold text-blue-600" id="overview-win-rate">0%</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="overview-trades-count">0 trades</p>
+                                            </div>
+                                            <div class="text-3xl text-blue-600 opacity-20">
+                                                <i class="fas fa-trophy"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-purple-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Avg Trade P/L</p>
+                                                <p class="text-2xl font-bold text-purple-600" id="overview-avg-pl">$0.00</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="overview-best-trade">Best: $0</p>
+                                            </div>
+                                            <div class="text-3xl text-purple-600 opacity-20">
+                                                <i class="fas fa-hand-holding-usd"></i>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div>
-                                    <label class="block text-gray-700 mb-2">Month</label>
-                                    <select id="report-month" class="px-4 py-2 border border-gray-300 rounded-lg">
-                                        <option value="">All Months</option>
-                                        <option value="1">January</option>
-                                        <option value="2">February</option>
-                                        <option value="3">March</option>
-                                        <option value="4">April</option>
-                                        <option value="5">May</option>
-                                        <option value="6">June</option>
-                                        <option value="7">July</option>
-                                        <option value="8">August</option>
-                                        <option value="9">September</option>
-                                        <option value="10">October</option>
-                                        <option value="11">November</option>
-                                        <option value="12">December</option>
-                                    </select>
+                                
+                                <!-- Portfolio Value Chart -->
+                                <div class="card mb-6">
+                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-chart-area text-brand-teal mr-2"></i>
+                                        Portfolio Value Trend (Last 12 Months)
+                                    </h4>
+                                    <div id="overview-portfolio-chart" style="height: 350px;"></div>
                                 </div>
-                                <button onclick="loadReport()" class="btn-primary">Generate Report</button>
-                                <div class="flex gap-2 ml-auto">
-                                    <button onclick="exportData('stocks')" class="btn-secondary">
-                                        <i class="fas fa-download mr-2"></i>Export Stocks
-                                    </button>
-                                    <button onclick="exportData('options')" class="btn-secondary">
-                                        <i class="fas fa-download mr-2"></i>Export Options
-                                    </button>
+                                
+                                <!-- Account Breakdown and Monthly P/L -->
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                    <div class="card">
+                                        <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                            <i class="fas fa-building text-blue-600 mr-2"></i>
+                                            Account Distribution
+                                        </h4>
+                                        <div id="overview-account-chart" style="height: 300px;"></div>
+                                    </div>
+                                    
+                                    <div class="card">
+                                        <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                            <i class="fas fa-calendar-alt text-green-600 mr-2"></i>
+                                            Monthly P/L Breakdown
+                                        </h4>
+                                        <div id="overview-monthly-pl-chart" style="height: 300px;"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         
-                        <div id="report-results" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <!-- Dynamic content -->
+                        <!-- P/L Summary Tab -->
+                        <div id="report-tab-pl-summary" class="report-tab-content hidden">
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-dollar-sign text-green-600 mr-2"></i>
+                                    P/L Summary Report
+                                </h3>
+                                <p class="text-gray-600 italic">
+                                    <i class="fas fa-hammer mr-2"></i>Coming soon: Detailed profit/loss breakdown by asset type and time period
+                                </p>
+                            </div>
                         </div>
                         
-                        <!-- Closed Trades Report (within Reports section) -->
-                        <div class="mt-8">
-                            <div class="flex justify-between items-center mb-6">
-                                <h3 class="text-2xl font-bold text-brand-teal">Closed Trades</h3>
-                                <div class="flex gap-4">
-                                    <select id="closed-trade-type" class="px-4 py-2 border border-gray-300 rounded-lg">
-                                        <option value="all">All Trade Types</option>
-                                        <option value="stocks">Stock Trades</option>
-                                        <option value="options">Option Trades</option>
-                                    </select>
-                                    <button onclick="loadClosedTrades()" class="btn-primary">
-                                        <i class="fas fa-sync mr-2"></i>Refresh
-                                    </button>
-                                </div>
+                        <!-- Performance Tab -->
+                        <div id="report-tab-performance" class="report-tab-content hidden">
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-chart-line text-blue-600 mr-2"></i>
+                                    Performance Charts
+                                </h3>
+                                <p class="text-gray-600 italic">
+                                    <i class="fas fa-hammer mr-2"></i>Coming soon: Portfolio growth, rolling returns, drawdown analysis
+                                </p>
                             </div>
-                            
-                            <!-- Closed Stock Trades -->
-                            <div id="closed-stocks-container" class="mb-8">
-                                <div class="card">
-                                    <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                                        <i class="fas fa-chart-line text-brand-teal mr-2"></i>
-                                        Closed Stock Trades
-                                    </h3>
-                                    <div class="overflow-x-auto">
-                                        <table class="w-full text-sm">
-                                            <thead>
-                                                <tr class="bg-gray-100">
-                                                    <th class="px-4 py-3 text-left">Opened Date</th>
-                                                    <th class="px-4 py-3 text-left">Ticker</th>
-                                                    <th class="px-4 py-3 text-left">Closed Date</th>
-                                                    <th class="px-4 py-3 text-right">Shares</th>
-                                                    <th class="px-4 py-3 text-right">Avg Price</th>
-                                                    <th class="px-4 py-3 text-left">Account</th>
-                                                    <th class="px-4 py-3 text-right">P/L</th>
-                                                    <th class="px-4 py-3 text-center">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="closed-stocks-table">
-                                                <!-- Dynamic content -->
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
+                        </div>
+                        
+                        <!-- Strategy Analysis Tab -->
+                        <div id="report-tab-strategy" class="report-tab-content hidden">
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-chess text-purple-600 mr-2"></i>
+                                    Strategy Analysis
+                                </h3>
+                                <p class="text-gray-600 italic">
+                                    <i class="fas fa-hammer mr-2"></i>Coming soon: Compare performance across different trading strategies
+                                </p>
                             </div>
-                            
-                            <!-- Closed Option Trades -->
-                            <div id="closed-options-container" class="mb-8">
-                                <div class="card">
-                                    <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                                        <i class="fas fa-file-contract text-purple-600 mr-2"></i>
-                                        Closed Option Trades
-                                    </h3>
-                                    <div class="overflow-x-auto">
-                                        <table class="w-full text-sm">
-                                            <thead>
-                                                <tr class="bg-gray-100">
-                                                    <th class="px-4 py-3 text-left">Trade Date</th>
-                                                    <th class="px-4 py-3 text-left">Ticker</th>
-                                                    <th class="px-4 py-3 text-left">Strategy</th>
-                                                    <th class="px-4 py-3 text-right">Strike</th>
-                                                    <th class="px-4 py-3 text-right">Premium</th>
-                                                    <th class="px-4 py-3 text-left">Expiration</th>
-                                                    <th class="px-4 py-3 text-left">Account</th>
-                                                    <th class="px-4 py-3 text-right">P/L</th>
-                                                    <th class="px-4 py-3 text-center">Actions</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody id="closed-options-table">
-                                                <!-- Dynamic content -->
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
+                        </div>
+                        
+                        <!-- Position Analysis Tab -->
+                        <div id="report-tab-positions" class="report-tab-content hidden">
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-sitemap text-orange-600 mr-2"></i>
+                                    Position Analysis
+                                </h3>
+                                <p class="text-gray-600 italic">
+                                    <i class="fas fa-hammer mr-2"></i>Coming soon: Top holdings, sector allocation, position concentration
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <!-- Closed Trades Tab -->
+                        <div id="report-tab-closed-trades" class="report-tab-content hidden">
+                            <div class="card">
+                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-history text-gray-600 mr-2"></i>
+                                    Closed Trades Report
+                                </h3>
+                                <p class="text-gray-600 italic">
+                                    <i class="fas fa-hammer mr-2"></i>Coming soon: Detailed view of all closed positions with filters
+                                </p>
                             </div>
                         </div>
                     </div>

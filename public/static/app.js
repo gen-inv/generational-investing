@@ -379,7 +379,9 @@ function showSection(sectionName) {
             loadOptions()
             break
         case 'reports':
-            loadClosedTrades()
+            // Load Portfolio Overview by default
+            showReportTab('overview')
+            loadPortfolioOverview()
             break
         case 'daily-trade':
             // Load config first, then show default tab (Performance)
@@ -7967,5 +7969,300 @@ async function deleteTrade(tradeId) {
         console.error('Error deleting trade:', error)
         alert(`Failed to delete trade: ${error.response?.data?.error || error.message}`)
     }
+}
+
+// ============================================================================
+// REPORTS SECTION - NEW TAB-BASED REPORTS DASHBOARD
+// ============================================================================
+
+// Tab switching for reports
+function showReportTab(tabName) {
+    // Hide all tabs
+    document.querySelectorAll('.report-tab-content').forEach(tab => {
+        tab.classList.add('hidden')
+    })
+    
+    // Remove active class from all tab buttons
+    document.querySelectorAll('.report-tab').forEach(btn => {
+        btn.classList.remove('active', 'text-brand-teal', 'border-b-2', 'border-brand-teal')
+        btn.classList.add('text-gray-600')
+    })
+    
+    // Show selected tab
+    const selectedTab = document.getElementById(`report-tab-${tabName}`)
+    if (selectedTab) {
+        selectedTab.classList.remove('hidden')
+    }
+    
+    // Add active class to selected button
+    const selectedBtn = document.querySelector(`.report-tab[data-tab="${tabName}"]`)
+    if (selectedBtn) {
+        selectedBtn.classList.add('active', 'text-brand-teal', 'border-b-2', 'border-brand-teal')
+        selectedBtn.classList.remove('text-gray-600')
+    }
+    
+    // Load data for the selected tab
+    switch(tabName) {
+        case 'overview':
+            loadPortfolioOverview()
+            break
+        case 'pl-summary':
+            // TODO: Load P/L Summary
+            break
+        case 'performance':
+            // TODO: Load Performance Charts
+            break
+        case 'strategy':
+            // TODO: Load Strategy Analysis
+            break
+        case 'positions':
+            // TODO: Load Position Analysis
+            break
+        case 'closed-trades':
+            // TODO: Load Closed Trades
+            break
+    }
+}
+
+// Portfolio Overview - Main function
+async function loadPortfolioOverview() {
+    try {
+        // Fetch portfolio overview data from backend
+        const response = await api.get('/api/reports/portfolio-overview')
+        const data = response.data
+        
+        // Update key metrics cards
+        updateOverviewMetrics(data.metrics)
+        
+        // Render charts
+        renderPortfolioValueChart(data.portfolioValue)
+        renderAccountDistributionChart(data.accounts)
+        renderMonthlyPLChart(data.monthlyPL)
+        
+    } catch (error) {
+        console.error('Error loading portfolio overview:', error)
+        showNotification('Failed to load portfolio overview', 'error')
+    }
+}
+
+// Update metrics cards
+function updateOverviewMetrics(metrics) {
+    // Total Value
+    document.getElementById('overview-total-value').textContent = formatCurrency(metrics.totalValue, 'USD')
+    document.getElementById('overview-total-value-subtitle').textContent = 
+        `CAD: ${formatCurrency(metrics.totalValueCAD, 'CAD')} | USD: ${formatCurrency(metrics.totalValueUSD, 'USD')}`
+    
+    // YTD P/L
+    const ytdPL = metrics.ytdPL || 0
+    const ytdPLElement = document.getElementById('overview-ytd-pl')
+    ytdPLElement.textContent = (ytdPL >= 0 ? '+' : '') + formatCurrency(ytdPL, 'USD')
+    ytdPLElement.className = `text-2xl font-bold ${ytdPL >= 0 ? 'text-green-600' : 'text-red-600'}`
+    
+    const ytdChange = metrics.ytdPercentage || 0
+    document.getElementById('overview-ytd-pl-change').textContent = 
+        `${ytdChange >= 0 ? '↑' : '↓'} ${Math.abs(ytdChange).toFixed(2)}%`
+    
+    // Win Rate
+    document.getElementById('overview-win-rate').textContent = `${(metrics.winRate || 0).toFixed(1)}%`
+    document.getElementById('overview-trades-count').textContent = 
+        `${metrics.totalTrades || 0} trades (${metrics.winningTrades || 0} wins)`
+    
+    // Avg P/L
+    const avgPL = metrics.avgPL || 0
+    const avgPLElement = document.getElementById('overview-avg-pl')
+    avgPLElement.textContent = (avgPL >= 0 ? '+' : '') + formatCurrency(avgPL, 'USD')
+    avgPLElement.className = `text-2xl font-bold ${avgPL >= 0 ? 'text-green-600' : 'text-red-600'}`
+    document.getElementById('overview-best-trade').textContent = 
+        `Best: ${formatCurrency(metrics.bestTrade || 0, 'USD')}`
+}
+
+// Render Portfolio Value Chart (ApexCharts)
+function renderPortfolioValueChart(portfolioData) {
+    const chartElement = document.getElementById('overview-portfolio-chart')
+    
+    // Prepare data
+    const dates = portfolioData.map(d => d.date)
+    const values = portfolioData.map(d => d.value)
+    
+    const options = {
+        series: [{
+            name: 'Portfolio Value',
+            data: values
+        }],
+        chart: {
+            type: 'area',
+            height: 350,
+            zoom: {
+                enabled: true
+            },
+            toolbar: {
+                show: true
+            }
+        },
+        dataLabels: {
+            enabled: false
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        colors: ['#0D9488'],
+        fill: {
+            type: 'gradient',
+            gradient: {
+                shadeIntensity: 1,
+                opacityFrom: 0.7,
+                opacityTo: 0.3,
+                stops: [0, 90, 100]
+            }
+        },
+        xaxis: {
+            categories: dates,
+            labels: {
+                rotate: -45,
+                style: {
+                    fontSize: '12px'
+                }
+            }
+        },
+        yaxis: {
+            labels: {
+                formatter: function(value) {
+                    return '$' + (value / 1000).toFixed(0) + 'k'
+                }
+            }
+        },
+        tooltip: {
+            y: {
+                formatter: function(value) {
+                    return '$' + value.toFixed(2)
+                }
+            }
+        },
+        grid: {
+            borderColor: '#f1f1f1'
+        }
+    }
+    
+    const chart = new ApexCharts(chartElement, options)
+    chart.render()
+}
+
+// Render Account Distribution Chart (Donut)
+function renderAccountDistributionChart(accountsData) {
+    const chartElement = document.getElementById('overview-account-chart')
+    
+    const accountNames = accountsData.map(a => a.name)
+    const accountValues = accountsData.map(a => a.value)
+    
+    const options = {
+        series: accountValues,
+        chart: {
+            type: 'donut',
+            height: 300
+        },
+        labels: accountNames,
+        colors: ['#0D9488', '#F59E0B', '#3B82F6', '#8B5CF6', '#10B981'],
+        legend: {
+            position: 'bottom'
+        },
+        plotOptions: {
+            pie: {
+                donut: {
+                    size: '65%',
+                    labels: {
+                        show: true,
+                        total: {
+                            show: true,
+                            label: 'Total Value',
+                            formatter: function(w) {
+                                const total = w.globals.seriesTotals.reduce((a, b) => a + b, 0)
+                                return '$' + (total / 1000).toFixed(1) + 'k'
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        tooltip: {
+            y: {
+                formatter: function(value) {
+                    return '$' + value.toFixed(2)
+                }
+            }
+        }
+    }
+    
+    const chart = new ApexCharts(chartElement, options)
+    chart.render()
+}
+
+// Render Monthly P/L Chart (Bar)
+function renderMonthlyPLChart(monthlyData) {
+    const chartElement = document.getElementById('overview-monthly-pl-chart')
+    
+    const months = monthlyData.map(m => m.month)
+    const plValues = monthlyData.map(m => m.pl)
+    
+    const options = {
+        series: [{
+            name: 'Monthly P/L',
+            data: plValues
+        }],
+        chart: {
+            type: 'bar',
+            height: 300
+        },
+        plotOptions: {
+            bar: {
+                borderRadius: 4,
+                dataLabels: {
+                    position: 'top'
+                },
+                colors: {
+                    ranges: [{
+                        from: -10000,
+                        to: 0,
+                        color: '#EF4444'
+                    }, {
+                        from: 0,
+                        to: 100000,
+                        color: '#10B981'
+                    }]
+                }
+            }
+        },
+        dataLabels: {
+            enabled: false
+        },
+        xaxis: {
+            categories: months,
+            labels: {
+                style: {
+                    fontSize: '12px'
+                }
+            }
+        },
+        yaxis: {
+            labels: {
+                formatter: function(value) {
+                    return '$' + (value / 1000).toFixed(1) + 'k'
+                }
+            }
+        },
+        tooltip: {
+            y: {
+                formatter: function(value) {
+                    return '$' + value.toFixed(2)
+                }
+            }
+        },
+        grid: {
+            borderColor: '#f1f1f1'
+        }
+    }
+    
+    const chart = new ApexCharts(chartElement, options)
+    chart.render()
 }
 
