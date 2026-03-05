@@ -5675,18 +5675,27 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
     
     // Read file content
     const content = await file.text()
-    const lines = content.split('\n')
+    const lines = content.split('\n').map(line => line.trim()).filter(line => line)
     
-    if (lines.length < 2) {
-      return c.json({ error: 'File is empty or invalid' }, 400)
+    if (lines.length < 3) {
+      return c.json({ error: 'File must have at least 3 lines (broker header, column headers, data)' }, 400)
     }
     
-    // Skip first line (header row in broker export), parse CSV
-    const dataLines = lines.slice(1).filter(line => line.trim())
+    console.log('First 3 lines of file:')
+    console.log('Line 0 (broker header):', lines[0].substring(0, 100))
+    console.log('Line 1 (column headers):', lines[1].substring(0, 100))
+    console.log('Line 2 (first data row):', lines[2].substring(0, 100))
     
-    // Parse CSV headers and data
-    const headers = dataLines[0].split(',').map(h => h.trim().replace(/"/g, ''))
-    const rows = dataLines.slice(1).map(line => {
+    // Skip first line (broker header), line 1 is column headers
+    const headerLine = lines[1]
+    const dataLines = lines.slice(2)
+    
+    // Parse CSV headers
+    const headers = headerLine.split(',').map(h => h.trim().replace(/"/g, ''))
+    console.log('Parsed headers:', headers)
+    
+    // Parse data rows
+    const rows = dataLines.map(line => {
       // Simple CSV parsing (handles quoted fields)
       const values: string[] = []
       let current = ''
@@ -5697,13 +5706,13 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         if (char === '"') {
           inQuotes = !inQuotes
         } else if (char === ',' && !inQuotes) {
-          values.push(current.trim())
+          values.push(current.trim().replace(/"/g, ''))
           current = ''
         } else {
           current += char
         }
       }
-      values.push(current.trim())
+      values.push(current.trim().replace(/"/g, ''))
       
       // Create object from headers and values
       const obj: any = {}
@@ -5712,6 +5721,9 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       })
       return obj
     })
+    
+    console.log('Sample parsed row:', rows[0])
+    console.log('Number of data rows parsed:', rows.length)
     
     // Group and transform transactions
     const transactions: any[] = []
@@ -5741,6 +5753,9 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         quantitySign: netAmount < 0 ? -1 : 1
       })
     })
+    
+    console.log('Sample transaction:', transactions[0])
+    console.log('Total transactions:', transactions.length)
     
     // Group by underlying, description, date, and quantity sign
     const grouped: any = {}
