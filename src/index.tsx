@@ -5888,7 +5888,9 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         if (currentUnderlying !== '') {
           const totalCostStr = sectionTotalCost > 0 ? sectionTotalCost.toFixed(2) : ''
           const totalProceedsStr = sectionTotalProceeds > 0 ? sectionTotalProceeds.toFixed(2) : ''
-          outputLines.push(`Totals for ${currentUnderlying},,,,,,${totalCostStr},${totalProceedsStr},,,,,`)
+          // Use ** markers to make totals stand out visually
+          // Empty Date column, then Totals in Description column
+          outputLines.push(`,**Totals for ${currentUnderlying}**,,,,,**${totalCostStr}**,**${totalProceedsStr}**,,,,,`)
           outputLines.push('')  // Blank line between sections
         }
         
@@ -5901,7 +5903,8 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
           : `--- ${row.underlying} ---`
         
         // Escape with single quote to prevent Excel formula interpretation
-        outputLines.push(`'${header}`)
+        // Empty Date column, then header in Description column
+        outputLines.push(`,'${header}`)
         
         currentUnderlying = row.underlying
         sectionTotalCost = 0
@@ -5928,7 +5931,9 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       if (index === groupedArray.length - 1) {
         const totalCostStr = sectionTotalCost > 0 ? sectionTotalCost.toFixed(2) : ''
         const totalProceedsStr = sectionTotalProceeds > 0 ? sectionTotalProceeds.toFixed(2) : ''
-        outputLines.push(`Totals for ${currentUnderlying},,,,,,${totalCostStr},${totalProceedsStr},,,,,`)
+        // Use ** markers to make totals stand out visually
+        // Empty Date column, then Totals in Description column
+        outputLines.push(`,**Totals for ${currentUnderlying}**,,,,,**${totalCostStr}**,**${totalProceedsStr}**,,,,,`)
       }
     })
     
