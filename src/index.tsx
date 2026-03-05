@@ -5897,7 +5897,8 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         const header = companyName 
           ? `--- ${row.underlying} - ${companyName} ---`
           : `--- ${row.underlying} ---`
-        outputLines.push(header)
+        // Escape with single quote to prevent Excel formula interpretation
+        outputLines.push(`'${header}`)
         
         currentUnderlying = row.underlying
         sectionTotalCost = 0
