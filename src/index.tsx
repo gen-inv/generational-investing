@@ -5894,10 +5894,15 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         
         // Start new section
         const companyName = companyNames[row.underlying] || ''
-        const header = companyName 
+        let header = companyName 
           ? `--- ${row.underlying} - ${companyName} ---`
           : `--- ${row.underlying} ---`
-        // Escape with single quote to prevent Excel formula interpretation
+        
+        // Escape commas by wrapping in double quotes (CSV standard)
+        // Also escape with single quote to prevent Excel formula interpretation
+        if (header.includes(',')) {
+          header = `"${header}"`
+        }
         outputLines.push(`'${header}`)
         
         currentUnderlying = row.underlying
@@ -5910,12 +5915,18 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       const costStr = row.cost > 0 ? row.cost.toFixed(2) : ''
       const proceedsStr = row.proceeds > 0 ? row.proceeds.toFixed(2) : ''
       
+      // Escape description if it contains commas
+      let description = row.description
+      if (description.includes(',')) {
+        description = `"${description}"`
+      }
+      
       // Add to section totals
       sectionTotalCost += row.cost
       sectionTotalProceeds += row.proceeds
       
       outputLines.push(
-        `${row.date},${row.description},${buyStr},${sellStr},${row.price.toFixed(2)},${row.commission.toFixed(6)},${costStr},${proceedsStr},,,,,`
+        `${row.date},${description},${buyStr},${sellStr},${row.price.toFixed(2)},${row.commission.toFixed(6)},${costStr},${proceedsStr},,,,,`
       )
       
       // Add totals for last section
