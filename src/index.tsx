@@ -5860,22 +5860,18 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
     // Get unique underlying symbols for company lookup
     const uniqueSymbols = [...new Set(groupedArray.map((g: any) => g.underlying))]
     
-    // Fetch company names from database
-    const userId = c.get('userId')
+    // Fetch company names from Yahoo Finance API
     const companyNames: Record<string, string> = {}
     
     for (const symbol of uniqueSymbols) {
       try {
-        const result = await c.env.DB.prepare(
-          'SELECT company_name FROM companies WHERE ticker = ? AND user_id = ?'
-        ).bind(symbol, userId).first()
-        
-        if (result && result.company_name) {
-          companyNames[symbol] = result.company_name as string
+        const companyData = await fetchCompanyData(symbol, c.env)
+        if (companyData && companyData.company_name && companyData.company_name !== symbol) {
+          companyNames[symbol] = companyData.company_name
         }
       } catch (err) {
         // If company not found, just use the ticker
-        console.log(`Company not found for ticker ${symbol}`)
+        console.log(`Company name not found for ticker ${symbol}`)
       }
     }
     
