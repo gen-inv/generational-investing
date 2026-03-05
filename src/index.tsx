@@ -5888,7 +5888,7 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         if (currentUnderlying !== '') {
           const totalCostStr = sectionTotalCost > 0 ? sectionTotalCost.toFixed(2) : ''
           const totalProceedsStr = sectionTotalProceeds > 0 ? sectionTotalProceeds.toFixed(2) : ''
-          outputLines.push(`Totals for ${currentUnderlying},,,,,${totalCostStr},${totalProceedsStr},,,,,`)
+          outputLines.push(`Totals for ${currentUnderlying},,,,,,${totalCostStr},${totalProceedsStr},,,,,`)
           outputLines.push('')  // Blank line between sections
         }
         
@@ -5928,7 +5928,7 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       if (index === groupedArray.length - 1) {
         const totalCostStr = sectionTotalCost > 0 ? sectionTotalCost.toFixed(2) : ''
         const totalProceedsStr = sectionTotalProceeds > 0 ? sectionTotalProceeds.toFixed(2) : ''
-        outputLines.push(`Totals for ${currentUnderlying},,,,,${totalCostStr},${totalProceedsStr},,,,,`)
+        outputLines.push(`Totals for ${currentUnderlying},,,,,,${totalCostStr},${totalProceedsStr},,,,,`)
       }
     })
     
