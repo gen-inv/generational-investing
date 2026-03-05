@@ -396,6 +396,18 @@ function showSection(sectionName) {
                 checkMonthlyExpirationAlert()
             })
             break
+        case 'utilities':
+            // Clear the file input when utilities page loads
+            const fileInput = document.getElementById('option-tax-file')
+            if (fileInput) {
+                fileInput.value = ''
+            }
+            // Hide any status messages
+            const statusDiv = document.getElementById('option-tax-status')
+            if (statusDiv) {
+                statusDiv.classList.add('hidden')
+            }
+            break
     }
 }
 
