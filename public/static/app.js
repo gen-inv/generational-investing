@@ -8357,7 +8357,22 @@ async function handleOptionTaxFileUpload(event) {
         
         if (!response.ok) {
             const errorData = await response.json()
-            throw new Error(errorData.error || 'Failed to process file')
+            let errorMessage = errorData.error || 'Failed to process file'
+            
+            // If debug info is available, show it in console and alert
+            if (errorData.debug) {
+                console.log('Debug information:', errorData.debug)
+                errorMessage += '\n\nDebug Info (check console for details):\n'
+                if (errorData.debug.missingColumns) {
+                    errorMessage += `\nMissing columns: ${errorData.debug.missingColumns.join(', ')}`
+                    errorMessage += `\nFound columns: ${errorData.debug.foundHeaders.join(', ')}`
+                }
+                if (errorData.debug.hint) {
+                    errorMessage += `\n\n${errorData.debug.hint}`
+                }
+            }
+            
+            throw new Error(errorMessage)
         }
         
         // Download the result

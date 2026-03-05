@@ -5678,13 +5678,15 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
     const lines = content.split('\n').map(line => line.trim()).filter(line => line)
     
     if (lines.length < 3) {
-      return c.json({ error: 'File must have at least 3 lines (broker header, column headers, data)' }, 400)
+      return c.json({ 
+        error: 'File must have at least 3 lines (broker header, column headers, data)',
+        debug: {
+          totalLines: lines.length,
+          firstLine: lines[0]?.substring(0, 200),
+          secondLine: lines[1]?.substring(0, 200)
+        }
+      }, 400)
     }
-    
-    console.log('First 3 lines of file:')
-    console.log('Line 0 (broker header):', lines[0].substring(0, 100))
-    console.log('Line 1 (column headers):', lines[1].substring(0, 100))
-    console.log('Line 2 (first data row):', lines[2].substring(0, 100))
     
     // Skip first line (broker header), line 1 is column headers
     const headerLine = lines[1]
@@ -5692,10 +5694,9 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
     
     // Parse CSV headers
     const headers = headerLine.split(',').map(h => h.trim().replace(/"/g, ''))
-    console.log('Parsed headers:', headers)
     
     // Parse data rows
-    const rows = dataLines.map(line => {
+    const rows = dataLines.map((line, lineIndex) => {
       // Simple CSV parsing (handles quoted fields)
       const values: string[] = []
       let current = ''
@@ -5719,11 +5720,39 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       headers.forEach((header, idx) => {
         obj[header] = values[idx] || ''
       })
+      
+      // Add line number for debugging
+      obj._lineNumber = lineIndex + 3  // +3 because we skipped 2 lines and arrays are 0-indexed
+      
       return obj
     })
     
-    console.log('Sample parsed row:', rows[0])
-    console.log('Number of data rows parsed:', rows.length)
+    if (rows.length === 0) {
+      return c.json({ 
+        error: 'No data rows found after headers',
+        debug: {
+          headers,
+          headerLine: headerLine.substring(0, 200),
+          totalDataLines: dataLines.length
+        }
+      }, 400)
+    }
+    
+    // Check if we have the required columns
+    const requiredColumns = ['Date', 'Description', 'Symbol', 'Quantity', 'Price', 'Gross Amount', 'Commission', 'Net Amount']
+    const missingColumns = requiredColumns.filter(col => !headers.includes(col))
+    
+    if (missingColumns.length > 0) {
+      return c.json({ 
+        error: 'Missing required columns',
+        debug: {
+          missingColumns,
+          foundHeaders: headers,
+          sampleRow: rows[0],
+          hint: 'Column names must match exactly. Check for extra spaces or different spelling.'
+        }
+      }, 400)
+    }
     
     // Group and transform transactions
     const transactions: any[] = []
@@ -5753,9 +5782,6 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         quantitySign: netAmount < 0 ? -1 : 1
       })
     })
-    
-    console.log('Sample transaction:', transactions[0])
-    console.log('Total transactions:', transactions.length)
     
     // Group by underlying, description, date, and quantity sign
     const grouped: any = {}
