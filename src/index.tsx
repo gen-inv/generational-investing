@@ -5898,12 +5898,11 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         // Remove commas from company name to avoid CSV issues
         const cleanCompanyName = companyName.replace(/,/g, '')
         let header = cleanCompanyName 
-          ? `--- ${row.underlying} - ${cleanCompanyName} ---`
-          : `--- ${row.underlying} ---`
+          ? `*** ${row.underlying} - ${cleanCompanyName} ***`
+          : `*** ${row.underlying} ***`
         
-        // Escape with single quote to prevent Excel formula interpretation
         // Empty Date column, then header in Description column
-        outputLines.push(`,'${header}`)
+        outputLines.push(`,${header}`)
         
         currentUnderlying = row.underlying
         sectionTotalCost = 0
