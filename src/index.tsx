@@ -5857,17 +5857,55 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       return new Date(a.date).getTime() - new Date(b.date).getTime()
     })
     
+    // Get unique underlying symbols for company lookup
+    const uniqueSymbols = [...new Set(groupedArray.map((g: any) => g.underlying))]
+    
+    // Fetch company names from database
+    const userId = c.get('userId')
+    const companyNames: Record<string, string> = {}
+    
+    for (const symbol of uniqueSymbols) {
+      try {
+        const result = await c.env.DB.prepare(
+          'SELECT company_name FROM companies WHERE ticker = ? AND user_id = ?'
+        ).bind(symbol, userId).first()
+        
+        if (result && result.company_name) {
+          companyNames[symbol] = result.company_name as string
+        }
+      } catch (err) {
+        // If company not found, just use the ticker
+        console.log(`Company not found for ticker ${symbol}`)
+      }
+    }
+    
     // Generate output CSV
     const outputLines = ['Date,Description,Buy,Sell,Price,Commission,Cost,Proceeds,XCH RATE,CAD Cost,CAD Proceeds,CAD Gain/Loss,Currency']
     
     let currentUnderlying = ''
-    groupedArray.forEach((row: any) => {
+    let sectionTotalCost = 0
+    let sectionTotalProceeds = 0
+    
+    groupedArray.forEach((row: any, index: number) => {
       if (currentUnderlying !== row.underlying) {
+        // Add totals for previous section
         if (currentUnderlying !== '') {
+          const totalCostStr = sectionTotalCost > 0 ? sectionTotalCost.toFixed(2) : ''
+          const totalProceedsStr = sectionTotalProceeds > 0 ? sectionTotalProceeds.toFixed(2) : ''
+          outputLines.push(`Totals for ${currentUnderlying},,,,,${totalCostStr},${totalProceedsStr},,,,,`)
           outputLines.push('')  // Blank line between sections
         }
-        outputLines.push(`--- ${row.underlying} ---`)
+        
+        // Start new section
+        const companyName = companyNames[row.underlying] || ''
+        const header = companyName 
+          ? `--- ${row.underlying} - ${companyName} ---`
+          : `--- ${row.underlying} ---`
+        outputLines.push(header)
+        
         currentUnderlying = row.underlying
+        sectionTotalCost = 0
+        sectionTotalProceeds = 0
       }
       
       const buyStr = row.buy > 0 ? Math.round(row.buy).toString() : ''
@@ -5875,9 +5913,20 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       const costStr = row.cost > 0 ? row.cost.toFixed(2) : ''
       const proceedsStr = row.proceeds > 0 ? row.proceeds.toFixed(2) : ''
       
+      // Add to section totals
+      sectionTotalCost += row.cost
+      sectionTotalProceeds += row.proceeds
+      
       outputLines.push(
         `${row.date},${row.description},${buyStr},${sellStr},${row.price.toFixed(2)},${row.commission.toFixed(6)},${costStr},${proceedsStr},,,,,`
       )
+      
+      // Add totals for last section
+      if (index === groupedArray.length - 1) {
+        const totalCostStr = sectionTotalCost > 0 ? sectionTotalCost.toFixed(2) : ''
+        const totalProceedsStr = sectionTotalProceeds > 0 ? sectionTotalProceeds.toFixed(2) : ''
+        outputLines.push(`Totals for ${currentUnderlying},,,,,${totalCostStr},${totalProceedsStr},,,,,`)
+      }
     })
     
     const outputContent = outputLines.join('\n')
