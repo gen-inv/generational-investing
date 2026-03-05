@@ -5876,7 +5876,7 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       const proceedsStr = row.proceeds > 0 ? row.proceeds.toFixed(2) : ''
       
       outputLines.push(
-        `${row.date},${row.description},${buyStr},${sellStr},${row.price.toFixed(2)},${row.commission.toFixed(6)},${costStr},${proceedsStr},,,,${row.currency}`
+        `${row.date},${row.description},${buyStr},${sellStr},${row.price.toFixed(2)},${row.commission.toFixed(6)},${costStr},${proceedsStr},,,,,${row.currency}`
       )
     })
     
