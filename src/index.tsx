@@ -5054,6 +5054,24 @@ app.get('/', (c) => {
                                         </ol>
                                     </div>
                                     
+                                    <!-- Expected Format Example -->
+                                    <details class="bg-gray-50 border border-gray-300 rounded-lg p-4 mb-4">
+                                        <summary class="font-semibold text-gray-800 cursor-pointer hover:text-brand-teal">
+                                            <i class="fas fa-file-alt mr-2"></i>Expected Input Format (Click to expand)
+                                        </summary>
+                                        <div class="mt-3">
+                                            <p class="text-sm text-gray-600 mb-2">Your CSV should have this structure:</p>
+                                            <div class="bg-white p-3 rounded border border-gray-200 overflow-x-auto">
+                                                <pre class="text-xs font-mono text-gray-700">Transaction History[TAB]Header[TAB]Date[TAB]Account[TAB]Description[TAB]Transaction Type[TAB]Symbol[TAB]Quantity[TAB]Price[TAB]Price Currency[TAB]Gross Amount[TAB]Commission[TAB]Net Amount
+Transaction History[TAB]Data[TAB]2025-01-31[TAB]U***13773[TAB]MSFT 18JUL25 390 P[TAB]Sell[TAB]MSFT  250718P00390000[TAB]-2[TAB]12.4[TAB]USD[TAB]2480[TAB]-1.49[TAB]2478.51
+Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P[TAB]Sell[TAB]NVDA  250207P00138000[TAB]-1[TAB]1.69[TAB]USD[TAB]169[TAB]-1.06[TAB]167.94</pre>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-2">
+                                                <i class="fas fa-info-circle mr-1"></i>Note: [TAB] represents a tab character. Most broker exports use tabs to separate columns.
+                                            </p>
+                                        </div>
+                                    </details>
+                                    
                                     <!-- File Upload Area -->
                                     <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-brand-teal transition-colors">
                                         <input type="file" id="option-tax-file" accept=".csv" class="hidden" onchange="handleOptionTaxFileUpload(event)">
@@ -5677,43 +5695,68 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
     const content = await file.text()
     const lines = content.split('\n').map(line => line.trim()).filter(line => line)
     
-    if (lines.length < 3) {
+    if (lines.length < 2) {
       return c.json({ 
-        error: 'File must have at least 3 lines (broker header, column headers, data)',
+        error: 'File must have at least 2 lines',
         debug: {
           totalLines: lines.length,
-          firstLine: lines[0]?.substring(0, 200),
+          firstLine: lines[0]?.substring(0, 200)
+        }
+      }, 400)
+    }
+    
+    // Detect delimiter (tab or comma)
+    const firstLine = lines[0]
+    const delimiter = firstLine.includes('\t') ? '\t' : ','
+    
+    // Find the header row (starts with "Transaction History\tHeader" or similar)
+    let headerLine = ''
+    let headerIndex = -1
+    
+    for (let i = 0; i < lines.length; i++) {
+      const parts = lines[i].split(delimiter)
+      if (parts[0] === 'Transaction History' && parts[1] === 'Header') {
+        headerLine = lines[i]
+        headerIndex = i
+        break
+      }
+    }
+    
+    if (headerIndex === -1) {
+      return c.json({ 
+        error: 'Could not find header row. Expected format: "Transaction History[tab]Header[tab]Date[tab]..."',
+        debug: {
+          delimiter: delimiter === '\t' ? 'TAB' : 'COMMA',
+          firstLine: lines[0].substring(0, 200),
           secondLine: lines[1]?.substring(0, 200)
         }
       }, 400)
     }
     
-    // Skip first line (broker header), line 1 is column headers
-    const headerLine = lines[1]
-    const dataLines = lines.slice(2)
+    // Parse headers (skip first 2 columns: "Transaction History" and "Header")
+    const allHeaders = headerLine.split(delimiter).map(h => h.trim().replace(/"/g, ''))
+    const headers = allHeaders.slice(2) // Skip "Transaction History" and "Header"
     
-    // Parse CSV headers
-    const headers = headerLine.split(',').map(h => h.trim().replace(/"/g, ''))
+    // Parse data rows (only lines that start with "Transaction History\tData")
+    const dataLines = lines.slice(headerIndex + 1).filter(line => {
+      const parts = line.split(delimiter)
+      return parts[0] === 'Transaction History' && parts[1] === 'Data'
+    })
+    
+    if (dataLines.length === 0) {
+      return c.json({ 
+        error: 'No data rows found. Expected format: "Transaction History[tab]Data[tab]..."',
+        debug: {
+          headers,
+          totalLinesAfterHeader: lines.length - headerIndex - 1
+        }
+      }, 400)
+    }
     
     // Parse data rows
     const rows = dataLines.map((line, lineIndex) => {
-      // Simple CSV parsing (handles quoted fields)
-      const values: string[] = []
-      let current = ''
-      let inQuotes = false
-      
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i]
-        if (char === '"') {
-          inQuotes = !inQuotes
-        } else if (char === ',' && !inQuotes) {
-          values.push(current.trim().replace(/"/g, ''))
-          current = ''
-        } else {
-          current += char
-        }
-      }
-      values.push(current.trim().replace(/"/g, ''))
+      const allValues = line.split(delimiter).map(v => v.trim().replace(/"/g, ''))
+      const values = allValues.slice(2) // Skip "Transaction History" and "Data"
       
       // Create object from headers and values
       const obj: any = {}
@@ -5721,22 +5764,9 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         obj[header] = values[idx] || ''
       })
       
-      // Add line number for debugging
-      obj._lineNumber = lineIndex + 3  // +3 because we skipped 2 lines and arrays are 0-indexed
-      
+      obj._lineNumber = lineIndex + 1
       return obj
     })
-    
-    if (rows.length === 0) {
-      return c.json({ 
-        error: 'No data rows found after headers',
-        debug: {
-          headers,
-          headerLine: headerLine.substring(0, 200),
-          totalDataLines: dataLines.length
-        }
-      }, 400)
-    }
     
     // Check if we have the required columns
     const requiredColumns = ['Date', 'Description', 'Symbol', 'Quantity', 'Price', 'Gross Amount', 'Commission', 'Net Amount']
