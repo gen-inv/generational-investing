@@ -5894,15 +5894,13 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         
         // Start new section
         const companyName = companyNames[row.underlying] || ''
-        let header = companyName 
-          ? `--- ${row.underlying} - ${companyName} ---`
+        // Remove commas from company name to avoid CSV issues
+        const cleanCompanyName = companyName.replace(/,/g, '')
+        let header = cleanCompanyName 
+          ? `--- ${row.underlying} - ${cleanCompanyName} ---`
           : `--- ${row.underlying} ---`
         
-        // Escape commas by wrapping in double quotes (CSV standard)
-        // Also escape with single quote to prevent Excel formula interpretation
-        if (header.includes(',')) {
-          header = `"${header}"`
-        }
+        // Escape with single quote to prevent Excel formula interpretation
         outputLines.push(`'${header}`)
         
         currentUnderlying = row.underlying
@@ -5915,18 +5913,15 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       const costStr = row.cost > 0 ? row.cost.toFixed(2) : ''
       const proceedsStr = row.proceeds > 0 ? row.proceeds.toFixed(2) : ''
       
-      // Escape description if it contains commas
-      let description = row.description
-      if (description.includes(',')) {
-        description = `"${description}"`
-      }
+      // Remove commas from description to avoid CSV issues
+      const cleanDescription = row.description.replace(/,/g, '')
       
       // Add to section totals
       sectionTotalCost += row.cost
       sectionTotalProceeds += row.proceeds
       
       outputLines.push(
-        `${row.date},${description},${buyStr},${sellStr},${row.price.toFixed(2)},${row.commission.toFixed(6)},${costStr},${proceedsStr},,,,,`
+        `${row.date},${cleanDescription},${buyStr},${sellStr},${row.price.toFixed(2)},${row.commission.toFixed(6)},${costStr},${proceedsStr},,,,,`
       )
       
       // Add totals for last section
