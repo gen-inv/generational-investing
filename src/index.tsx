@@ -5809,7 +5809,8 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
         proceeds: netAmount > 0 ? Math.abs(grossAmount) - Math.abs(commission) : 0,
         price,
         commission: Math.abs(commission),
-        quantitySign: netAmount < 0 ? -1 : 1
+        quantitySign: netAmount < 0 ? -1 : 1,
+        currency: row['Price Currency'] || 'USD'
       })
     })
     
@@ -5829,7 +5830,8 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
           proceeds: 0,
           commission: 0,
           priceSum: 0,
-          priceCount: 0
+          priceCount: 0,
+          currency: t.currency
         }
       }
       grouped[key].buy += t.buy
@@ -5856,7 +5858,7 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
     })
     
     // Generate output CSV
-    const outputLines = ['Date,Description,Price,Buy,Sell,Commission,Cost,Proceeds,XCH RATE,CAD Cost,CAD Proceeds,CAD P/L']
+    const outputLines = ['Date,Description,Buy,Sell,Price,Commission,Cost,Proceeds,XCH RATE,CAD Cost,CAD Proceeds,CAD Gain/Loss,Currency']
     
     let currentUnderlying = ''
     groupedArray.forEach((row: any) => {
@@ -5874,7 +5876,7 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       const proceedsStr = row.proceeds > 0 ? row.proceeds.toFixed(2) : ''
       
       outputLines.push(
-        `${row.date},${row.description},${row.price.toFixed(2)},${buyStr},${sellStr},${row.commission.toFixed(6)},${costStr},${proceedsStr},,,,,`
+        `${row.date},${row.description},${buyStr},${sellStr},${row.price.toFixed(2)},${row.commission.toFixed(6)},${costStr},${proceedsStr},,,,${row.currency}`
       )
     })
     
