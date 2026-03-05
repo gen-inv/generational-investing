@@ -8344,6 +8344,7 @@ async function handleOptionTaxFileUpload(event) {
     // Validate file type
     if (!file.name.endsWith('.csv')) {
         alert('Please upload a CSV file')
+        event.target.value = '' // Clear on validation failure
         return
     }
     
@@ -8357,6 +8358,9 @@ async function handleOptionTaxFileUpload(event) {
         // Create form data
         const formData = new FormData()
         formData.append('file', file)
+        
+        // Clear the input immediately after reading the file to prevent re-uploads
+        event.target.value = ''
         
         // Upload and process
         const response = await fetch('/api/utilities/transform-option-tax', {
@@ -8403,12 +8407,11 @@ async function handleOptionTaxFileUpload(event) {
         statusDiv.querySelector('i').classList.remove('fa-spinner', 'fa-spin')
         statusDiv.querySelector('i').classList.add('fa-check-circle', 'text-green-600')
         
-        // Reset after 3 seconds
+        // Reset after 3 seconds (file input already cleared above)
         setTimeout(() => {
             statusDiv.classList.add('hidden')
             statusDiv.querySelector('i').classList.remove('fa-check-circle', 'text-green-600')
             statusDiv.querySelector('i').classList.add('fa-spinner', 'fa-spin')
-            event.target.value = ''  // Clear file input
         }, 3000)
         
     } catch (error) {
@@ -8417,12 +8420,12 @@ async function handleOptionTaxFileUpload(event) {
         statusDiv.querySelector('i').classList.remove('fa-spinner', 'fa-spin')
         statusDiv.querySelector('i').classList.add('fa-exclamation-circle', 'text-red-600')
         
-        // Reset after 5 seconds
+        // Reset after 5 seconds (file input already cleared above, but do it again to be safe)
         setTimeout(() => {
             statusDiv.classList.add('hidden')
             statusDiv.querySelector('i').classList.remove('fa-exclamation-circle', 'text-red-600')
             statusDiv.querySelector('i').classList.add('fa-spinner', 'fa-spin')
-            event.target.value = ''  // Clear file input
+            event.target.value = ''  // Clear file input again
         }, 5000)
     }
 }
