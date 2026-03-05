@@ -5856,7 +5856,7 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
     })
     
     // Generate output CSV
-    const outputLines = ['Date,Symbol,Description,Price,Buy,Sell,Cost,Proceeds,Commission,XCH RATE,CAD Cost,CAD Proceeds,CAD P/L']
+    const outputLines = ['Date,Description,Price,Buy,Sell,Commission,Cost,Proceeds,XCH RATE,CAD Cost,CAD Proceeds,CAD P/L']
     
     let currentUnderlying = ''
     groupedArray.forEach((row: any) => {
@@ -5874,7 +5874,7 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
       const proceedsStr = row.proceeds > 0 ? row.proceeds.toFixed(2) : ''
       
       outputLines.push(
-        `${row.date},${row.underlying},${row.description},${row.price.toFixed(2)},${buyStr},${sellStr},${costStr},${proceedsStr},${row.commission.toFixed(6)},,,,`
+        `${row.date},${row.description},${row.price.toFixed(2)},${buyStr},${sellStr},${row.commission.toFixed(6)},${costStr},${proceedsStr},,,,,`
       )
     })
     
