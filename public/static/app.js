@@ -8322,3 +8322,81 @@ function renderMonthlyPLChart(monthlyData) {
     monthlyPLChart.render()
 }
 
+// ===== UTILITIES FUNCTIONS =====
+
+// Handle option tax file upload
+async function handleOptionTaxFileUpload(event) {
+    const file = event.target.files[0]
+    if (!file) return
+    
+    // Validate file type
+    if (!file.name.endsWith('.csv')) {
+        alert('Please upload a CSV file')
+        return
+    }
+    
+    // Show status
+    const statusDiv = document.getElementById('option-tax-status')
+    const statusText = document.getElementById('option-tax-status-text')
+    statusDiv.classList.remove('hidden')
+    statusText.textContent = 'Processing file...'
+    
+    try {
+        // Create form data
+        const formData = new FormData()
+        formData.append('file', file)
+        
+        // Upload and process
+        const response = await fetch('/api/utilities/transform-option-tax', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: formData
+        })
+        
+        if (!response.ok) {
+            const errorData = await response.json()
+            throw new Error(errorData.error || 'Failed to process file')
+        }
+        
+        // Download the result
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'option_tax_transform_output.csv'
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        
+        // Show success
+        statusText.textContent = 'File processed successfully! Download started.'
+        statusDiv.querySelector('i').classList.remove('fa-spinner', 'fa-spin')
+        statusDiv.querySelector('i').classList.add('fa-check-circle', 'text-green-600')
+        
+        // Reset after 3 seconds
+        setTimeout(() => {
+            statusDiv.classList.add('hidden')
+            statusDiv.querySelector('i').classList.remove('fa-check-circle', 'text-green-600')
+            statusDiv.querySelector('i').classList.add('fa-spinner', 'fa-spin')
+            event.target.value = ''  // Clear file input
+        }, 3000)
+        
+    } catch (error) {
+        console.error('Error processing file:', error)
+        statusText.textContent = `Error: ${error.message}`
+        statusDiv.querySelector('i').classList.remove('fa-spinner', 'fa-spin')
+        statusDiv.querySelector('i').classList.add('fa-exclamation-circle', 'text-red-600')
+        
+        // Reset after 5 seconds
+        setTimeout(() => {
+            statusDiv.classList.add('hidden')
+            statusDiv.querySelector('i').classList.remove('fa-exclamation-circle', 'text-red-600')
+            statusDiv.querySelector('i').classList.add('fa-spinner', 'fa-spin')
+            event.target.value = ''  // Clear file input
+        }, 5000)
+    }
+}
+

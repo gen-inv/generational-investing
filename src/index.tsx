@@ -4166,6 +4166,9 @@ app.get('/', (c) => {
                             <a href="#" onclick="showSection('daily-trade')" class="nav-link" data-section="daily-trade">
                                 <i class="fas fa-chart-line mr-2 text-orange-400"></i>Daily Trade
                             </a>
+                            <a href="#" onclick="showSection('utilities')" class="nav-link" data-section="utilities">
+                                <i class="fas fa-tools mr-2"></i>Utilities
+                            </a>
                             <a href="#" onclick="showSection('reports')" class="nav-link" data-section="reports">
                                 <i class="fas fa-file-alt mr-2"></i>Reports
                             </a>
@@ -5021,6 +5024,66 @@ app.get('/', (c) => {
                         </div>
                     </div>
                     
+                    
+                    <!-- Utilities Section -->
+                    <div id="utilities-section" class="section hidden">
+                        <div class="flex justify-between items-center mb-6">
+                            <h2 class="text-3xl font-bold text-brand-teal">
+                                <i class="fas fa-tools mr-2"></i>Utilities
+                            </h2>
+                        </div>
+                        
+                        <!-- Option Tax Transform Tool -->
+                        <div class="card mb-6">
+                            <div class="flex items-start gap-4 mb-4">
+                                <div class="bg-brand-teal text-white p-3 rounded-lg">
+                                    <i class="fas fa-file-invoice-dollar text-2xl"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <h3 class="text-xl font-bold text-gray-800 mb-2">Option Tax Transform</h3>
+                                    <p class="text-gray-600 mb-4">Transform option transaction CSV files for tax reporting. Groups transactions by underlying symbol and merges buy/sell lines.</p>
+                                    
+                                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                        <h4 class="font-semibold text-blue-900 mb-2">
+                                            <i class="fas fa-info-circle mr-2"></i>How to Use:
+                                        </h4>
+                                        <ol class="list-decimal list-inside text-sm text-blue-800 space-y-1">
+                                            <li>Export your option transactions from your broker as CSV</li>
+                                            <li>Upload the CSV file using the button below</li>
+                                            <li>The tool will transform and download the processed file</li>
+                                        </ol>
+                                    </div>
+                                    
+                                    <!-- File Upload Area -->
+                                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-brand-teal transition-colors">
+                                        <input type="file" id="option-tax-file" accept=".csv" class="hidden" onchange="handleOptionTaxFileUpload(event)">
+                                        <label for="option-tax-file" class="cursor-pointer">
+                                            <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-3"></i>
+                                            <p class="text-gray-600 font-semibold mb-2">Click to upload CSV file</p>
+                                            <p class="text-sm text-gray-500">or drag and drop your file here</p>
+                                        </label>
+                                    </div>
+                                    
+                                    <!-- Progress/Status Area -->
+                                    <div id="option-tax-status" class="hidden mt-4">
+                                        <div class="flex items-center justify-center gap-3 text-gray-600">
+                                            <i class="fas fa-spinner fa-spin text-brand-teal"></i>
+                                            <span id="option-tax-status-text">Processing...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Future utilities can be added here -->
+                        <div class="card">
+                            <div class="text-center py-8">
+                                <i class="fas fa-wrench text-4xl text-gray-300 mb-3"></i>
+                                <p class="text-gray-500">More utilities coming soon...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- Reports Section -->
                     <!-- NEW REPORTS SECTION WITH TABS -->
                     <div id="reports-section" class="section hidden">
@@ -5598,6 +5661,166 @@ app.get('/', (c) => {
     </body>
     </html>
   `)
+})
+
+// Utility endpoint: Transform option transactions for tax reporting
+app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
+  try {
+    const formData = await c.req.formData()
+    const file = formData.get('file') as File
+    
+    if (!file) {
+      return c.json({ error: 'No file provided' }, 400)
+    }
+    
+    // Read file content
+    const content = await file.text()
+    const lines = content.split('\n')
+    
+    if (lines.length < 2) {
+      return c.json({ error: 'File is empty or invalid' }, 400)
+    }
+    
+    // Skip first line (header row in broker export), parse CSV
+    const dataLines = lines.slice(1).filter(line => line.trim())
+    
+    // Parse CSV headers and data
+    const headers = dataLines[0].split(',').map(h => h.trim().replace(/"/g, ''))
+    const rows = dataLines.slice(1).map(line => {
+      // Simple CSV parsing (handles quoted fields)
+      const values: string[] = []
+      let current = ''
+      let inQuotes = false
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i]
+        if (char === '"') {
+          inQuotes = !inQuotes
+        } else if (char === ',' && !inQuotes) {
+          values.push(current.trim())
+          current = ''
+        } else {
+          current += char
+        }
+      }
+      values.push(current.trim())
+      
+      // Create object from headers and values
+      const obj: any = {}
+      headers.forEach((header, idx) => {
+        obj[header] = values[idx] || ''
+      })
+      return obj
+    })
+    
+    // Group and transform transactions
+    const transactions: any[] = []
+    
+    rows.forEach(row => {
+      const netAmount = parseFloat(row['Net Amount'] || '0')
+      const quantity = parseFloat(row['Quantity'] || '0')
+      const grossAmount = parseFloat(row['Gross Amount'] || '0')
+      const commission = parseFloat(row['Commission'] || '0')
+      const price = parseFloat(row['Price'] || '0')
+      
+      // Extract underlying symbol (first part before space)
+      const symbol = row['Symbol'] || ''
+      const underlying = symbol.split(' ')[0] || symbol
+      
+      transactions.push({
+        date: row['Date'],
+        underlying,
+        description: row['Description'],
+        transactionType: row['Transaction Type'],
+        buy: netAmount < 0 ? Math.abs(quantity) : 0,
+        sell: netAmount > 0 ? Math.abs(quantity) : 0,
+        cost: netAmount < 0 ? Math.abs(grossAmount) + Math.abs(commission) : 0,
+        proceeds: netAmount > 0 ? Math.abs(grossAmount) - Math.abs(commission) : 0,
+        price,
+        commission: Math.abs(commission),
+        quantitySign: netAmount < 0 ? -1 : 1
+      })
+    })
+    
+    // Group by underlying, description, date, and quantity sign
+    const grouped: any = {}
+    
+    transactions.forEach(t => {
+      const key = `${t.underlying}|${t.description}|${t.date}|${t.quantitySign}`
+      if (!grouped[key]) {
+        grouped[key] = {
+          date: t.date,
+          underlying: t.underlying,
+          description: t.description,
+          buy: 0,
+          sell: 0,
+          cost: 0,
+          proceeds: 0,
+          commission: 0,
+          priceSum: 0,
+          priceCount: 0
+        }
+      }
+      grouped[key].buy += t.buy
+      grouped[key].sell += t.sell
+      grouped[key].cost += t.cost
+      grouped[key].proceeds += t.proceeds
+      grouped[key].commission += t.commission
+      grouped[key].priceSum += t.price
+      grouped[key].priceCount += 1
+    })
+    
+    // Convert to array and calculate average price
+    const groupedArray = Object.values(grouped).map((g: any) => ({
+      ...g,
+      price: g.priceCount > 0 ? g.priceSum / g.priceCount : 0
+    }))
+    
+    // Sort by underlying, then date
+    groupedArray.sort((a: any, b: any) => {
+      if (a.underlying !== b.underlying) {
+        return a.underlying.localeCompare(b.underlying)
+      }
+      return new Date(a.date).getTime() - new Date(b.date).getTime()
+    })
+    
+    // Generate output CSV
+    const outputLines = ['Date,Symbol,Description,Price,Buy,Sell,Cost,Proceeds,Commission,XCH RATE,CAD Cost,CAD Proceeds,CAD P/L']
+    
+    let currentUnderlying = ''
+    groupedArray.forEach((row: any) => {
+      if (currentUnderlying !== row.underlying) {
+        if (currentUnderlying !== '') {
+          outputLines.push('')  // Blank line between sections
+        }
+        outputLines.push(`--- ${row.underlying} ---`)
+        currentUnderlying = row.underlying
+      }
+      
+      const buyStr = row.buy > 0 ? Math.round(row.buy).toString() : ''
+      const sellStr = row.sell > 0 ? Math.round(row.sell).toString() : ''
+      const costStr = row.cost > 0 ? row.cost.toFixed(2) : ''
+      const proceedsStr = row.proceeds > 0 ? row.proceeds.toFixed(2) : ''
+      
+      outputLines.push(
+        `${row.date},${row.underlying},${row.description},${row.price.toFixed(2)},${buyStr},${sellStr},${costStr},${proceedsStr},${row.commission.toFixed(6)},,,,`
+      )
+    })
+    
+    const outputContent = outputLines.join('\n')
+    
+    // Return CSV content
+    return new Response(outputContent, {
+      headers: {
+        'Content-Type': 'text/csv',
+        'Content-Disposition': 'attachment; filename="option_tax_transform_output.csv"'
+      }
+    })
+    
+  } catch (error: any) {
+    console.error('Error transforming option tax file:', error)
+    return c.json({ error: error.message || 'Failed to transform file' }, 500)
+  }
 })
 
 export default app
