@@ -4370,6 +4370,14 @@ async function loadOptions() {
         const table = document.getElementById('options-table')
         table.innerHTML = ''
         
+        // Update table header based on strategy
+        const tableHeader = table.closest('table').querySelector('thead tr')
+        const isCoveredCallTab = currentStrategyFilter === 'COVERED_CALL'
+        
+        // Set appropriate header for last column
+        const lastHeaderCell = tableHeader.querySelector('th:last-child')
+        lastHeaderCell.textContent = isCoveredCallTab ? 'Account' : 'Actions'
+        
         if (filteredOptions.length === 0) {
             const strategyName = STRATEGY_TYPES.find(st => st.value === currentStrategyFilter)?.label || 'this strategy'
             table.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-gray-500">No open option trades found for ${strategyName}</td></tr>`
@@ -4378,6 +4386,8 @@ async function loadOptions() {
         
         filteredOptions.forEach(option => {
             const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
+            const accountDisplay = option.account_name ? `${option.account_name} (${option.account_type_name || option.account_type})` : (option.account_type || 'N/A')
+            
             table.innerHTML += `
                 <tr class="border-b border-gray-200 hover:bg-gray-50">
                     <td class="px-4 py-3">${option.trade_date}</td>
@@ -4394,7 +4404,7 @@ async function loadOptions() {
                     </td>
                     <td class="px-4 py-3 text-center">
                         ${option.strategy_type === 'COVERED_CALL' ? 
-                            '<span class="text-gray-400 text-sm italic">Managed in Stock Details</span>' :
+                            `<span class="text-gray-700 font-medium">${accountDisplay}</span>` :
                             `<button onclick="manageOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2 font-semibold" title="Manage Trade">
                                 <i class="fas fa-cog mr-1"></i>Manage
                             </button>

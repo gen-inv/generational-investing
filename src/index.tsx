@@ -2709,18 +2709,26 @@ app.get('/api/options', authMiddleware, async (c) => {
   const isOpen = c.req.query('open')
   const isClosed = c.req.query('closed')
   
-  let query = 'SELECT * FROM option_trades WHERE user_id = ?'
+  let query = `
+    SELECT 
+      ot.*,
+      a.account_name,
+      a.account_type as account_type_name
+    FROM option_trades ot
+    LEFT JOIN accounts a ON ot.account_id = a.id
+    WHERE ot.user_id = ?
+  `
   let params = [userId]
   
   if (isOpen !== undefined) {
-    query += ' AND is_open = ?'
+    query += ' AND ot.is_open = ?'
     params.push(isOpen === 'true' ? 1 : 0)
   } else if (isClosed !== undefined) {
-    query += ' AND is_open = ?'
+    query += ' AND ot.is_open = ?'
     params.push(isClosed === 'true' ? 0 : 1)
   }
   
-  query += ' ORDER BY trade_date DESC'
+  query += ' ORDER BY ot.trade_date DESC'
   
   const stmt = c.env.DB.prepare(query)
   const options = await stmt.bind(...params).all()
