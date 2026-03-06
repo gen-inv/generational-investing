@@ -3818,8 +3818,8 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
       SELECT 
         year, 
         month,
-        SUM(CASE WHEN currency = 'USD' THEN balance ELSE 0 END) as total_usd,
-        SUM(CASE WHEN currency = 'CAD' THEN balance ELSE 0 END) as total_cad,
+        SUM(CASE WHEN currency = 'USD' THEN balance ELSE balance * exchange_rate_to_usd END) as total_usd,
+        SUM(CASE WHEN currency = 'CAD' THEN balance ELSE balance * exchange_rate_to_cad END) as total_cad,
         MAX(exchange_rate_to_cad) as usd_to_cad,
         MAX(exchange_rate_to_usd) as cad_to_usd
       FROM account_balance_history
