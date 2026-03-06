@@ -8122,12 +8122,17 @@ async function changePortfolioTimeframe(timeframe) {
     }
 }
 
+// Store current display currency and metrics for toggling
+let currentTotalValueCurrency = 'CAD'
+let cachedMetrics = null
+
 // Update metrics cards
 function updateOverviewMetrics(metrics) {
-    // Total Value
-    document.getElementById('overview-total-value').textContent = formatCurrency(metrics.totalValue, 'USD')
-    document.getElementById('overview-total-value-subtitle').textContent = 
-        `CAD: ${formatCurrency(metrics.totalValueCAD, 'CAD')} | USD: ${formatCurrency(metrics.totalValueUSD, 'USD')}`
+    // Cache metrics for currency toggle
+    cachedMetrics = metrics
+    
+    // Total Value - display based on current currency preference
+    updateTotalValueDisplay()
     
     // YTD P/L
     const ytdPL = metrics.ytdPL || 0
@@ -8151,6 +8156,31 @@ function updateOverviewMetrics(metrics) {
     avgPLElement.className = `text-2xl font-bold ${avgPL >= 0 ? 'text-green-600' : 'text-red-600'}`
     document.getElementById('overview-best-trade').textContent = 
         `Best: ${formatCurrency(metrics.bestTrade || 0, 'USD')}`
+}
+
+// Update total value display based on current currency
+function updateTotalValueDisplay() {
+    if (!cachedMetrics) return
+    
+    const totalValueElement = document.getElementById('overview-total-value')
+    const subtitleElement = document.getElementById('overview-total-value-subtitle')
+    const currencyLabel = document.getElementById('overview-currency-label')
+    
+    if (currentTotalValueCurrency === 'CAD') {
+        totalValueElement.textContent = formatCurrency(cachedMetrics.totalValueCAD, 'CAD')
+        subtitleElement.textContent = `USD: ${formatCurrency(cachedMetrics.totalValueUSD, 'USD')}`
+        currencyLabel.textContent = '(CAD)'
+    } else {
+        totalValueElement.textContent = formatCurrency(cachedMetrics.totalValueUSD, 'USD')
+        subtitleElement.textContent = `CAD: ${formatCurrency(cachedMetrics.totalValueCAD, 'CAD')}`
+        currencyLabel.textContent = '(USD)'
+    }
+}
+
+// Toggle between CAD and USD display
+function toggleTotalValueCurrency() {
+    currentTotalValueCurrency = currentTotalValueCurrency === 'CAD' ? 'USD' : 'CAD'
+    updateTotalValueDisplay()
 }
 
 // Render Portfolio Value Chart (ApexCharts)

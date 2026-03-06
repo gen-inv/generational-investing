@@ -3733,7 +3733,19 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
     `).bind(currentMonth, currentYear).first() as any
     
     const usdToCad = rates?.usd_to_cad || 1.35
-    const totalValue = totalValueUSD + (totalValueCAD / usdToCad)
+    const cadToUsd = rates?.cad_to_usd || 0.74
+    
+    // Store original values
+    const originalCAD = totalValueCAD
+    const originalUSD = totalValueUSD
+    
+    // Calculate total in CAD (CAD + USD converted to CAD)
+    totalValueCAD = originalCAD + (originalUSD * usdToCad)
+    // Calculate total in USD (USD + CAD converted to USD)
+    totalValueUSD = originalUSD + (originalCAD * cadToUsd)
+    
+    const totalValue = totalValueUSD // Keep for backward compatibility
+
     
     // Get YTD P/L from all closed trades
     const stockPL = await DB.prepare(`
@@ -5352,12 +5364,12 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 
                                 <!-- Key Metrics Cards -->
                                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                                    <div class="card bg-gradient-to-br from-teal-50 to-white">
+                                    <div class="card bg-gradient-to-br from-teal-50 to-white cursor-pointer hover:shadow-lg transition-shadow" onclick="toggleTotalValueCurrency()">
                                         <div class="flex items-center justify-between">
                                             <div>
-                                                <p class="text-sm text-gray-600 font-semibold">Total Value</p>
+                                                <p class="text-sm text-gray-600 font-semibold">Total Value <span id="overview-currency-label">(CAD)</span></p>
                                                 <p class="text-2xl font-bold text-brand-teal" id="overview-total-value">$0.00</p>
-                                                <p class="text-xs text-gray-500 mt-1" id="overview-total-value-subtitle">Combined CAD + USD</p>
+                                                <p class="text-xs text-gray-500 italic mt-1" id="overview-total-value-subtitle">USD: $0.00</p>
                                             </div>
                                             <div class="text-3xl text-brand-teal opacity-20">
                                                 <i class="fas fa-wallet"></i>
