@@ -6043,7 +6043,7 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
   }
 })
 
-// Historical Balances API endpoints
+// Historical Balances API endpoints (using account_balance_history table)
 
 // Get historical balances (last 24 entries)
 app.get('/api/historical-balances', authMiddleware, async (c) => {
@@ -6052,10 +6052,10 @@ app.get('/api/historical-balances', authMiddleware, async (c) => {
     
     const result = await c.env.DB.prepare(`
       SELECT hb.*, a.account_name, a.account_type
-      FROM historical_balances hb
+      FROM account_balance_history hb
       JOIN accounts a ON hb.account_id = a.id
       WHERE hb.user_id = ?
-      ORDER BY hb.balance_date DESC, hb.created_at DESC
+      ORDER BY hb.year DESC, hb.month DESC, hb.created_at DESC
       LIMIT 24
     `).bind(userId).all()
     
@@ -6072,39 +6072,30 @@ app.post('/api/historical-balances', authMiddleware, async (c) => {
     const userId = c.get('userId')
     const body = await c.req.json()
     
-    const { account_id, balance_date, currency, entered_amount, exchange_rate } = body
+    const { account_id, month, year, currency, balance, exchange_rate_to_cad } = body
     
     // Validate required fields
-    if (!account_id || !balance_date || !currency || entered_amount === undefined || !exchange_rate) {
+    if (!account_id || !month || !year || !currency || balance === undefined || !exchange_rate_to_cad) {
       return c.json({ error: 'Missing required fields' }, 400)
     }
     
-    // Calculate both USD and CAD balances
-    let usd_balance: number
-    let cad_balance: number
-    
-    if (currency === 'USD') {
-      usd_balance = parseFloat(entered_amount)
-      cad_balance = usd_balance * parseFloat(exchange_rate)
-    } else {
-      cad_balance = parseFloat(entered_amount)
-      usd_balance = cad_balance / parseFloat(exchange_rate)
-    }
+    const exchange_rate_to_usd = 1 / parseFloat(exchange_rate_to_cad)
     
     // Insert or replace (UPSERT)
     await c.env.DB.prepare(`
-      INSERT OR REPLACE INTO historical_balances 
-      (user_id, account_id, balance_date, currency, entered_amount, exchange_rate, usd_balance, cad_balance, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT OR REPLACE INTO account_balance_history 
+      (user_id, account_id, balance, cash_balance, currency, month, year, exchange_rate_to_usd, exchange_rate_to_cad)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       userId,
       account_id,
-      balance_date,
+      balance,
+      0, // cash_balance - set to 0 for manual entries
       currency,
-      entered_amount,
-      exchange_rate,
-      usd_balance,
-      cad_balance
+      month,
+      year,
+      exchange_rate_to_usd,
+      exchange_rate_to_cad
     ).run()
     
     return c.json({ success: true })
@@ -6121,39 +6112,29 @@ app.put('/api/historical-balances/:id', authMiddleware, async (c) => {
     const id = c.req.param('id')
     const body = await c.req.json()
     
-    const { account_id, balance_date, currency, entered_amount, exchange_rate } = body
+    const { account_id, month, year, currency, balance, exchange_rate_to_cad } = body
     
     // Validate required fields
-    if (!account_id || !balance_date || !currency || entered_amount === undefined || !exchange_rate) {
+    if (!account_id || !month || !year || !currency || balance === undefined || !exchange_rate_to_cad) {
       return c.json({ error: 'Missing required fields' }, 400)
     }
     
-    // Calculate both USD and CAD balances
-    let usd_balance: number
-    let cad_balance: number
-    
-    if (currency === 'USD') {
-      usd_balance = parseFloat(entered_amount)
-      cad_balance = usd_balance * parseFloat(exchange_rate)
-    } else {
-      cad_balance = parseFloat(entered_amount)
-      usd_balance = cad_balance / parseFloat(exchange_rate)
-    }
+    const exchange_rate_to_usd = 1 / parseFloat(exchange_rate_to_cad)
     
     // Update the balance
     await c.env.DB.prepare(`
-      UPDATE historical_balances 
-      SET account_id = ?, balance_date = ?, currency = ?, entered_amount = ?, 
-          exchange_rate = ?, usd_balance = ?, cad_balance = ?, updated_at = CURRENT_TIMESTAMP
+      UPDATE account_balance_history 
+      SET account_id = ?, month = ?, year = ?, currency = ?, balance = ?, 
+          exchange_rate_to_usd = ?, exchange_rate_to_cad = ?
       WHERE id = ? AND user_id = ?
     `).bind(
       account_id,
-      balance_date,
+      month,
+      year,
       currency,
-      entered_amount,
-      exchange_rate,
-      usd_balance,
-      cad_balance,
+      balance,
+      exchange_rate_to_usd,
+      exchange_rate_to_cad,
       id,
       userId
     ).run()
@@ -6172,7 +6153,7 @@ app.delete('/api/historical-balances/:id', authMiddleware, async (c) => {
     const id = c.req.param('id')
     
     await c.env.DB.prepare(`
-      DELETE FROM historical_balances WHERE id = ? AND user_id = ?
+      DELETE FROM account_balance_history WHERE id = ? AND user_id = ?
     `).bind(id, userId).run()
     
     return c.json({ success: true })

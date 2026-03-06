@@ -8483,18 +8483,26 @@ async function loadHistoricalBalances() {
         }
         
         tbody.innerHTML = balances.map(balance => {
-            const date = balance.balance_date.substring(0, 7) // YYYY-MM
-            const usd = parseFloat(balance.usd_balance).toFixed(2)
-            const cad = parseFloat(balance.cad_balance).toFixed(2)
-            const amount = parseFloat(balance.entered_amount).toFixed(2)
-            const rate = parseFloat(balance.exchange_rate).toFixed(6)
+            const date = `${balance.year}-${String(balance.month).padStart(2, '0')}`
+            const balanceAmount = parseFloat(balance.balance).toFixed(2)
+            const rate = parseFloat(balance.exchange_rate_to_cad).toFixed(6)
+            
+            // Calculate USD and CAD balances
+            let usd, cad
+            if (balance.currency === 'USD') {
+                usd = balanceAmount
+                cad = (parseFloat(balance.balance) * balance.exchange_rate_to_cad).toFixed(2)
+            } else {
+                cad = balanceAmount
+                usd = (parseFloat(balance.balance) * balance.exchange_rate_to_usd).toFixed(2)
+            }
             
             return `
                 <tr class="border-t border-gray-200 hover:bg-gray-50">
                     <td class="px-4 py-2 text-sm">${date}</td>
                     <td class="px-4 py-2 text-sm">${balance.account_name}</td>
                     <td class="px-4 py-2 text-sm">${balance.currency}</td>
-                    <td class="px-4 py-2 text-sm text-right">$${amount}</td>
+                    <td class="px-4 py-2 text-sm text-right">$${balanceAmount}</td>
                     <td class="px-4 py-2 text-sm text-right">${rate}</td>
                     <td class="px-4 py-2 text-sm text-right">$${usd}</td>
                     <td class="px-4 py-2 text-sm text-right">$${cad}</td>
@@ -8568,8 +8576,8 @@ async function saveHistoricalBalance() {
             return
         }
         
-        // Convert YYYY-MM to YYYY-MM-01 for storage
-        const storage_date = balance_date + '-01'
+        // Parse month and year from YYYY-MM format
+        const [year, month] = balance_date.split('-').map(n => parseInt(n))
         
         const method = edit_id ? 'PUT' : 'POST'
         const url = edit_id ? `/api/historical-balances/${edit_id}` : '/api/historical-balances'
@@ -8582,10 +8590,11 @@ async function saveHistoricalBalance() {
             },
             body: JSON.stringify({
                 account_id,
-                balance_date: storage_date,
+                month,
+                year,
                 currency,
-                entered_amount,
-                exchange_rate
+                balance: parseFloat(entered_amount),
+                exchange_rate_to_cad: parseFloat(exchange_rate)
             })
         })
         
@@ -8622,10 +8631,11 @@ async function editHistoricalBalance(id) {
         
         // Populate form
         document.getElementById('hist-balance-account').value = balance.account_id
-        document.getElementById('hist-balance-date').value = balance.balance_date.substring(0, 7) // YYYY-MM
+        const monthStr = String(balance.month).padStart(2, '0')
+        document.getElementById('hist-balance-date').value = `${balance.year}-${monthStr}` // YYYY-MM
         document.getElementById('hist-balance-currency').value = balance.currency
-        document.getElementById('hist-balance-amount').value = balance.entered_amount
-        document.getElementById('hist-balance-rate').value = balance.exchange_rate
+        document.getElementById('hist-balance-amount').value = balance.balance
+        document.getElementById('hist-balance-rate').value = balance.exchange_rate_to_cad
         document.getElementById('hist-balance-edit-id').value = balance.id
         
         calculateHistoricalBalance()
