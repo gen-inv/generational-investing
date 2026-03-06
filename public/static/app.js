@@ -407,8 +407,8 @@ function showSection(sectionName) {
             if (statusDiv) {
                 statusDiv.classList.add('hidden')
             }
-            // Load historical balances
-            loadHistoricalBalances()
+            // Show the default tab (option-tax)
+            showUtilityTab('option-tax')
             break
     }
 }
@@ -8449,13 +8449,15 @@ async function loadHistoricalBalances() {
         if (accountsResponse.ok) {
             const accounts = await accountsResponse.json()
             const select = document.getElementById('hist-balance-account')
-            select.innerHTML = '<option value="">Select Account...</option>'
-            accounts.forEach(account => {
-                const option = document.createElement('option')
-                option.value = account.id
-                option.textContent = `${account.account_name} (${account.account_type})`
-                select.appendChild(option)
-            })
+            if (select) {
+                select.innerHTML = '<option value="">Select Account...</option>'
+                accounts.forEach(account => {
+                    const option = document.createElement('option')
+                    option.value = account.id
+                    option.textContent = `${account.account_name} (${account.account_type})`
+                    select.appendChild(option)
+                })
+            }
         }
         
         // Load historical balances
@@ -8465,10 +8467,15 @@ async function loadHistoricalBalances() {
             }
         })
         
-        if (!response.ok) throw new Error('Failed to load historical balances')
+        if (!response.ok) {
+            const error = await response.json()
+            throw new Error(error.error || 'Failed to load historical balances')
+        }
         
         const balances = await response.json()
         const tbody = document.getElementById('historical-balances-table')
+        
+        if (!tbody) return  // Element not found
         
         if (balances.length === 0) {
             tbody.innerHTML = `
@@ -8685,3 +8692,48 @@ function clearHistoricalBalanceForm() {
     document.getElementById('hist-balance-edit-id').value = ''
 }
 
+earHistoricalBalanceForm() {
+    document.getElementById('hist-balance-account').value = ''
+    document.getElementById('hist-balance-date').value = ''
+    document.getElementById('hist-balance-currency').value = 'USD'
+    document.getElementById('hist-balance-amount').value = ''
+    document.getElementById('hist-balance-rate').value = ''
+    document.getElementById('hist-balance-calculated').value = ''
+    document.getElementById('hist-balance-edit-id').value = ''
+}
+
+
+// ============================================================================
+// UTILITIES TAB SWITCHING
+// ============================================================================
+
+function showUtilityTab(tabName) {
+    // Hide all utility content
+    document.querySelectorAll('.utility-content').forEach(content => {
+        content.classList.add('hidden')
+    })
+    
+    // Remove active class from all tabs
+    document.querySelectorAll('.utility-tab').forEach(tab => {
+        tab.classList.remove('active', 'border-brand-teal', 'text-brand-teal')
+        tab.classList.add('text-gray-600', 'border-transparent')
+    })
+    
+    // Show selected content
+    const content = document.getElementById(`${tabName}-utility`)
+    if (content) {
+        content.classList.remove('hidden')
+    }
+    
+    // Add active class to selected tab
+    const activeTab = document.querySelector(`[data-utility-tab="${tabName}"]`)
+    if (activeTab) {
+        activeTab.classList.add('active', 'border-brand-teal', 'text-brand-teal')
+        activeTab.classList.remove('text-gray-600', 'border-transparent')
+    }
+    
+    // Load data if switching to historical balances
+    if (tabName === 'historical-balances') {
+        loadHistoricalBalances()
+    }
+}

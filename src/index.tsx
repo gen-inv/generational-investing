@@ -4080,6 +4080,10 @@ app.get('/', (c) => {
             .nav-link:hover, .nav-link.active {
                 background-color: rgba(255, 255, 255, 0.1);
             }
+            .utility-tab.active {
+                color: var(--teal);
+                border-bottom-color: var(--teal);
+            }
             .hidden { display: none; }
         </style>
     </head>
@@ -5033,7 +5037,22 @@ app.get('/', (c) => {
                             </h2>
                         </div>
                         
+                        <!-- Utilities Tabs -->
+                        <div class="mb-6">
+                            <div class="border-b border-gray-200">
+                                <nav class="flex gap-4">
+                                    <button onclick="showUtilityTab('option-tax')" data-utility-tab="option-tax" class="utility-tab px-4 py-3 font-semibold text-gray-600 border-b-2 border-transparent hover:text-brand-teal hover:border-brand-teal transition-colors active">
+                                        <i class="fas fa-file-invoice-dollar mr-2"></i>Option Tax Transform
+                                    </button>
+                                    <button onclick="showUtilityTab('historical-balances')" data-utility-tab="historical-balances" class="utility-tab px-4 py-3 font-semibold text-gray-600 border-b-2 border-transparent hover:text-brand-teal hover:border-brand-teal transition-colors">
+                                        <i class="fas fa-history mr-2"></i>Historical Balances
+                                    </button>
+                                </nav>
+                            </div>
+                        </div>
+                        
                         <!-- Option Tax Transform Tool -->
+                        <div id="option-tax-utility" class="utility-content">
                         <div class="card mb-6">
                             <div class="flex items-start gap-4 mb-4">
                                 <div class="bg-brand-teal text-white p-3 rounded-lg">
@@ -5092,8 +5111,10 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 </div>
                             </div>
                         </div>
+                        </div>
                         
                         <!-- Historical Account Balances Tool -->
+                        <div id="historical-balances-utility" class="utility-content hidden">
                         <div class="card mb-6">
                             <div class="flex items-start gap-4 mb-4">
                                 <div class="bg-brand-teal text-white p-3 rounded-lg">
@@ -5192,6 +5213,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                     </div>
                                 </div>
                             </div>
+                        </div>
                         </div>
                     </div>
                     
