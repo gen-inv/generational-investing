@@ -8145,7 +8145,7 @@ function renderPortfolioValueChart(portfolioData) {
             curve: 'smooth',
             width: 3
         },
-        colors: ['#10B981', '#0D9488'],
+        colors: ['#10B981', '#000000'],  // Green for USD, Black for CAD
         markers: {
             size: 5,
             hover: {
@@ -8189,7 +8189,7 @@ function renderPortfolioValueChart(portfolioData) {
                         '<span style="margin-left: auto; font-weight: 600; color: #111827;">$' + usdValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>' +
                     '</div>' +
                     '<div style="display: flex; align-items: center; margin-bottom: 8px;">' +
-                        '<span style="width: 12px; height: 12px; background: #0D9488; border-radius: 50%; margin-right: 8px;"></span>' +
+                        '<span style="width: 12px; height: 12px; background: #000000; border-radius: 50%; margin-right: 8px;"></span>' +
                         '<span style="color: #6B7280;">CAD:</span>' +
                         '<span style="margin-left: auto; font-weight: 600; color: #111827;">$' + cadValue.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</span>' +
                     '</div>' +
