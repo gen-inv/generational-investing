@@ -8439,6 +8439,23 @@ async function handleOptionTaxFileUpload(event) {
 // Load historical balances when utilities section is shown
 async function loadHistoricalBalances() {
     try {
+        // Check if user is logged in
+        const token = localStorage.getItem('token')
+        if (!token) {
+            const tbody = document.getElementById('historical-balances-table')
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                            <i class="fas fa-lock text-3xl mb-2"></i>
+                            <p class="font-semibold">Please log in to view historical balances</p>
+                        </td>
+                    </tr>
+                `
+            }
+            return
+        }
+        
         // Load accounts for dropdown
         const accountsResponse = await fetch('/api/accounts', {
             headers: {
@@ -8469,6 +8486,10 @@ async function loadHistoricalBalances() {
         
         if (!response.ok) {
             const error = await response.json()
+            // If it's an auth error, provide specific message
+            if (response.status === 401) {
+                throw new Error('Please log in to view historical balances')
+            }
             throw new Error(error.error || 'Failed to load historical balances')
         }
         
@@ -8527,7 +8548,19 @@ async function loadHistoricalBalances() {
         
     } catch (error) {
         console.error('Error loading historical balances:', error)
-        alert('Failed to load historical balances')
+        const tbody = document.getElementById('historical-balances-table')
+        if (tbody) {
+            // Show error message in table instead of alert
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-orange-500">
+                        <i class="fas fa-exclamation-triangle text-3xl mb-2"></i>
+                        <p class="font-semibold">Unable to load historical balances</p>
+                        <p class="text-sm mt-2 text-gray-600">Please ensure you're logged in and try refreshing the page</p>
+                    </td>
+                </tr>
+            `
+        }
     }
 }
 
