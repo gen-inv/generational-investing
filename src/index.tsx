@@ -3812,7 +3812,18 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
       })
     }
     
-    // Generate portfolio value history - get actual available data, trailing 12 months
+    // Generate portfolio value history - get actual available data based on timeframe
+    const timeframe = c.req.query('timeframe') || '12months'
+    let limit = 12
+    let whereClause = 'WHERE user_id = ?'
+    
+    if (timeframe === 'ytd') {
+      whereClause = `WHERE user_id = ? AND year = ${currentYear}`
+      limit = 12
+    } else if (timeframe === 'all') {
+      limit = 999 // Get all available data
+    }
+    
     // Query to get USD and CAD totals separately for each month
     const { results: availableMonths } = await DB.prepare(`
       SELECT 
@@ -3823,10 +3834,10 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
         MAX(exchange_rate_to_cad) as usd_to_cad,
         MAX(exchange_rate_to_usd) as cad_to_usd
       FROM account_balance_history
-      WHERE user_id = ?
+      ${whereClause}
       GROUP BY year, month
       ORDER BY year DESC, month DESC
-      LIMIT 12
+      LIMIT ${limit}
     `).bind(userId).all() as any
     
     // Build portfolio value array from available data
@@ -5390,10 +5401,23 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 
                                 <!-- Portfolio Value Chart -->
                                 <div class="card mb-6">
-                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
-                                        <i class="fas fa-chart-area text-brand-teal mr-2"></i>
-                                        Portfolio Value Trend (Last 12 Months)
-                                    </h4>
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h4 class="text-lg font-bold text-gray-800">
+                                            <i class="fas fa-chart-area text-brand-teal mr-2"></i>
+                                            Portfolio Value Trend
+                                        </h4>
+                                        <div class="flex gap-2">
+                                            <button onclick="changePortfolioTimeframe('ytd')" data-timeframe="ytd" class="portfolio-timeframe-btn px-3 py-1 text-sm font-semibold border border-gray-300 rounded hover:bg-brand-teal hover:text-white hover:border-brand-teal transition-colors">
+                                                YTD
+                                            </button>
+                                            <button onclick="changePortfolioTimeframe('12months')" data-timeframe="12months" class="portfolio-timeframe-btn px-3 py-1 text-sm font-semibold border border-gray-300 rounded bg-brand-teal text-white border-brand-teal">
+                                                Last 12 Months
+                                            </button>
+                                            <button onclick="changePortfolioTimeframe('all')" data-timeframe="all" class="portfolio-timeframe-btn px-3 py-1 text-sm font-semibold border border-gray-300 rounded hover:bg-brand-teal hover:text-white hover:border-brand-teal transition-colors">
+                                                All Time
+                                            </button>
+                                        </div>
+                                    </div>
                                     <div id="overview-portfolio-chart" style="height: 350px;"></div>
                                 </div>
                                 

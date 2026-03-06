@@ -8054,10 +8054,10 @@ function showReportTab(tabName) {
 }
 
 // Portfolio Overview - Main function
-async function loadPortfolioOverview() {
+async function loadPortfolioOverview(timeframe = '12months') {
     try {
         // Fetch portfolio overview data from backend
-        const response = await api.get('/api/reports/portfolio-overview')
+        const response = await api.get(`/api/reports/portfolio-overview?timeframe=${timeframe}`)
         const data = response.data
         
         // Update key metrics cards
@@ -8072,6 +8072,25 @@ async function loadPortfolioOverview() {
         console.error('Error loading portfolio overview:', error)
         showNotification('Failed to load portfolio overview', 'error')
     }
+}
+
+// Change portfolio value chart timeframe
+function changePortfolioTimeframe(timeframe) {
+    // Update button states
+    const buttons = document.querySelectorAll('.portfolio-timeframe-btn')
+    buttons.forEach(btn => {
+        const btnTimeframe = btn.getAttribute('data-timeframe')
+        if (btnTimeframe === timeframe) {
+            btn.classList.add('bg-brand-teal', 'text-white', 'border-brand-teal')
+            btn.classList.remove('bg-white', 'text-gray-700')
+        } else {
+            btn.classList.remove('bg-brand-teal', 'text-white', 'border-brand-teal')
+            btn.classList.add('bg-white', 'text-gray-700')
+        }
+    })
+    
+    // Reload data with new timeframe
+    loadPortfolioOverview(timeframe)
 }
 
 // Update metrics cards
@@ -8170,7 +8189,7 @@ function renderPortfolioValueChart(portfolioData) {
         },
         legend: {
             position: 'top',
-            horizontalAlign: 'right'
+            horizontalAlign: 'center'
         },
         tooltip: {
             shared: true,
