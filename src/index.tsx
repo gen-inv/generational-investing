@@ -5093,11 +5093,104 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                             </div>
                         </div>
                         
-                        <!-- Future utilities can be added here -->
-                        <div class="card">
-                            <div class="text-center py-8">
-                                <i class="fas fa-wrench text-4xl text-gray-300 mb-3"></i>
-                                <p class="text-gray-500">More utilities coming soon...</p>
+                        <!-- Historical Account Balances Tool -->
+                        <div class="card mb-6">
+                            <div class="flex items-start gap-4 mb-4">
+                                <div class="bg-brand-teal text-white p-3 rounded-lg">
+                                    <i class="fas fa-history text-2xl"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <h3 class="text-xl font-bold text-gray-800 mb-2">Historical Account Balances</h3>
+                                    <p class="text-gray-600 mb-4">Track account balances over time for portfolio performance analysis and growth charts.</p>
+                                    
+                                    <!-- Add Balance Form -->
+                                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                        <h4 class="font-semibold text-blue-900 mb-3">
+                                            <i class="fas fa-plus-circle mr-2"></i>Add Historical Balance
+                                        </h4>
+                                        
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-semibold text-gray-700 mb-2">Account</label>
+                                                <select id="hist-balance-account" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal">
+                                                    <option value="">Select Account...</option>
+                                                </select>
+                                            </div>
+                                            
+                                            <div>
+                                                <label class="block text-sm font-semibold text-gray-700 mb-2">Month/Year</label>
+                                                <input type="month" id="hist-balance-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal">
+                                            </div>
+                                            
+                                            <div>
+                                                <label class="block text-sm font-semibold text-gray-700 mb-2">Currency</label>
+                                                <select id="hist-balance-currency" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" onchange="calculateHistoricalBalance()">
+                                                    <option value="USD">USD</option>
+                                                    <option value="CAD">CAD</option>
+                                                </select>
+                                            </div>
+                                            
+                                            <div>
+                                                <label class="block text-sm font-semibold text-gray-700 mb-2">Balance Amount</label>
+                                                <input type="number" id="hist-balance-amount" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" oninput="calculateHistoricalBalance()">
+                                            </div>
+                                            
+                                            <div>
+                                                <label class="block text-sm font-semibold text-gray-700 mb-2">Exchange Rate</label>
+                                                <input type="number" id="hist-balance-rate" step="0.000001" placeholder="1.35" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" oninput="calculateHistoricalBalance()">
+                                                <p class="text-xs text-gray-500 mt-1">CAD per 1 USD</p>
+                                            </div>
+                                            
+                                            <div>
+                                                <label class="block text-sm font-semibold text-gray-700 mb-2">Calculated Balance</label>
+                                                <input type="text" id="hist-balance-calculated" readonly class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700">
+                                                <p class="text-xs text-gray-500 mt-1" id="hist-balance-calculated-label">USD Balance</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="mt-4 flex gap-3">
+                                            <button onclick="saveHistoricalBalance()" class="px-6 py-2 bg-brand-teal text-white rounded-lg font-semibold hover:bg-teal-700">
+                                                <i class="fas fa-save mr-2"></i>Save Balance
+                                            </button>
+                                            <button onclick="clearHistoricalBalanceForm()" class="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-400">
+                                                <i class="fas fa-times mr-2"></i>Clear
+                                            </button>
+                                        </div>
+                                        
+                                        <input type="hidden" id="hist-balance-edit-id">
+                                    </div>
+                                    
+                                    <!-- Historical Balances Table -->
+                                    <div class="bg-gray-50 border border-gray-300 rounded-lg p-4">
+                                        <h4 class="font-semibold text-gray-800 mb-3">
+                                            <i class="fas fa-list mr-2"></i>Recent Historical Balances (Last 24 Entries)
+                                        </h4>
+                                        <div class="overflow-x-auto">
+                                            <table class="min-w-full bg-white border border-gray-200 rounded-lg">
+                                                <thead class="bg-gray-100">
+                                                    <tr>
+                                                        <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Date</th>
+                                                        <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Account</th>
+                                                        <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Currency</th>
+                                                        <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">Amount</th>
+                                                        <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">Rate</th>
+                                                        <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">USD</th>
+                                                        <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">CAD</th>
+                                                        <th class="px-4 py-2 text-center text-sm font-semibold text-gray-700">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="historical-balances-table">
+                                                    <tr>
+                                                        <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                                                            <i class="fas fa-inbox text-3xl mb-2"></i>
+                                                            <p>No historical balances yet</p>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -5947,6 +6040,145 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
   } catch (error: any) {
     console.error('Error transforming option tax file:', error)
     return c.json({ error: error.message || 'Failed to transform file' }, 500)
+  }
+})
+
+// Historical Balances API endpoints
+
+// Get historical balances (last 24 entries)
+app.get('/api/historical-balances', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    
+    const result = await c.env.DB.prepare(`
+      SELECT hb.*, a.account_name, a.account_type
+      FROM historical_balances hb
+      JOIN accounts a ON hb.account_id = a.id
+      WHERE hb.user_id = ?
+      ORDER BY hb.balance_date DESC, hb.created_at DESC
+      LIMIT 24
+    `).bind(userId).all()
+    
+    return c.json(result.results || [])
+  } catch (error: any) {
+    console.error('Error fetching historical balances:', error)
+    return c.json({ error: 'Failed to fetch historical balances' }, 500)
+  }
+})
+
+// Create historical balance
+app.post('/api/historical-balances', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const body = await c.req.json()
+    
+    const { account_id, balance_date, currency, entered_amount, exchange_rate } = body
+    
+    // Validate required fields
+    if (!account_id || !balance_date || !currency || entered_amount === undefined || !exchange_rate) {
+      return c.json({ error: 'Missing required fields' }, 400)
+    }
+    
+    // Calculate both USD and CAD balances
+    let usd_balance: number
+    let cad_balance: number
+    
+    if (currency === 'USD') {
+      usd_balance = parseFloat(entered_amount)
+      cad_balance = usd_balance * parseFloat(exchange_rate)
+    } else {
+      cad_balance = parseFloat(entered_amount)
+      usd_balance = cad_balance / parseFloat(exchange_rate)
+    }
+    
+    // Insert or replace (UPSERT)
+    await c.env.DB.prepare(`
+      INSERT OR REPLACE INTO historical_balances 
+      (user_id, account_id, balance_date, currency, entered_amount, exchange_rate, usd_balance, cad_balance, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).bind(
+      userId,
+      account_id,
+      balance_date,
+      currency,
+      entered_amount,
+      exchange_rate,
+      usd_balance,
+      cad_balance
+    ).run()
+    
+    return c.json({ success: true })
+  } catch (error: any) {
+    console.error('Error creating historical balance:', error)
+    return c.json({ error: error.message || 'Failed to create historical balance' }, 500)
+  }
+})
+
+// Update historical balance
+app.put('/api/historical-balances/:id', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const id = c.req.param('id')
+    const body = await c.req.json()
+    
+    const { account_id, balance_date, currency, entered_amount, exchange_rate } = body
+    
+    // Validate required fields
+    if (!account_id || !balance_date || !currency || entered_amount === undefined || !exchange_rate) {
+      return c.json({ error: 'Missing required fields' }, 400)
+    }
+    
+    // Calculate both USD and CAD balances
+    let usd_balance: number
+    let cad_balance: number
+    
+    if (currency === 'USD') {
+      usd_balance = parseFloat(entered_amount)
+      cad_balance = usd_balance * parseFloat(exchange_rate)
+    } else {
+      cad_balance = parseFloat(entered_amount)
+      usd_balance = cad_balance / parseFloat(exchange_rate)
+    }
+    
+    // Update the balance
+    await c.env.DB.prepare(`
+      UPDATE historical_balances 
+      SET account_id = ?, balance_date = ?, currency = ?, entered_amount = ?, 
+          exchange_rate = ?, usd_balance = ?, cad_balance = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      account_id,
+      balance_date,
+      currency,
+      entered_amount,
+      exchange_rate,
+      usd_balance,
+      cad_balance,
+      id,
+      userId
+    ).run()
+    
+    return c.json({ success: true })
+  } catch (error: any) {
+    console.error('Error updating historical balance:', error)
+    return c.json({ error: error.message || 'Failed to update historical balance' }, 500)
+  }
+})
+
+// Delete historical balance
+app.delete('/api/historical-balances/:id', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const id = c.req.param('id')
+    
+    await c.env.DB.prepare(`
+      DELETE FROM historical_balances WHERE id = ? AND user_id = ?
+    `).bind(id, userId).run()
+    
+    return c.json({ success: true })
+  } catch (error: any) {
+    console.error('Error deleting historical balance:', error)
+    return c.json({ error: 'Failed to delete historical balance' }, 500)
   }
 })
 

@@ -407,6 +407,8 @@ function showSection(sectionName) {
             if (statusDiv) {
                 statusDiv.classList.add('hidden')
             }
+            // Load historical balances
+            loadHistoricalBalances()
             break
     }
 }
@@ -8428,5 +8430,248 @@ async function handleOptionTaxFileUpload(event) {
             event.target.value = ''  // Clear file input again
         }, 5000)
     }
+}
+
+// ============================================================================
+// HISTORICAL BALANCES FUNCTIONS
+// ============================================================================
+
+// Load historical balances when utilities section is shown
+async function loadHistoricalBalances() {
+    try {
+        // Load accounts for dropdown
+        const accountsResponse = await fetch('/api/accounts', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        })
+        
+        if (accountsResponse.ok) {
+            const accounts = await accountsResponse.json()
+            const select = document.getElementById('hist-balance-account')
+            select.innerHTML = '<option value="">Select Account...</option>'
+            accounts.forEach(account => {
+                const option = document.createElement('option')
+                option.value = account.id
+                option.textContent = `${account.account_name} (${account.account_type})`
+                select.appendChild(option)
+            })
+        }
+        
+        // Load historical balances
+        const response = await fetch('/api/historical-balances', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        })
+        
+        if (!response.ok) throw new Error('Failed to load historical balances')
+        
+        const balances = await response.json()
+        const tbody = document.getElementById('historical-balances-table')
+        
+        if (balances.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                        <i class="fas fa-inbox text-3xl mb-2"></i>
+                        <p>No historical balances yet</p>
+                    </td>
+                </tr>
+            `
+            return
+        }
+        
+        tbody.innerHTML = balances.map(balance => {
+            const date = balance.balance_date.substring(0, 7) // YYYY-MM
+            const usd = parseFloat(balance.usd_balance).toFixed(2)
+            const cad = parseFloat(balance.cad_balance).toFixed(2)
+            const amount = parseFloat(balance.entered_amount).toFixed(2)
+            const rate = parseFloat(balance.exchange_rate).toFixed(6)
+            
+            return `
+                <tr class="border-t border-gray-200 hover:bg-gray-50">
+                    <td class="px-4 py-2 text-sm">${date}</td>
+                    <td class="px-4 py-2 text-sm">${balance.account_name}</td>
+                    <td class="px-4 py-2 text-sm">${balance.currency}</td>
+                    <td class="px-4 py-2 text-sm text-right">$${amount}</td>
+                    <td class="px-4 py-2 text-sm text-right">${rate}</td>
+                    <td class="px-4 py-2 text-sm text-right">$${usd}</td>
+                    <td class="px-4 py-2 text-sm text-right">$${cad}</td>
+                    <td class="px-4 py-2 text-center">
+                        <button onclick="editHistoricalBalance(${balance.id})" class="text-blue-600 hover:text-blue-800 mx-1" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick="deleteHistoricalBalance(${balance.id})" class="text-red-600 hover:text-red-800 mx-1" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `
+        }).join('')
+        
+    } catch (error) {
+        console.error('Error loading historical balances:', error)
+        alert('Failed to load historical balances')
+    }
+}
+
+// Calculate the other currency balance
+function calculateHistoricalBalance() {
+    const currency = document.getElementById('hist-balance-currency').value
+    const amount = parseFloat(document.getElementById('hist-balance-amount').value) || 0
+    const rate = parseFloat(document.getElementById('hist-balance-rate').value) || 0
+    
+    const calculatedInput = document.getElementById('hist-balance-calculated')
+    const calculatedLabel = document.getElementById('hist-balance-calculated-label')
+    
+    if (amount && rate) {
+        if (currency === 'USD') {
+            const cad = (amount * rate).toFixed(2)
+            calculatedInput.value = `$${cad}`
+            calculatedLabel.textContent = 'CAD Balance'
+        } else {
+            const usd = (amount / rate).toFixed(2)
+            calculatedInput.value = `$${usd}`
+            calculatedLabel.textContent = 'USD Balance'
+        }
+    } else {
+        calculatedInput.value = ''
+    }
+}
+
+// Save historical balance
+async function saveHistoricalBalance() {
+    try {
+        const account_id = document.getElementById('hist-balance-account').value
+        const balance_date = document.getElementById('hist-balance-date').value
+        const currency = document.getElementById('hist-balance-currency').value
+        const entered_amount = document.getElementById('hist-balance-amount').value
+        const exchange_rate = document.getElementById('hist-balance-rate').value
+        const edit_id = document.getElementById('hist-balance-edit-id').value
+        
+        // Validate
+        if (!account_id) {
+            alert('Please select an account')
+            return
+        }
+        if (!balance_date) {
+            alert('Please select a month/year')
+            return
+        }
+        if (!entered_amount || parseFloat(entered_amount) <= 0) {
+            alert('Please enter a valid balance amount')
+            return
+        }
+        if (!exchange_rate || parseFloat(exchange_rate) <= 0) {
+            alert('Please enter a valid exchange rate')
+            return
+        }
+        
+        // Convert YYYY-MM to YYYY-MM-01 for storage
+        const storage_date = balance_date + '-01'
+        
+        const method = edit_id ? 'PUT' : 'POST'
+        const url = edit_id ? `/api/historical-balances/${edit_id}` : '/api/historical-balances'
+        
+        const response = await fetch(url, {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                account_id,
+                balance_date: storage_date,
+                currency,
+                entered_amount,
+                exchange_rate
+            })
+        })
+        
+        if (!response.ok) {
+            const error = await response.json()
+            throw new Error(error.error || 'Failed to save balance')
+        }
+        
+        alert(edit_id ? 'Balance updated successfully!' : 'Balance saved successfully!')
+        clearHistoricalBalanceForm()
+        loadHistoricalBalances()
+        
+    } catch (error) {
+        console.error('Error saving historical balance:', error)
+        alert(error.message)
+    }
+}
+
+// Edit historical balance
+async function editHistoricalBalance(id) {
+    try {
+        const response = await fetch('/api/historical-balances', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        })
+        
+        if (!response.ok) throw new Error('Failed to load balance')
+        
+        const balances = await response.json()
+        const balance = balances.find(b => b.id === id)
+        
+        if (!balance) throw new Error('Balance not found')
+        
+        // Populate form
+        document.getElementById('hist-balance-account').value = balance.account_id
+        document.getElementById('hist-balance-date').value = balance.balance_date.substring(0, 7) // YYYY-MM
+        document.getElementById('hist-balance-currency').value = balance.currency
+        document.getElementById('hist-balance-amount').value = balance.entered_amount
+        document.getElementById('hist-balance-rate').value = balance.exchange_rate
+        document.getElementById('hist-balance-edit-id').value = balance.id
+        
+        calculateHistoricalBalance()
+        
+        // Scroll to form
+        document.querySelector('.bg-blue-50').scrollIntoView({ behavior: 'smooth' })
+        
+    } catch (error) {
+        console.error('Error editing historical balance:', error)
+        alert('Failed to load balance for editing')
+    }
+}
+
+// Delete historical balance
+async function deleteHistoricalBalance(id) {
+    if (!confirm('Are you sure you want to delete this historical balance entry?')) {
+        return
+    }
+    
+    try {
+        const response = await fetch(`/api/historical-balances/${id}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        })
+        
+        if (!response.ok) throw new Error('Failed to delete balance')
+        
+        alert('Balance deleted successfully!')
+        loadHistoricalBalances()
+        
+    } catch (error) {
+        console.error('Error deleting historical balance:', error)
+        alert('Failed to delete balance')
+    }
+}
+
+// Clear historical balance form
+function clearHistoricalBalanceForm() {
+    document.getElementById('hist-balance-account').value = ''
+    document.getElementById('hist-balance-date').value = ''
+    document.getElementById('hist-balance-currency').value = 'USD'
+    document.getElementById('hist-balance-amount').value = ''
+    document.getElementById('hist-balance-rate').value = ''
+    document.getElementById('hist-balance-calculated').value = ''
+    document.getElementById('hist-balance-edit-id').value = ''
 }
 
