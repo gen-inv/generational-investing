@@ -6814,6 +6814,9 @@ async function loadRecentTrades() {
             return trade.trade_date >= startDate && !trade.is_open
         })
         
+        // Calculate current week (Mon-Fri) P/L
+        calculateWeeklyPL(allTrades)
+        
         const tbody = document.getElementById('dt-recent-trades-tbody')
         
         if (recentTrades.length === 0) {
@@ -6866,6 +6869,69 @@ async function loadRecentTrades() {
             </tr>
         `
     }
+}
+
+// Calculate and display current week (Mon-Fri) P/L
+function calculateWeeklyPL(allTrades) {
+    // Get current date
+    const today = new Date()
+    
+    // Find the Monday of the current week
+    const dayOfWeek = today.getDay() // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1 // Sunday counts as 6 days from Monday
+    const monday = new Date(today)
+    monday.setDate(today.getDate() - daysFromMonday)
+    monday.setHours(0, 0, 0, 0)
+    
+    // Find Friday of the current week
+    const friday = new Date(monday)
+    friday.setDate(monday.getDate() + 4)
+    friday.setHours(23, 59, 59, 999)
+    
+    // Format dates for display
+    const mondayStr = monday.toISOString().split('T')[0]
+    const fridayStr = friday.toISOString().split('T')[0]
+    
+    // Filter trades for this week (Mon-Fri) that are closed
+    const weekTrades = allTrades.filter(trade => {
+        const tradeDate = new Date(trade.trade_date)
+        return tradeDate >= monday && tradeDate <= friday && !trade.is_open
+    })
+    
+    // Calculate total P/L
+    const totalPL = weekTrades.reduce((sum, trade) => sum + (trade.profit_loss || 0), 0)
+    
+    // Update display
+    const plElement = document.getElementById('dt-weekly-pl')
+    const tradesElement = document.getElementById('dt-weekly-trades')
+    const startDateElement = document.getElementById('dt-week-start-date')
+    const endDateElement = document.getElementById('dt-week-end-date')
+    
+    if (plElement) {
+        const plColor = totalPL >= 0 ? 'text-green-600' : 'text-red-600'
+        const plSign = totalPL >= 0 ? '+' : ''
+        plElement.textContent = plSign + formatCurrency(totalPL, 'USD')
+        plElement.className = `text-2xl font-bold ${plColor}`
+    }
+    
+    if (tradesElement) {
+        tradesElement.textContent = `${weekTrades.length} trade${weekTrades.length !== 1 ? 's' : ''}`
+    }
+    
+    if (startDateElement) {
+        startDateElement.textContent = formatDate(mondayStr)
+    }
+    
+    if (endDateElement) {
+        endDateElement.textContent = formatDate(fridayStr)
+    }
+}
+
+// Helper function to format date as MMM DD
+function formatDate(dateStr) {
+    const date = new Date(dateStr)
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    return `${months[date.getMonth()]} ${date.getDate()}`
 }
 
 // Load day of week statistics

@@ -4707,6 +4707,49 @@ app.get('/', (c) => {
                                         <i class="fas fa-history mr-2"></i>View Full History
                                     </button>
                                 </div>
+                                
+                                <!-- Weekly Gain/Loss Summary -->
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                    <div class="bg-gradient-to-br from-blue-50 to-white rounded-lg p-4 border-2 border-blue-200">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">This Week (Mon-Fri)</p>
+                                                <p class="text-2xl font-bold text-blue-600" id="dt-weekly-pl">$0.00</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="dt-weekly-trades">0 trades</p>
+                                            </div>
+                                            <div class="text-3xl text-blue-600 opacity-20">
+                                                <i class="fas fa-calendar-week"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="bg-gradient-to-br from-green-50 to-white rounded-lg p-4 border-2 border-green-200">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Week Start</p>
+                                                <p class="text-lg font-bold text-gray-800" id="dt-week-start-date">-</p>
+                                                <p class="text-xs text-gray-500 mt-1">Monday</p>
+                                            </div>
+                                            <div class="text-3xl text-green-600 opacity-20">
+                                                <i class="fas fa-calendar-day"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="bg-gradient-to-br from-purple-50 to-white rounded-lg p-4 border-2 border-purple-200">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Week End</p>
+                                                <p class="text-lg font-bold text-gray-800" id="dt-week-end-date">-</p>
+                                                <p class="text-xs text-gray-500 mt-1">Friday</p>
+                                            </div>
+                                            <div class="text-3xl text-purple-600 opacity-20">
+                                                <i class="fas fa-calendar-check"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
                                 <div class="overflow-x-auto">
                                     <table class="w-full text-sm">
                                         <thead>
