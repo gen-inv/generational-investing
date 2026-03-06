@@ -8606,7 +8606,7 @@ async function saveHistoricalBalance() {
     }
 }
 
-// Edit historical balance
+// Edit historical balance - show modal
 async function editHistoricalBalance(id) {
     try {
         const response = await fetch('/api/historical-balances', {
@@ -8622,19 +8622,41 @@ async function editHistoricalBalance(id) {
         
         if (!balance) throw new Error('Balance not found')
         
-        // Populate form
-        document.getElementById('hist-balance-account').value = balance.account_id
+        // Populate modal accounts dropdown
+        const accountsResponse = await fetch('/api/accounts', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        })
+        
+        if (accountsResponse.ok) {
+            const data = await accountsResponse.json()
+            const accounts = data.accounts || []
+            const select = document.getElementById('edit-hist-balance-account')
+            if (select) {
+                select.innerHTML = '<option value="">Select Account...</option>'
+                accounts.forEach(account => {
+                    const option = document.createElement('option')
+                    option.value = account.id
+                    option.textContent = `${account.account_name} (${account.account_type})`
+                    select.appendChild(option)
+                })
+            }
+        }
+        
+        // Populate modal form
+        document.getElementById('edit-hist-balance-account').value = balance.account_id
         const monthStr = String(balance.month).padStart(2, '0')
-        document.getElementById('hist-balance-date').value = `${balance.year}-${monthStr}` // YYYY-MM
-        document.getElementById('hist-balance-currency').value = balance.currency
-        document.getElementById('hist-balance-amount').value = balance.balance
-        document.getElementById('hist-balance-rate').value = balance.exchange_rate_to_cad
-        document.getElementById('hist-balance-edit-id').value = balance.id
+        document.getElementById('edit-hist-balance-date').value = `${balance.year}-${monthStr}`
+        document.getElementById('edit-hist-balance-currency').value = balance.currency
+        document.getElementById('edit-hist-balance-amount').value = balance.balance
+        document.getElementById('edit-hist-balance-rate').value = balance.exchange_rate_to_cad
+        document.getElementById('edit-hist-balance-id').value = balance.id
         
-        calculateHistoricalBalance()
+        calculateEditHistoricalBalance()
         
-        // Scroll to form
-        document.querySelector('.bg-blue-50').scrollIntoView({ behavior: 'smooth' })
+        // Show modal
+        document.getElementById('edit-hist-balance-modal').classList.remove('hidden')
         
     } catch (error) {
         console.error('Error editing historical balance:', error)
@@ -8835,4 +8857,107 @@ function filterHistoricalBalances() {
     const filterSelect = document.getElementById('hist-balance-filter')
     const accountId = filterSelect ? filterSelect.value : null
     loadHistoricalBalancesTable(accountId || null)
+}
+
+// Calculate the other currency balance for edit modal
+function calculateEditHistoricalBalance() {
+    const currency = document.getElementById('edit-hist-balance-currency').value
+    const amount = parseFloat(document.getElementById('edit-hist-balance-amount').value) || 0
+    const rate = parseFloat(document.getElementById('edit-hist-balance-rate').value) || 0
+    
+    const calculatedInput = document.getElementById('edit-hist-balance-calculated')
+    const calculatedLabel = document.getElementById('edit-hist-balance-calculated-label')
+    
+    if (amount && rate) {
+        if (currency === 'USD') {
+            const cad = (amount * rate).toFixed(2)
+            calculatedInput.value = `$${cad}`
+            calculatedLabel.textContent = 'CAD Balance'
+        } else {
+            const usd = (amount / rate).toFixed(2)
+            calculatedInput.value = `$${usd}`
+            calculatedLabel.textContent = 'USD Balance'
+        }
+    } else {
+        calculatedInput.value = ''
+    }
+}
+
+// Save edited historical balance
+async function saveEditHistoricalBalance() {
+    try {
+        const account_id = document.getElementById('edit-hist-balance-account').value
+        const balance_date = document.getElementById('edit-hist-balance-date').value
+        const currency = document.getElementById('edit-hist-balance-currency').value
+        const entered_amount = document.getElementById('edit-hist-balance-amount').value
+        const exchange_rate = document.getElementById('edit-hist-balance-rate').value
+        const edit_id = document.getElementById('edit-hist-balance-id').value
+        
+        // Validate
+        if (!account_id) {
+            alert('Please select an account')
+            return
+        }
+        if (!balance_date) {
+            alert('Please select a month/year')
+            return
+        }
+        if (!entered_amount || parseFloat(entered_amount) <= 0) {
+            alert('Please enter a valid balance amount')
+            return
+        }
+        if (!exchange_rate || parseFloat(exchange_rate) <= 0) {
+            alert('Please enter a valid exchange rate')
+            return
+        }
+        
+        // Parse month and year from YYYY-MM format
+        const [year, month] = balance_date.split('-').map(n => parseInt(n))
+        
+        const response = await fetch(`/api/historical-balances/${edit_id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+                account_id,
+                month,
+                year,
+                currency,
+                balance: parseFloat(entered_amount),
+                exchange_rate_to_cad: parseFloat(exchange_rate)
+            })
+        })
+        
+        if (!response.ok) {
+            const error = await response.json()
+            throw new Error(error.error || 'Failed to update balance')
+        }
+        
+        alert('Balance updated successfully!')
+        closeEditHistBalanceModal()
+        
+        // Reload table with current filter
+        const filterSelect = document.getElementById('hist-balance-filter')
+        const accountId = filterSelect && filterSelect.value ? filterSelect.value : null
+        loadHistoricalBalancesTable(accountId)
+        
+    } catch (error) {
+        console.error('Error updating historical balance:', error)
+        alert(error.message)
+    }
+}
+
+// Close edit modal
+function closeEditHistBalanceModal() {
+    document.getElementById('edit-hist-balance-modal').classList.add('hidden')
+    // Clear form
+    document.getElementById('edit-hist-balance-account').value = ''
+    document.getElementById('edit-hist-balance-date').value = ''
+    document.getElementById('edit-hist-balance-currency').value = 'USD'
+    document.getElementById('edit-hist-balance-amount').value = ''
+    document.getElementById('edit-hist-balance-rate').value = ''
+    document.getElementById('edit-hist-balance-calculated').value = ''
+    document.getElementById('edit-hist-balance-id').value = ''
 }

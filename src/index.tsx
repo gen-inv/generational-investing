@@ -5225,6 +5225,72 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                         </div>
                     </div>
                     
+                    <!-- Edit Historical Balance Modal -->
+                    <div id="edit-hist-balance-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+                        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                            <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                                <h3 class="text-2xl font-bold text-brand-teal">
+                                    <i class="fas fa-edit mr-2"></i>Edit Historical Balance
+                                </h3>
+                                <button onclick="closeEditHistBalanceModal()" class="text-gray-500 hover:text-gray-700">
+                                    <i class="fas fa-times text-2xl"></i>
+                                </button>
+                            </div>
+                            
+                            <div class="p-6">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Account</label>
+                                        <select id="edit-hist-balance-account" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal">
+                                            <option value="">Select Account...</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Month/Year</label>
+                                        <input type="month" id="edit-hist-balance-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal">
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Currency</label>
+                                        <select id="edit-hist-balance-currency" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" onchange="calculateEditHistoricalBalance()">
+                                            <option value="USD">USD</option>
+                                            <option value="CAD">CAD</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Balance Amount</label>
+                                        <input type="number" id="edit-hist-balance-amount" step="0.01" placeholder="0.00" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" oninput="calculateEditHistoricalBalance()">
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Exchange Rate</label>
+                                        <input type="number" id="edit-hist-balance-rate" step="0.000001" placeholder="1.35" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" oninput="calculateEditHistoricalBalance()">
+                                        <p class="text-xs text-gray-500 mt-1">CAD per 1 USD</p>
+                                    </div>
+                                    
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-700 mb-2">Calculated Balance</label>
+                                        <input type="text" id="edit-hist-balance-calculated" readonly class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700">
+                                        <p class="text-xs text-gray-500 mt-1" id="edit-hist-balance-calculated-label">USD Balance</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-6 flex gap-3 justify-end">
+                                    <button onclick="closeEditHistBalanceModal()" class="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-400">
+                                        <i class="fas fa-times mr-2"></i>Cancel
+                                    </button>
+                                    <button onclick="saveEditHistoricalBalance()" class="px-6 py-2 bg-brand-teal text-white rounded-lg font-semibold hover:bg-teal-700">
+                                        <i class="fas fa-save mr-2"></i>Save Changes
+                                    </button>
+                                </div>
+                                
+                                <input type="hidden" id="edit-hist-balance-id">
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- Reports Section -->
                     <!-- NEW REPORTS SECTION WITH TABS -->
                     <div id="reports-section" class="section hidden">
