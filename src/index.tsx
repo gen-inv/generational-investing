@@ -3710,17 +3710,19 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
     const accountData = []
     
     for (const account of accounts as any[]) {
-      const balance = account.default_currency === 'CAD' ? account.balance_cad : account.balance_usd
+      // Sum both CAD and USD balances
+      const cadBalance = account.balance_cad || 0
+      const usdBalance = account.balance_usd || 0
+      
+      totalValueCAD += cadBalance
+      totalValueUSD += usdBalance
+      
+      // For account breakdown chart, use the default currency balance
+      const balance = account.default_currency === 'CAD' ? cadBalance : usdBalance
       accountData.push({
         name: account.account_name,
-        value: balance || 0
+        value: balance
       })
-      
-      if (account.default_currency === 'CAD') {
-        totalValueCAD += balance || 0
-      } else {
-        totalValueUSD += balance || 0
-      }
     }
     
     // Get exchange rate for conversion
