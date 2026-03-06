@@ -8464,7 +8464,8 @@ async function loadHistoricalBalances() {
         })
         
         if (accountsResponse.ok) {
-            const accounts = await accountsResponse.json()
+            const data = await accountsResponse.json()
+            const accounts = data.accounts || []
             const select = document.getElementById('hist-balance-account')
             if (select) {
                 select.innerHTML = '<option value="">Select Account...</option>'
