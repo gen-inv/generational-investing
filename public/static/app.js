@@ -8692,17 +8692,6 @@ function clearHistoricalBalanceForm() {
     document.getElementById('hist-balance-edit-id').value = ''
 }
 
-earHistoricalBalanceForm() {
-    document.getElementById('hist-balance-account').value = ''
-    document.getElementById('hist-balance-date').value = ''
-    document.getElementById('hist-balance-currency').value = 'USD'
-    document.getElementById('hist-balance-amount').value = ''
-    document.getElementById('hist-balance-rate').value = ''
-    document.getElementById('hist-balance-calculated').value = ''
-    document.getElementById('hist-balance-edit-id').value = ''
-}
-
-
 // ============================================================================
 // UTILITIES TAB SWITCHING
 // ============================================================================
