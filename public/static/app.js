@@ -8075,10 +8075,17 @@ async function loadPortfolioOverview(timeframe = '12months') {
 }
 
 // Change portfolio value chart timeframe
-function changePortfolioTimeframe(timeframe) {
-    // Update button states
+async function changePortfolioTimeframe(timeframe) {
+    // Show loading indicator
+    const loadingIndicator = document.getElementById('portfolio-chart-loading')
+    if (loadingIndicator) {
+        loadingIndicator.style.display = 'flex'
+    }
+    
+    // Update button states and disable all buttons
     const buttons = document.querySelectorAll('.portfolio-timeframe-btn')
     buttons.forEach(btn => {
+        btn.disabled = true
         const btnTimeframe = btn.getAttribute('data-timeframe')
         if (btnTimeframe === timeframe) {
             btn.classList.add('bg-brand-teal', 'text-white', 'border-brand-teal')
@@ -8089,8 +8096,30 @@ function changePortfolioTimeframe(timeframe) {
         }
     })
     
-    // Reload data with new timeframe
-    loadPortfolioOverview(timeframe)
+    try {
+        // Fetch portfolio overview data from backend
+        const response = await api.get(`/api/reports/portfolio-overview?timeframe=${timeframe}`)
+        const data = response.data
+        
+        // Update key metrics cards
+        updateOverviewMetrics(data.metrics)
+        
+        // Render charts
+        renderPortfolioValueChart(data.portfolioValue)
+        renderAccountDistributionChart(data.accounts)
+        renderMonthlyPLChart(data.monthlyPL)
+    } catch (error) {
+        console.error('Error loading portfolio overview:', error)
+        showNotification('Failed to load portfolio data', 'error')
+    } finally {
+        // Hide loading indicator and re-enable buttons
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'none'
+        }
+        buttons.forEach(btn => {
+            btn.disabled = false
+        })
+    }
 }
 
 // Update metrics cards

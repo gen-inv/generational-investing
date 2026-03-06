@@ -4095,6 +4095,10 @@ app.get('/', (c) => {
                 color: var(--teal);
                 border-bottom-color: var(--teal);
             }
+            .portfolio-timeframe-btn:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
             .hidden { display: none; }
         </style>
     </head>
@@ -5418,7 +5422,15 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                             </button>
                                         </div>
                                     </div>
-                                    <div id="overview-portfolio-chart" style="height: 350px;"></div>
+                                    <div style="position: relative;">
+                                        <div id="overview-portfolio-chart" style="height: 350px;"></div>
+                                        <div id="portfolio-chart-loading" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.9); z-index: 10; justify-content: center; align-items: center;">
+                                            <div style="text-align: center;">
+                                                <i class="fas fa-spinner fa-spin text-brand-teal" style="font-size: 2rem;"></i>
+                                                <p class="mt-2 text-gray-600 font-semibold">Loading chart data...</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 
                                 <!-- Account Breakdown and Monthly P/L -->
