@@ -5183,9 +5183,17 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                     
                                     <!-- Historical Balances Table -->
                                     <div class="bg-gray-50 border border-gray-300 rounded-lg p-4">
-                                        <h4 class="font-semibold text-gray-800 mb-3">
-                                            <i class="fas fa-list mr-2"></i>Recent Historical Balances (Last 24 Entries)
-                                        </h4>
+                                        <div class="flex justify-between items-center mb-3">
+                                            <h4 class="font-semibold text-gray-800">
+                                                <i class="fas fa-list mr-2"></i>Recent Historical Balances (Last 24 Entries)
+                                            </h4>
+                                            <div class="flex items-center gap-2">
+                                                <label class="text-sm font-semibold text-gray-700">Filter by Account:</label>
+                                                <select id="hist-balance-filter" onchange="filterHistoricalBalances()" class="px-3 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal text-sm">
+                                                    <option value="">All Accounts</option>
+                                                </select>
+                                            </div>
+                                        </div>
                                         <div class="overflow-x-auto">
                                             <table class="min-w-full bg-white border border-gray-200 rounded-lg">
                                                 <thead class="bg-gray-100">
@@ -6071,15 +6079,28 @@ app.post('/api/utilities/transform-option-tax', authMiddleware, async (c) => {
 app.get('/api/historical-balances', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
+    const accountId = c.req.query('account_id')
     
-    const result = await c.env.DB.prepare(`
+    let query = `
       SELECT hb.*, a.account_name, a.account_type
       FROM account_balance_history hb
       JOIN accounts a ON hb.account_id = a.id
       WHERE hb.user_id = ?
+    `
+    const params = [userId]
+    
+    // Add account filter if provided
+    if (accountId) {
+      query += ` AND hb.account_id = ?`
+      params.push(accountId)
+    }
+    
+    query += `
       ORDER BY hb.year DESC, hb.month DESC, hb.created_at DESC
       LIMIT 24
-    `).bind(userId).all()
+    `
+    
+    const result = await c.env.DB.prepare(query).bind(...params).all()
     
     return c.json(result.results || [])
   } catch (error: any) {

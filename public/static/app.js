@@ -8466,6 +8466,8 @@ async function loadHistoricalBalances() {
         if (accountsResponse.ok) {
             const data = await accountsResponse.json()
             const accounts = data.accounts || []
+            
+            // Populate form dropdown
             const select = document.getElementById('hist-balance-account')
             if (select) {
                 select.innerHTML = '<option value="">Select Account...</option>'
@@ -8476,76 +8478,22 @@ async function loadHistoricalBalances() {
                     select.appendChild(option)
                 })
             }
-        }
-        
-        // Load historical balances
-        const response = await fetch('/api/historical-balances', {
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-            }
-        })
-        
-        if (!response.ok) {
-            const error = await response.json()
-            // If it's an auth error, provide specific message
-            if (response.status === 401) {
-                throw new Error('Please log in to view historical balances')
-            }
-            throw new Error(error.error || 'Failed to load historical balances')
-        }
-        
-        const balances = await response.json()
-        const tbody = document.getElementById('historical-balances-table')
-        
-        if (!tbody) return  // Element not found
-        
-        if (balances.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">
-                        <i class="fas fa-inbox text-3xl mb-2"></i>
-                        <p>No historical balances yet</p>
-                    </td>
-                </tr>
-            `
-            return
-        }
-        
-        tbody.innerHTML = balances.map(balance => {
-            const date = `${balance.year}-${String(balance.month).padStart(2, '0')}`
-            const balanceAmount = parseFloat(balance.balance).toFixed(2)
-            const rate = parseFloat(balance.exchange_rate_to_cad).toFixed(6)
             
-            // Calculate USD and CAD balances
-            let usd, cad
-            if (balance.currency === 'USD') {
-                usd = balanceAmount
-                cad = (parseFloat(balance.balance) * balance.exchange_rate_to_cad).toFixed(2)
-            } else {
-                cad = balanceAmount
-                usd = (parseFloat(balance.balance) * balance.exchange_rate_to_usd).toFixed(2)
+            // Populate filter dropdown
+            const filterSelect = document.getElementById('hist-balance-filter')
+            if (filterSelect) {
+                filterSelect.innerHTML = '<option value="">All Accounts</option>'
+                accounts.forEach(account => {
+                    const option = document.createElement('option')
+                    option.value = account.id
+                    option.textContent = `${account.account_name} (${account.account_type})`
+                    filterSelect.appendChild(option)
+                })
             }
-            
-            return `
-                <tr class="border-t border-gray-200 hover:bg-gray-50">
-                    <td class="px-4 py-2 text-sm">${date}</td>
-                    <td class="px-4 py-2 text-sm">${balance.account_name}</td>
-                    <td class="px-4 py-2 text-sm">${balance.currency}</td>
-                    <td class="px-4 py-2 text-sm text-right">$${balanceAmount}</td>
-                    <td class="px-4 py-2 text-sm text-right">${rate}</td>
-                    <td class="px-4 py-2 text-sm text-right">$${usd}</td>
-                    <td class="px-4 py-2 text-sm text-right">$${cad}</td>
-                    <td class="px-4 py-2 text-center">
-                        <button onclick="editHistoricalBalance(${balance.id})" class="text-blue-600 hover:text-blue-800 mx-1" title="Edit">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button onclick="deleteHistoricalBalance(${balance.id})" class="text-red-600 hover:text-red-800 mx-1" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </td>
-                </tr>
-            `
-        }).join('')
+        }
+        
+        // Load historical balances for the table
+        await loadHistoricalBalancesTable()
         
     } catch (error) {
         console.error('Error loading historical balances:', error)
@@ -8646,7 +8594,11 @@ async function saveHistoricalBalance() {
         
         alert(edit_id ? 'Balance updated successfully!' : 'Balance saved successfully!')
         clearHistoricalBalanceForm()
-        loadHistoricalBalances()
+        
+        // Reload table with current filter
+        const filterSelect = document.getElementById('hist-balance-filter')
+        const accountId = filterSelect && filterSelect.value ? filterSelect.value : null
+        loadHistoricalBalancesTable(accountId)
         
     } catch (error) {
         console.error('Error saving historical balance:', error)
@@ -8707,7 +8659,11 @@ async function deleteHistoricalBalance(id) {
         if (!response.ok) throw new Error('Failed to delete balance')
         
         alert('Balance deleted successfully!')
-        loadHistoricalBalances()
+        
+        // Reload table with current filter
+        const filterSelect = document.getElementById('hist-balance-filter')
+        const accountId = filterSelect && filterSelect.value ? filterSelect.value : null
+        loadHistoricalBalancesTable(accountId)
         
     } catch (error) {
         console.error('Error deleting historical balance:', error)
@@ -8759,4 +8715,124 @@ function showUtilityTab(tabName) {
     if (tabName === 'historical-balances') {
         loadHistoricalBalances()
     }
+}
+
+// Load historical balances table with optional account filter
+async function loadHistoricalBalancesTable(accountId = null) {
+    try {
+        const token = localStorage.getItem('token')
+        if (!token) {
+            const tbody = document.getElementById('historical-balances-table')
+            if (tbody) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                            <i class="fas fa-lock text-3xl mb-2"></i>
+                            <p class="font-semibold">Please log in to view historical balances</p>
+                        </td>
+                    </tr>
+                `
+            }
+            return
+        }
+        
+        // Build URL with optional filter
+        let url = '/api/historical-balances'
+        if (accountId) {
+            url += `?account_id=${accountId}`
+        }
+        
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
+        
+        if (!response.ok) {
+            const error = await response.json()
+            if (response.status === 401) {
+                throw new Error('Please log in to view historical balances')
+            }
+            throw new Error(error.error || 'Failed to load historical balances')
+        }
+        
+        const balances = await response.json()
+        const tbody = document.getElementById('historical-balances-table')
+        
+        if (!tbody) return
+        
+        if (balances.length === 0) {
+            const filterSelect = document.getElementById('hist-balance-filter')
+            const accountName = filterSelect && filterSelect.value ? 
+                filterSelect.options[filterSelect.selectedIndex].text : 'this account'
+            
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                        <i class="fas fa-inbox text-3xl mb-2"></i>
+                        <p>${accountId ? `No historical balances for ${accountName}` : 'No historical balances yet'}</p>
+                    </td>
+                </tr>
+            `
+            return
+        }
+        
+        tbody.innerHTML = balances.map(balance => {
+            const date = `${balance.year}-${String(balance.month).padStart(2, '0')}`
+            const balanceAmount = parseFloat(balance.balance).toFixed(2)
+            const rate = parseFloat(balance.exchange_rate_to_cad).toFixed(6)
+            
+            // Calculate USD and CAD balances
+            let usd, cad
+            if (balance.currency === 'USD') {
+                usd = balanceAmount
+                cad = (parseFloat(balance.balance) * balance.exchange_rate_to_cad).toFixed(2)
+            } else {
+                cad = balanceAmount
+                usd = (parseFloat(balance.balance) * balance.exchange_rate_to_usd).toFixed(2)
+            }
+            
+            return `
+                <tr class="border-t border-gray-200 hover:bg-gray-50">
+                    <td class="px-4 py-2 text-sm">${date}</td>
+                    <td class="px-4 py-2 text-sm">${balance.account_name}</td>
+                    <td class="px-4 py-2 text-sm">${balance.currency}</td>
+                    <td class="px-4 py-2 text-sm text-right">$${balanceAmount}</td>
+                    <td class="px-4 py-2 text-sm text-right">${rate}</td>
+                    <td class="px-4 py-2 text-sm text-right">$${usd}</td>
+                    <td class="px-4 py-2 text-sm text-right">$${cad}</td>
+                    <td class="px-4 py-2 text-center">
+                        <button onclick="editHistoricalBalance(${balance.id})" class="text-blue-600 hover:text-blue-800 mx-1" title="Edit">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button onclick="deleteHistoricalBalance(${balance.id})" class="text-red-600 hover:text-red-800 mx-1" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `
+        }).join('')
+        
+    } catch (error) {
+        console.error('Error loading historical balances table:', error)
+        const tbody = document.getElementById('historical-balances-table')
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-orange-500">
+                        <i class="fas fa-exclamation-triangle text-3xl mb-2"></i>
+                        <p class="font-semibold">Unable to load historical balances</p>
+                        <p class="text-sm mt-2 text-gray-600">Please ensure you're logged in and try refreshing the page</p>
+                    </td>
+                </tr>
+            `
+        }
+    }
+}
+
+// Filter historical balances by account
+function filterHistoricalBalances() {
+    const filterSelect = document.getElementById('hist-balance-filter')
+    const accountId = filterSelect ? filterSelect.value : null
+    loadHistoricalBalancesTable(accountId || null)
 }
