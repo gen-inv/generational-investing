@@ -5277,6 +5277,16 @@ async function showOptionDetails(id) {
                             </button>
                             
                             ${option.is_open ? `
+                            <button onclick="addToOptionPosition(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-teal-600 hover:text-white rounded-lg border border-gray-200 transition-colors group">
+                                <i class="fas fa-plus-circle mr-2 text-teal-600 group-hover:text-white"></i>
+                                <span class="font-medium">Add To Position</span>
+                            </button>
+                            
+                            <button onclick="reduceFromOptionPosition(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-orange-600 hover:text-white rounded-lg border border-gray-200 transition-colors group">
+                                <i class="fas fa-minus-circle mr-2 text-orange-600 group-hover:text-white"></i>
+                                <span class="font-medium">Reduce From Position</span>
+                            </button>
+                            
                             <button onclick="closeOption(${id}); document.getElementById('option-details-modal').remove();" class="w-full text-left px-4 py-3 bg-white hover:bg-green-600 hover:text-white rounded-lg border border-gray-200 transition-colors group">
                                 <i class="fas fa-check-circle mr-2 text-green-600 group-hover:text-white"></i>
                                 <span class="font-medium">Close Position</span>
@@ -5744,6 +5754,326 @@ async function closeOption(optionId) {
             }
         })
         
+    } catch (error) {
+        console.error('Error loading option:', error)
+        alert('Failed to load option details')
+    }
+}
+
+// Add To Position - adds more contracts to an existing open position
+async function addToOptionPosition(optionId) {
+    try {
+        const response = await api.get('/api/options')
+        const option = response.data.find(o => o.id === optionId)
+        
+        if (!option || !option.is_open) {
+            alert('Option trade not found or already closed')
+            return
+        }
+        
+        const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg max-w-2xl w-full">
+                <div class="bg-gradient-to-r from-teal-600 to-teal-700 text-white p-6 rounded-t-lg">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-2xl font-bold flex items-center">
+                                <i class="fas fa-plus-circle mr-3"></i>Add To Position
+                            </h3>
+                            <p class="text-teal-100 mt-1">${option.ticker} - ${strategyLabel}</p>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-teal-200 text-2xl">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="p-6">
+                    <div class="bg-teal-50 border border-teal-200 rounded-lg p-4 mb-6">
+                        <h4 class="font-semibold text-teal-900 mb-3">Current Position</h4>
+                        <div class="grid grid-cols-3 gap-4 text-sm">
+                            <div>
+                                <span class="text-gray-600">Contracts:</span>
+                                <div class="font-semibold text-gray-900">${option.quantity}</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-600">Premium:</span>
+                                <div class="font-semibold text-gray-900">$${parseFloat(option.premium).toFixed(3)}</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-600">Commission:</span>
+                                <div class="font-semibold text-gray-900">$${parseFloat(option.commission || 0).toFixed(2)}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <form id="addToPositionForm">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <i class="fas fa-calendar mr-2 text-teal-600"></i>Trade Date *
+                                </label>
+                                <input type="date" id="add_trade_date" value="${new Date().toISOString().split('T')[0]}" 
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-teal-600" required>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <i class="fas fa-layer-group mr-2 text-teal-600"></i>Additional Contracts *
+                                </label>
+                                <input type="number" id="add_contracts" min="1" value="1"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-teal-600" required>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <i class="fas fa-dollar-sign mr-2 text-teal-600"></i>Premium Per Contract *
+                                </label>
+                                <input type="number" id="add_premium" step="0.001" value="${option.premium}"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-teal-600" required>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <i class="fas fa-dollar-sign mr-2 text-teal-600"></i>Commission
+                                </label>
+                                <input type="number" id="add_commission" step="0.01" value="0.00"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-teal-600">
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-3 mt-6">
+                            <button type="button" onclick="this.closest('.fixed').remove()" 
+                                class="flex-1 px-6 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300">
+                                Cancel
+                            </button>
+                            <button type="submit" 
+                                class="flex-1 px-6 py-3 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700">
+                                Add To Position
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        document.getElementById('addToPositionForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            
+            const newContracts = parseInt(document.getElementById('add_contracts').value)
+            const newPremium = parseFloat(document.getElementById('add_premium').value)
+            const newCommission = parseFloat(document.getElementById('add_commission').value)
+            const tradeDate = document.getElementById('add_trade_date').value
+            
+            // Calculate weighted average premium
+            const totalContracts = option.quantity + newContracts
+            const totalPremiumValue = (option.quantity * option.premium) + (newContracts * newPremium)
+            const avgPremium = totalPremiumValue / totalContracts
+            
+            // Add commissions together
+            const totalCommission = (option.commission || 0) + newCommission
+            
+            try {
+                await api.put(`/api/options/${optionId}`, {
+                    quantity: totalContracts,
+                    premium: avgPremium,
+                    commission: totalCommission,
+                    trade_date: tradeDate
+                })
+                
+                modal.remove()
+                loadOptions()
+                showNotification('Position increased successfully', 'success')
+                document.getElementById('option-details-modal')?.remove()
+            } catch (error) {
+                console.error('Error adding to position:', error)
+                alert('Failed to add to position. Please try again.')
+            }
+        })
+    } catch (error) {
+        console.error('Error loading option:', error)
+        alert('Failed to load option details')
+    }
+}
+
+// Reduce From Position - partially closes a position
+async function reduceFromOptionPosition(optionId) {
+    try {
+        const response = await api.get('/api/options')
+        const option = response.data.find(o => o.id === optionId)
+        
+        if (!option || !option.is_open) {
+            alert('Option trade not found or already closed')
+            return
+        }
+        
+        if (option.quantity <= 1) {
+            alert('Cannot reduce position - only 1 contract remaining. Use "Close Position" instead.')
+            return
+        }
+        
+        const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
+        
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg max-w-2xl w-full">
+                <div class="bg-gradient-to-r from-orange-600 to-orange-700 text-white p-6 rounded-t-lg">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-2xl font-bold flex items-center">
+                                <i class="fas fa-minus-circle mr-3"></i>Reduce From Position
+                            </h3>
+                            <p class="text-orange-100 mt-1">${option.ticker} - ${strategyLabel}</p>
+                        </div>
+                        <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-orange-200 text-2xl">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="p-6">
+                    <div class="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                        <h4 class="font-semibold text-orange-900 mb-3">Current Position</h4>
+                        <div class="grid grid-cols-4 gap-4 text-sm">
+                            <div>
+                                <span class="text-gray-600">Contracts:</span>
+                                <div class="font-semibold text-gray-900">${option.quantity}</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-600">Premium:</span>
+                                <div class="font-semibold text-gray-900">$${parseFloat(option.premium).toFixed(3)}</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-600">Commission:</span>
+                                <div class="font-semibold text-gray-900">$${parseFloat(option.commission || 0).toFixed(2)}</div>
+                            </div>
+                            <div>
+                                <span class="text-gray-600">Opened:</span>
+                                <div class="font-semibold text-gray-900">${option.trade_date}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <form id="reduceFromPositionForm">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <i class="fas fa-calendar mr-2 text-orange-600"></i>Close Date *
+                                </label>
+                                <input type="date" id="reduce_close_date" value="${new Date().toISOString().split('T')[0]}" 
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-600" required>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <i class="fas fa-layer-group mr-2 text-orange-600"></i>Contracts To Close *
+                                </label>
+                                <input type="number" id="reduce_contracts" min="1" max="${option.quantity - 1}" value="1"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-600" required>
+                                <p class="text-xs text-gray-500 mt-1">Maximum: ${option.quantity - 1} (must leave at least 1 contract open)</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <i class="fas fa-dollar-sign mr-2 text-orange-600"></i>Close Premium Per Contract *
+                                </label>
+                                <input type="number" id="reduce_close_premium" step="0.001" value="${option.premium}"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-600" required>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                    <i class="fas fa-dollar-sign mr-2 text-orange-600"></i>Close Commission
+                                </label>
+                                <input type="number" id="reduce_close_commission" step="0.01" value="0.00"
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-orange-600">
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-3 mt-6">
+                            <button type="button" onclick="this.closest('.fixed').remove()" 
+                                class="flex-1 px-6 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300">
+                                Cancel
+                            </button>
+                            <button type="submit" 
+                                class="flex-1 px-6 py-3 bg-orange-600 text-white rounded-lg font-semibold hover:bg-orange-700">
+                                Reduce Position
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        document.getElementById('reduceFromPositionForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            
+            const contractsToClose = parseInt(document.getElementById('reduce_contracts').value)
+            const closePremium = parseFloat(document.getElementById('reduce_close_premium').value)
+            const closeCommission = parseFloat(document.getElementById('reduce_close_commission').value)
+            const closeDate = document.getElementById('reduce_close_date').value
+            
+            if (contractsToClose >= option.quantity) {
+                alert('Cannot close all contracts. Use "Close Position" instead.')
+                return
+            }
+            
+            // Calculate proportional commission for the part being closed
+            const proportionalOpenCommission = (option.commission || 0) * (contractsToClose / option.quantity)
+            const remainingOpenCommission = (option.commission || 0) - proportionalOpenCommission
+            
+            try {
+                // Create a new closed trade for the contracts being closed
+                const closedTrade = {
+                    company_id: option.company_id,
+                    account_id: option.account_id,
+                    trade_date: option.trade_date,
+                    strategy_type: option.strategy_type,
+                    strike_price: option.strike_price,
+                    premium: option.premium,
+                    quantity: contractsToClose,
+                    expiration_date: option.expiration_date,
+                    option_type: option.option_type,
+                    commission: proportionalOpenCommission,
+                    is_open: false,
+                    close_date: closeDate,
+                    close_premium: closePremium,
+                    close_commission: closeCommission
+                }
+                
+                // Calculate P/L for the closed portion
+                const openCost = contractsToClose * option.premium * 100
+                const closeCost = contractsToClose * closePremium * 100
+                const totalCommissions = proportionalOpenCommission + closeCommission
+                closedTrade.profit_loss = openCost - closeCost - totalCommissions
+                
+                // Create the new closed trade
+                await api.post('/api/options', closedTrade)
+                
+                // Update the original trade: reduce quantity and commission
+                const remainingContracts = option.quantity - contractsToClose
+                await api.put(`/api/options/${optionId}`, {
+                    quantity: remainingContracts,
+                    commission: remainingOpenCommission
+                })
+                
+                modal.remove()
+                loadOptions()
+                showNotification(`Closed ${contractsToClose} contract(s). ${remainingContracts} contract(s) remaining.`, 'success')
+                document.getElementById('option-details-modal')?.remove()
+            } catch (error) {
+                console.error('Error reducing position:', error)
+                alert('Failed to reduce position. Please try again.')
+            }
+        })
     } catch (error) {
         console.error('Error loading option:', error)
         alert('Failed to load option details')
