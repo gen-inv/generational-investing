@@ -4024,6 +4024,7 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     console.log(`Date range: startDate=${startDate}`)
     
     // Get stock trades
+    console.log('Fetching stock trades...')
     const stockTrades = await DB.prepare(`
       SELECT 
         st.profit_loss,
@@ -4038,8 +4039,10 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
         AND st.profit_loss IS NOT NULL
       ORDER BY st.close_date DESC
     `).bind(userId, startDate).all()
+    console.log(`Stock trades fetched: ${stockTrades.results.length}`)
     
     // Get option trades
+    console.log('Fetching option trades...')
     const optionTrades = await DB.prepare(`
       SELECT 
         ot.profit_loss,
@@ -4054,8 +4057,10 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
         AND ot.profit_loss IS NOT NULL
       ORDER BY ot.close_date DESC
     `).bind(userId, startDate).all()
+    console.log(`Option trades fetched: ${optionTrades.results.length}`)
     
     // Get daily trades
+    console.log('Fetching daily trades...')
     const dailyTrades = await DB.prepare(`
       SELECT 
         dt.profit_loss,
@@ -4068,6 +4073,7 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
         AND dt.profit_loss IS NOT NULL
       ORDER BY dt.trade_date DESC
     `).bind(userId, startDate).all()
+    console.log(`Daily trades fetched: ${dailyTrades.results.length}`)
     
     // Combine all trades
     const allTrades = [
