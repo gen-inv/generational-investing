@@ -6035,17 +6035,21 @@ async function reduceFromOptionPosition(optionId) {
                 const closedTrade = {
                     company_id: option.company_id,
                     account_id: option.account_id,
+                    ticker: option.ticker,
                     trade_date: option.trade_date,
                     strategy_type: option.strategy_type,
                     strike_price: option.strike_price,
+                    strike_price_2: option.strike_price_2 || null,
+                    strike_price_3: option.strike_price_3 || null,
+                    strike_price_4: option.strike_price_4 || null,
                     premium: option.premium,
                     quantity: contractsToClose,
                     expiration_date: option.expiration_date,
-                    option_type: option.option_type,
+                    option_type: option.option_type || null,
                     commission: proportionalOpenCommission,
                     is_open: false,
                     close_date: closeDate,
-                    close_premium: closePremium,
+                    close_price: closePremium,
                     close_commission: closeCommission
                 }
                 
