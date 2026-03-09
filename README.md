@@ -69,6 +69,13 @@
 
 7. **Reports Dashboard** ✨ NEW
    - **P/L Summary**: Detailed profit/loss breakdown by asset type, account type, and time periods (MTD, QTD, YTD, Last 12 Months, All Time)
+   - **Performance Analysis**: Portfolio growth tracking with comprehensive performance metrics:
+     - **Portfolio Growth Chart**: Cumulative P/L with peak tracking over time
+     - **Drawdown Analysis**: Visual drawdown chart with max drawdown, longest drawdown duration, and recovery metrics
+     - **Rolling Returns**: 30-day rolling return chart showing performance consistency
+     - **Monthly Returns Table**: Detailed month-by-month breakdown with trade counts
+     - **Key Metrics**: Total return, volatility (annualized), Sharpe ratio, max drawdown
+     - Time periods: YTD, 1 Year, 3 Years, All Time
    - **Strategy Analysis**: Performance comparison across different trading strategies with:
      - Total return percentage and Sharpe ratio
      - Maximum drawdown tracking
@@ -126,6 +133,7 @@
 #### Reports
 - `GET /api/reports/pl?year=2026&month=1` - Get P/L report
 - `GET /api/reports/pl-summary?period=ytd` - Get P/L Summary with breakdowns
+- `GET /api/reports/performance?period=ytd` - Get Performance Analysis with portfolio growth and drawdown metrics
 - `GET /api/reports/strategy-analysis?period=ytd` - Get Strategy Analysis with performance metrics
 - `GET /api/reports/export?type=stocks&year=2026` - Export CSV
 
