@@ -4404,6 +4404,286 @@ app.get('/api/reports/strategy-analysis', authMiddleware, async (c) => {
   }
 })
 
+// Performance Analysis endpoint - Portfolio growth, rolling returns, drawdown
+app.get('/api/reports/performance', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const period = c.req.query('period') || 'ytd'
+    
+    console.log(`Performance Analysis request: userId=${userId}, period=${period}`)
+    
+    // Calculate date range
+    const now = new Date()
+    let startDate = ''
+    
+    switch (period) {
+      case 'ytd':
+        startDate = `${now.getFullYear()}-01-01`
+        break
+      case '1year':
+        const oneYearAgo = new Date(now)
+        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+        startDate = oneYearAgo.toISOString().split('T')[0]
+        break
+      case '3years':
+        const threeYearsAgo = new Date(now)
+        threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3)
+        startDate = threeYearsAgo.toISOString().split('T')[0]
+        break
+      case 'all':
+        startDate = '1900-01-01'
+        break
+    }
+    
+    // Get account balance history for portfolio value over time
+    const balanceHistory = await DB.prepare(`
+      SELECT 
+        month,
+        year,
+        SUM(balance_cad + (balance_usd * 1.4)) as total_value
+      FROM account_balances
+      WHERE user_id = ?
+      GROUP BY year, month
+      ORDER BY year ASC, month ASC
+    `).bind(userId).all()
+    
+    // Get all closed trades for P/L calculations
+    const stockTrades = await DB.prepare(`
+      SELECT 
+        st.profit_loss,
+        st.close_date,
+        st.trade_date
+      FROM stock_trades st
+      WHERE st.user_id = ?
+        AND st.is_open = 0
+        AND st.close_date IS NOT NULL
+        AND st.close_date >= ?
+        AND st.profit_loss IS NOT NULL
+      ORDER BY st.close_date ASC
+    `).bind(userId, startDate).all()
+    
+    const optionTrades = await DB.prepare(`
+      SELECT 
+        ot.profit_loss,
+        ot.close_date,
+        ot.trade_date
+      FROM option_trades ot
+      WHERE ot.user_id = ?
+        AND ot.is_open = 0
+        AND ot.close_date IS NOT NULL
+        AND ot.close_date >= ?
+        AND ot.profit_loss IS NOT NULL
+      ORDER BY ot.close_date ASC
+    `).bind(userId, startDate).all()
+    
+    const dailyTrades = await DB.prepare(`
+      SELECT 
+        dt.profit_loss,
+        dt.trade_date as close_date,
+        dt.trade_date
+      FROM daily_trades dt
+      WHERE dt.user_id = ?
+        AND dt.trade_date >= ?
+        AND dt.profit_loss IS NOT NULL
+      ORDER BY dt.trade_date ASC
+    `).bind(userId, startDate).all()
+    
+    // Combine all trades
+    const allTrades = [
+      ...stockTrades.results,
+      ...optionTrades.results,
+      ...dailyTrades.results
+    ].sort((a: any, b: any) => {
+      const dateA = a.close_date || a.trade_date
+      const dateB = b.close_date || b.trade_date
+      return dateA.localeCompare(dateB)
+    })
+    
+    console.log(`Total trades for performance: ${allTrades.length}`)
+    
+    // Calculate cumulative P/L over time for portfolio growth
+    let cumulativePL = 0
+    let peak = 0
+    const portfolioGrowth: any[] = []
+    const drawdownData: any[] = []
+    
+    allTrades.forEach((trade: any) => {
+      cumulativePL += trade.profit_loss || 0
+      if (cumulativePL > peak) peak = cumulativePL
+      
+      const drawdownPercent = peak > 0 ? ((peak - cumulativePL) / peak) * 100 : 0
+      
+      portfolioGrowth.push({
+        date: trade.close_date || trade.trade_date,
+        value: cumulativePL,
+        peak: peak
+      })
+      
+      drawdownData.push({
+        date: trade.close_date || trade.trade_date,
+        drawdown: -drawdownPercent // Negative for chart display
+      })
+    })
+    
+    // Calculate rolling returns (30-day, 90-day, 1-year)
+    const rollingReturns: any = {
+      daily: [],
+      monthly: [],
+      quarterly: []
+    }
+    
+    // Group trades by date for daily returns
+    const tradesByDate: any = {}
+    allTrades.forEach((trade: any) => {
+      const date = trade.close_date || trade.trade_date
+      if (!tradesByDate[date]) {
+        tradesByDate[date] = []
+      }
+      tradesByDate[date].push(trade.profit_loss || 0)
+    })
+    
+    // Calculate daily returns
+    const dates = Object.keys(tradesByDate).sort()
+    let runningBalance = 100000 // Starting capital assumption
+    
+    dates.forEach(date => {
+      const dayPL = tradesByDate[date].reduce((sum: number, pl: number) => sum + pl, 0)
+      const prevBalance = runningBalance
+      runningBalance += dayPL
+      const dailyReturn = prevBalance > 0 ? (dayPL / prevBalance) * 100 : 0
+      
+      rollingReturns.daily.push({
+        date,
+        return: dailyReturn,
+        pl: dayPL
+      })
+    })
+    
+    // Calculate 30-day rolling returns
+    const rolling30 = []
+    for (let i = 29; i < dates.length; i++) {
+      const window = dates.slice(i - 29, i + 1)
+      const windowPL = window.reduce((sum, d) => {
+        return sum + tradesByDate[d].reduce((s: number, pl: number) => s + pl, 0)
+      }, 0)
+      rolling30.push({
+        date: dates[i],
+        return: (windowPL / 100000) * 100 // Percentage
+      })
+    }
+    
+    // Calculate monthly aggregates
+    const byMonth: any = {}
+    allTrades.forEach((trade: any) => {
+      const date = trade.close_date || trade.trade_date
+      const month = date.substring(0, 7) // YYYY-MM
+      if (!byMonth[month]) {
+        byMonth[month] = { pl: 0, trades: 0 }
+      }
+      byMonth[month].pl += trade.profit_loss || 0
+      byMonth[month].trades++
+    })
+    
+    Object.keys(byMonth).sort().forEach((month, idx) => {
+      const startingBalance = 100000 + (idx > 0 ? Object.keys(byMonth).slice(0, idx).reduce((sum, m) => sum + byMonth[m].pl, 0) : 0)
+      const monthReturn = startingBalance > 0 ? (byMonth[month].pl / startingBalance) * 100 : 0
+      
+      rollingReturns.monthly.push({
+        month,
+        return: monthReturn,
+        pl: byMonth[month].pl,
+        trades: byMonth[month].trades
+      })
+    })
+    
+    // Calculate max drawdown stats
+    const maxDrawdown = drawdownData.length > 0 
+      ? Math.min(...drawdownData.map((d: any) => d.drawdown))
+      : 0
+    
+    const maxDrawdownDate = drawdownData.length > 0
+      ? drawdownData.find((d: any) => d.drawdown === maxDrawdown)?.date
+      : null
+    
+    // Calculate recovery stats
+    let inDrawdown = false
+    let drawdownStart = null
+    let drawdownEnd = null
+    let longestDrawdown = 0
+    let currentDrawdownDays = 0
+    
+    drawdownData.forEach((point: any, idx: number) => {
+      if (point.drawdown < -0.1 && !inDrawdown) {
+        inDrawdown = true
+        drawdownStart = point.date
+        currentDrawdownDays = 0
+      } else if (point.drawdown >= -0.1 && inDrawdown) {
+        inDrawdown = false
+        drawdownEnd = point.date
+        if (currentDrawdownDays > longestDrawdown) {
+          longestDrawdown = currentDrawdownDays
+        }
+        currentDrawdownDays = 0
+      }
+      
+      if (inDrawdown) {
+        currentDrawdownDays++
+      }
+    })
+    
+    // Summary statistics
+    const totalPL = cumulativePL
+    const totalReturn = (totalPL / 100000) * 100
+    const totalTrades = allTrades.length
+    const avgTradeReturn = totalTrades > 0 ? (totalPL / totalTrades / 100000) * 100 : 0
+    
+    // Volatility (standard deviation of returns)
+    const returns = rollingReturns.daily.map((d: any) => d.return)
+    const avgReturn = returns.length > 0 ? returns.reduce((sum: number, r: number) => sum + r, 0) / returns.length : 0
+    const variance = returns.length > 0 
+      ? returns.reduce((sum: number, r: number) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length
+      : 0
+    const volatility = Math.sqrt(variance) * Math.sqrt(252) // Annualized
+    
+    // Sharpe ratio
+    const sharpeRatio = volatility > 0 ? (avgReturn * 252) / volatility : 0
+    
+    console.log(`Performance analysis complete: ${portfolioGrowth.length} data points, max DD: ${maxDrawdown.toFixed(2)}%`)
+    
+    return c.json({
+      summary: {
+        totalPL,
+        totalReturn,
+        totalTrades,
+        avgTradeReturn,
+        maxDrawdown: -maxDrawdown, // Convert back to positive
+        maxDrawdownDate,
+        longestDrawdown,
+        volatility,
+        sharpeRatio
+      },
+      portfolioGrowth: portfolioGrowth.slice(-365), // Last 365 days max
+      drawdownData: drawdownData.slice(-365),
+      rollingReturns: {
+        rolling30: rolling30.slice(-180), // Last 180 days
+        monthly: rollingReturns.monthly
+      },
+      balanceHistory: balanceHistory.results
+    })
+  } catch (error) {
+    console.error('Performance Analysis error:', error)
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    return c.json({ 
+      error: 'Failed to generate performance analysis',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
 // Export to CSV endpoint
 app.get('/api/reports/export', authMiddleware, async (c) => {
   const userId = c.get('userId')
@@ -6101,15 +6381,159 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                         </div>
                         
                         <!-- Performance Tab -->
+                        <!-- Performance Charts Tab -->
                         <div id="report-tab-performance" class="report-tab-content hidden">
-                            <div class="card">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                            <div class="mb-6">
+                                <h3 class="text-2xl font-bold text-gray-800 mb-4">
                                     <i class="fas fa-chart-line text-blue-600 mr-2"></i>
-                                    Performance Charts
+                                    Performance Analysis
                                 </h3>
-                                <p class="text-gray-600 italic">
-                                    <i class="fas fa-hammer mr-2"></i>Coming soon: Portfolio growth, rolling returns, drawdown analysis
-                                </p>
+                                
+                                <!-- Time Period Selector -->
+                                <div class="card mb-6">
+                                    <div class="flex items-center gap-2 mb-4">
+                                        <i class="fas fa-calendar-alt text-brand-teal"></i>
+                                        <span class="font-semibold text-gray-700">Time Period:</span>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button onclick="loadPerformanceAnalysis('ytd')" class="performance-period-btn active px-4 py-2 bg-brand-teal text-white rounded-lg" data-period="ytd">
+                                            YTD
+                                        </button>
+                                        <button onclick="loadPerformanceAnalysis('1year')" class="performance-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-brand-teal hover:text-white transition" data-period="1year">
+                                            1 Year
+                                        </button>
+                                        <button onclick="loadPerformanceAnalysis('3years')" class="performance-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-brand-teal hover:text-white transition" data-period="3years">
+                                            3 Years
+                                        </button>
+                                        <button onclick="loadPerformanceAnalysis('all')" class="performance-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-brand-teal hover:text-white transition" data-period="all">
+                                            All Time
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Summary Metrics Cards -->
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                    <div class="card bg-gradient-to-br from-green-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Total Return</p>
+                                                <p class="text-2xl font-bold text-green-600" id="perf-total-return">0%</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="perf-total-pl">$0.00</p>
+                                            </div>
+                                            <div class="text-3xl text-green-600 opacity-20">
+                                                <i class="fas fa-arrow-trend-up"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-red-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Max Drawdown</p>
+                                                <p class="text-2xl font-bold text-red-600" id="perf-max-dd">0%</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="perf-dd-date">No data</p>
+                                            </div>
+                                            <div class="text-3xl text-red-600 opacity-20">
+                                                <i class="fas fa-arrow-trend-down"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-blue-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Volatility</p>
+                                                <p class="text-2xl font-bold text-blue-600" id="perf-volatility">0%</p>
+                                                <p class="text-xs text-gray-500 mt-1">Annualized</p>
+                                            </div>
+                                            <div class="text-3xl text-blue-600 opacity-20">
+                                                <i class="fas fa-wave-square"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-purple-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Sharpe Ratio</p>
+                                                <p class="text-2xl font-bold text-purple-600" id="perf-sharpe">0.00</p>
+                                                <p class="text-xs text-gray-500 mt-1">Risk-adjusted</p>
+                                            </div>
+                                            <div class="text-3xl text-purple-600 opacity-20">
+                                                <i class="fas fa-balance-scale"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Portfolio Growth Chart -->
+                                <div class="card mb-6">
+                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-chart-area text-green-600 mr-2"></i>
+                                        Portfolio Growth (Cumulative P/L)
+                                    </h4>
+                                    <div id="portfolio-growth-chart" style="height: 400px;"></div>
+                                </div>
+                                
+                                <!-- Drawdown Analysis -->
+                                <div class="card mb-6">
+                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-arrow-down text-red-600 mr-2"></i>
+                                        Drawdown Analysis
+                                    </h4>
+                                    <div id="drawdown-chart" style="height: 300px;"></div>
+                                    
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                                        <div class="p-4 bg-red-50 rounded-lg border border-red-200">
+                                            <p class="text-sm text-gray-600 font-semibold mb-1">Maximum Drawdown</p>
+                                            <p class="text-xl font-bold text-red-600" id="perf-max-dd-detail">0%</p>
+                                            <p class="text-xs text-gray-500 mt-1" id="perf-max-dd-date">No data</p>
+                                        </div>
+                                        <div class="p-4 bg-orange-50 rounded-lg border border-orange-200">
+                                            <p class="text-sm text-gray-600 font-semibold mb-1">Longest Drawdown</p>
+                                            <p class="text-xl font-bold text-orange-600" id="perf-longest-dd">0 days</p>
+                                            <p class="text-xs text-gray-500 mt-1">Duration in drawdown</p>
+                                        </div>
+                                        <div class="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                                            <p class="text-sm text-gray-600 font-semibold mb-1">Recovery Time</p>
+                                            <p class="text-xl font-bold text-yellow-600" id="perf-recovery-time">-</p>
+                                            <p class="text-xs text-gray-500 mt-1">Time to recover peak</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Rolling Returns -->
+                                <div class="card mb-6">
+                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-calendar-check text-blue-600 mr-2"></i>
+                                        Rolling Returns (30-Day)
+                                    </h4>
+                                    <div id="rolling-returns-chart" style="height: 300px;"></div>
+                                </div>
+                                
+                                <!-- Monthly Returns Table -->
+                                <div class="card">
+                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-table text-purple-600 mr-2"></i>
+                                        Monthly Returns Summary
+                                    </h4>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead>
+                                                <tr class="bg-gray-100">
+                                                    <th class="px-4 py-3 text-left">Month</th>
+                                                    <th class="px-4 py-3 text-right">Return %</th>
+                                                    <th class="px-4 py-3 text-right">P/L</th>
+                                                    <th class="px-4 py-3 text-center">Trades</th>
+                                                    <th class="px-4 py-3 text-center">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="monthly-returns-table">
+                                                <!-- Dynamic content -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         

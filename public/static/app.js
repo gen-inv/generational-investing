@@ -8501,7 +8501,7 @@ function showReportTab(tabName) {
             loadPLSummary('ytd')
             break
         case 'performance':
-            // TODO: Load Performance Charts
+            loadPerformanceAnalysis('ytd')
             break
         case 'strategy':
             loadStrategyAnalysis('ytd')
@@ -10178,4 +10178,435 @@ function renderMonthlyHeatmap(monthlyData) {
     }
     
     new ApexCharts(chartElement, options).render()
+}
+
+// ============================================================================
+// PERFORMANCE ANALYSIS FUNCTIONS
+// ============================================================================
+
+// Chart instances for performance tab
+const performanceCharts = {
+    growth: null,
+    drawdown: null,
+    rolling: null
+}
+
+async function loadPerformanceAnalysis(period = 'ytd') {
+    try {
+        console.log(`Loading performance analysis for period: ${period}`)
+        
+        // Update button states
+        document.querySelectorAll('.performance-period-btn').forEach(btn => {
+            btn.classList.remove('active', 'bg-brand-teal', 'text-white')
+            btn.classList.add('bg-gray-200', 'text-gray-700')
+        })
+        const activeBtn = document.querySelector(`.performance-period-btn[data-period="${period}"]`)
+        if (activeBtn) {
+            activeBtn.classList.add('active', 'bg-brand-teal', 'text-white')
+            activeBtn.classList.remove('bg-gray-200', 'text-gray-700')
+        }
+        
+        // Fetch performance data
+        const response = await api.get(`/api/reports/performance?period=${period}`)
+        const data = response.data
+        
+        console.log('Performance data:', data)
+        
+        // Update summary metrics
+        updatePerformanceMetrics(data.summary)
+        
+        // Render charts
+        renderPortfolioGrowthChart(data.portfolioGrowth)
+        renderDrawdownChart(data.drawdownData)
+        renderRollingReturnsChart(data.rollingReturns.rolling30)
+        
+        // Update monthly returns table
+        updateMonthlyReturnsTable(data.rollingReturns.monthly)
+        
+    } catch (error) {
+        console.error('Error loading performance analysis:', error)
+        console.error('Error response:', error.response?.data)
+        if (error.response?.status === 401) {
+            showNotification('Please log in to view Performance Analysis', 'error')
+        } else {
+            showNotification('Failed to load performance analysis: ' + (error.response?.data?.error || error.message), 'error')
+        }
+    }
+}
+
+function updatePerformanceMetrics(summary) {
+    // Total Return
+    const returnEl = document.getElementById('perf-total-return')
+    const plEl = document.getElementById('perf-total-pl')
+    if (returnEl) {
+        const sign = summary.totalReturn >= 0 ? '+' : ''
+        returnEl.textContent = `${sign}${summary.totalReturn.toFixed(2)}%`
+        returnEl.className = `text-2xl font-bold ${summary.totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}`
+    }
+    if (plEl) {
+        const sign = summary.totalPL >= 0 ? '+' : ''
+        plEl.textContent = `${sign}$${summary.totalPL.toFixed(2)}`
+    }
+    
+    // Max Drawdown
+    const ddEl = document.getElementById('perf-max-dd')
+    const ddDateEl = document.getElementById('perf-dd-date')
+    if (ddEl) {
+        ddEl.textContent = `-${summary.maxDrawdown.toFixed(2)}%`
+    }
+    if (ddDateEl && summary.maxDrawdownDate) {
+        const date = new Date(summary.maxDrawdownDate)
+        ddDateEl.textContent = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    }
+    
+    // Volatility
+    const volEl = document.getElementById('perf-volatility')
+    if (volEl) {
+        volEl.textContent = `${summary.volatility.toFixed(2)}%`
+    }
+    
+    // Sharpe Ratio
+    const sharpeEl = document.getElementById('perf-sharpe')
+    if (sharpeEl) {
+        sharpeEl.textContent = summary.sharpeRatio.toFixed(2)
+        // Color code based on Sharpe value
+        if (summary.sharpeRatio > 2) {
+            sharpeEl.className = 'text-2xl font-bold text-green-600'
+        } else if (summary.sharpeRatio > 1) {
+            sharpeEl.className = 'text-2xl font-bold text-blue-600'
+        } else {
+            sharpeEl.className = 'text-2xl font-bold text-purple-600'
+        }
+    }
+    
+    // Drawdown details
+    const ddDetailEl = document.getElementById('perf-max-dd-detail')
+    const ddDateDetailEl = document.getElementById('perf-max-dd-date')
+    if (ddDetailEl) {
+        ddDetailEl.textContent = `-${summary.maxDrawdown.toFixed(2)}%`
+    }
+    if (ddDateDetailEl && summary.maxDrawdownDate) {
+        const date = new Date(summary.maxDrawdownDate)
+        ddDateDetailEl.textContent = date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    }
+    
+    // Longest drawdown
+    const longestDDEl = document.getElementById('perf-longest-dd')
+    if (longestDDEl) {
+        longestDDEl.textContent = `${summary.longestDrawdown} days`
+    }
+}
+
+function renderPortfolioGrowthChart(growthData) {
+    const chartElement = document.getElementById('portfolio-growth-chart')
+    if (!chartElement) return
+    
+    // Destroy existing chart
+    if (performanceCharts.growth) {
+        performanceCharts.growth.destroy()
+    }
+    
+    if (growthData.length === 0) {
+        chartElement.innerHTML = '<div class="text-center text-gray-500 py-8"><i class="fas fa-chart-line text-4xl mb-2"></i><p>No data available</p></div>'
+        return
+    }
+    
+    const options = {
+        series: [
+            {
+                name: 'Cumulative P/L',
+                data: growthData.map(d => ({ x: new Date(d.date).getTime(), y: d.value }))
+            },
+            {
+                name: 'Peak Value',
+                data: growthData.map(d => ({ x: new Date(d.date).getTime(), y: d.peak }))
+            }
+        ],
+        chart: {
+            type: 'area',
+            height: 400,
+            toolbar: {
+                show: true,
+                tools: {
+                    download: true,
+                    zoom: true,
+                    zoomin: true,
+                    zoomout: true,
+                    pan: true,
+                    reset: true
+                }
+            },
+            animations: {
+                enabled: true
+            }
+        },
+        colors: ['#14b8a6', '#94a3b8'],
+        dataLabels: {
+            enabled: false
+        },
+        stroke: {
+            curve: 'smooth',
+            width: [3, 2]
+        },
+        fill: {
+            type: 'gradient',
+            gradient: {
+                shadeIntensity: 1,
+                opacityFrom: 0.7,
+                opacityTo: 0.2,
+                stops: [0, 90, 100]
+            }
+        },
+        xaxis: {
+            type: 'datetime',
+            labels: {
+                datetimeUTC: false
+            }
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(0)
+                }
+            }
+        },
+        tooltip: {
+            x: {
+                format: 'MMM dd, yyyy'
+            },
+            y: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(2)
+                }
+            }
+        },
+        legend: {
+            position: 'top',
+            horizontalAlign: 'right'
+        },
+        grid: {
+            borderColor: '#e5e7eb'
+        }
+    }
+    
+    performanceCharts.growth = new ApexCharts(chartElement, options)
+    performanceCharts.growth.render()
+}
+
+function renderDrawdownChart(drawdownData) {
+    const chartElement = document.getElementById('drawdown-chart')
+    if (!chartElement) return
+    
+    // Destroy existing chart
+    if (performanceCharts.drawdown) {
+        performanceCharts.drawdown.destroy()
+    }
+    
+    if (drawdownData.length === 0) {
+        chartElement.innerHTML = '<div class="text-center text-gray-500 py-8"><i class="fas fa-arrow-down text-4xl mb-2"></i><p>No data available</p></div>'
+        return
+    }
+    
+    const options = {
+        series: [{
+            name: 'Drawdown %',
+            data: drawdownData.map(d => ({ x: new Date(d.date).getTime(), y: d.drawdown }))
+        }],
+        chart: {
+            type: 'area',
+            height: 300,
+            toolbar: {
+                show: false
+            }
+        },
+        colors: ['#ef4444'],
+        dataLabels: {
+            enabled: false
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        fill: {
+            type: 'gradient',
+            gradient: {
+                shadeIntensity: 1,
+                opacityFrom: 0.7,
+                opacityTo: 0.2,
+                stops: [0, 90, 100]
+            }
+        },
+        xaxis: {
+            type: 'datetime',
+            labels: {
+                datetimeUTC: false
+            }
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return val.toFixed(1) + '%'
+                }
+            },
+            max: 0 // Drawdowns are negative, so max is 0
+        },
+        tooltip: {
+            x: {
+                format: 'MMM dd, yyyy'
+            },
+            y: {
+                formatter: function(val) {
+                    return val.toFixed(2) + '%'
+                }
+            }
+        },
+        grid: {
+            borderColor: '#e5e7eb'
+        }
+    }
+    
+    performanceCharts.drawdown = new ApexCharts(chartElement, options)
+    performanceCharts.drawdown.render()
+}
+
+function renderRollingReturnsChart(rollingData) {
+    const chartElement = document.getElementById('rolling-returns-chart')
+    if (!chartElement) return
+    
+    // Destroy existing chart
+    if (performanceCharts.rolling) {
+        performanceCharts.rolling.destroy()
+    }
+    
+    if (rollingData.length === 0) {
+        chartElement.innerHTML = '<div class="text-center text-gray-500 py-8"><i class="fas fa-calendar-check text-4xl mb-2"></i><p>No data available</p></div>'
+        return
+    }
+    
+    const options = {
+        series: [{
+            name: '30-Day Return %',
+            data: rollingData.map(d => ({ x: new Date(d.date).getTime(), y: d.return }))
+        }],
+        chart: {
+            type: 'line',
+            height: 300,
+            toolbar: {
+                show: false
+            }
+        },
+        colors: ['#3b82f6'],
+        dataLabels: {
+            enabled: false
+        },
+        stroke: {
+            curve: 'smooth',
+            width: 2
+        },
+        xaxis: {
+            type: 'datetime',
+            labels: {
+                datetimeUTC: false
+            }
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return val.toFixed(1) + '%'
+                }
+            }
+        },
+        tooltip: {
+            x: {
+                format: 'MMM dd, yyyy'
+            },
+            y: {
+                formatter: function(val) {
+                    return val.toFixed(2) + '%'
+                }
+            }
+        },
+        markers: {
+            size: 0,
+            hover: {
+                size: 5
+            }
+        },
+        grid: {
+            borderColor: '#e5e7eb'
+        },
+        annotations: {
+            yaxis: [{
+                y: 0,
+                borderColor: '#94a3b8',
+                strokeDashArray: 3,
+                label: {
+                    text: 'Break-even',
+                    style: {
+                        color: '#64748b',
+                        background: '#f1f5f9'
+                    }
+                }
+            }]
+        }
+    }
+    
+    performanceCharts.rolling = new ApexCharts(chartElement, options)
+    performanceCharts.rolling.render()
+}
+
+function updateMonthlyReturnsTable(monthlyData) {
+    const tbody = document.getElementById('monthly-returns-table')
+    if (!tbody) return
+    
+    tbody.innerHTML = ''
+    
+    if (monthlyData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-500">No monthly data available</td></tr>'
+        return
+    }
+    
+    // Sort by month descending (most recent first)
+    const sortedData = [...monthlyData].sort((a, b) => b.month.localeCompare(a.month))
+    
+    sortedData.forEach(month => {
+        const row = document.createElement('tr')
+        row.className = 'border-b border-gray-100 hover:bg-gray-50'
+        
+        // Format month
+        const [year, monthNum] = month.month.split('-')
+        const date = new Date(year, monthNum - 1)
+        const monthLabel = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
+        
+        // Color coding for return
+        const returnClass = month.return >= 0 ? 'text-green-600' : 'text-red-600'
+        const plClass = month.pl >= 0 ? 'text-green-600' : 'text-red-600'
+        const sign = month.return >= 0 ? '+' : ''
+        const plSign = month.pl >= 0 ? '+' : ''
+        
+        // Status icon
+        const statusIcon = month.return >= 0 
+            ? '<i class="fas fa-arrow-up text-green-600"></i>' 
+            : '<i class="fas fa-arrow-down text-red-600"></i>'
+        
+        row.innerHTML = `
+            <td class="px-4 py-3">
+                <span class="font-semibold text-gray-800">${monthLabel}</span>
+            </td>
+            <td class="px-4 py-3 text-right ${returnClass} font-bold">
+                ${sign}${month.return.toFixed(2)}%
+            </td>
+            <td class="px-4 py-3 text-right ${plClass} font-semibold">
+                ${plSign}$${month.pl.toFixed(2)}
+            </td>
+            <td class="px-4 py-3 text-center">
+                <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">${month.trades}</span>
+            </td>
+            <td class="px-4 py-3 text-center">
+                ${statusIcon}
+            </td>
+        `
+        
+        tbody.appendChild(row)
+    })
 }
