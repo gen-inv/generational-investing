@@ -8474,7 +8474,7 @@ function showReportTab(tabName) {
             loadPortfolioOverview()
             break
         case 'pl-summary':
-            // TODO: Load P/L Summary
+            loadPLSummary('ytd')
             break
         case 'performance':
             // TODO: Load Performance Charts
@@ -9476,4 +9476,299 @@ function closeEditHistBalanceModal() {
     document.getElementById('edit-hist-balance-rate').value = ''
     document.getElementById('edit-hist-balance-calculated').value = ''
     document.getElementById('edit-hist-balance-id').value = ''
+}
+// ============================================================================
+// P/L SUMMARY REPORT FUNCTIONS
+// ============================================================================
+
+let plSummaryCharts = {
+    asset: null,
+    account: null,
+    monthly: null
+}
+
+// Main P/L Summary loading function
+async function loadPLSummary(period = 'ytd') {
+    try {
+        // Update button states
+        document.querySelectorAll('.pl-period-btn').forEach(btn => {
+            btn.classList.remove('active', 'bg-brand-teal', 'text-white')
+            btn.classList.add('bg-gray-200', 'text-gray-700')
+        })
+        const activeBtn = document.querySelector(`.pl-period-btn[data-period="${period}"]`)
+        if (activeBtn) {
+            activeBtn.classList.add('active', 'bg-brand-teal', 'text-white')
+            activeBtn.classList.remove('bg-gray-200', 'text-gray-700')
+        }
+        
+        // Fetch P/L summary data
+        const response = await api.get(`/api/reports/pl-summary?period=${period}`)
+        const data = response.data
+        
+        // Update summary metrics
+        updatePLSummaryMetrics(data.summary)
+        
+        // Render charts
+        renderPLAssetChart(data.byAssetType)
+        renderPLAccountChart(data.byAccountType)
+        renderPLMonthlyChart(data.monthlyTrend)
+        
+        // Update tables
+        updatePLAssetTable(data.byAssetType)
+        updatePLAccountTable(data.byAccountType)
+        
+    } catch (error) {
+        console.error('Error loading P/L summary:', error)
+        showNotification('Failed to load P/L summary', 'error')
+    }
+}
+
+// Update summary metrics cards
+function updatePLSummaryMetrics(summary) {
+    // Total P/L
+    const totalEl = document.getElementById('pl-total')
+    const totalSubtitle = document.getElementById('pl-total-subtitle')
+    if (totalEl) {
+        const sign = summary.totalPL >= 0 ? '+' : ''
+        const color = summary.totalPL >= 0 ? 'text-green-600' : 'text-red-600'
+        totalEl.textContent = `${sign}$${summary.totalPL.toFixed(2)}`
+        totalEl.className = `text-2xl font-bold ${color}`
+    }
+    if (totalSubtitle) {
+        totalSubtitle.textContent = `${summary.totalTrades} trades`
+    }
+    
+    // Win Rate
+    const winRateEl = document.getElementById('pl-win-rate')
+    const winLossEl = document.getElementById('pl-win-loss')
+    if (winRateEl) {
+        winRateEl.textContent = `${summary.winRate.toFixed(1)}%`
+    }
+    if (winLossEl) {
+        winLossEl.textContent = `${summary.winningTrades}W / ${summary.losingTrades}L`
+    }
+    
+    // Average Trade
+    const avgTradeEl = document.getElementById('pl-avg-trade')
+    if (avgTradeEl) {
+        const sign = summary.avgTrade >= 0 ? '+' : ''
+        const color = summary.avgTrade >= 0 ? 'text-green-600' : 'text-red-600'
+        avgTradeEl.textContent = `${sign}$${summary.avgTrade.toFixed(2)}`
+        avgTradeEl.className = `text-2xl font-bold ${color}`
+    }
+    
+    // Best Trade
+    const bestTradeEl = document.getElementById('pl-best-trade')
+    const worstTradeEl = document.getElementById('pl-worst-trade')
+    if (bestTradeEl) {
+        bestTradeEl.textContent = `$${summary.bestTrade.toFixed(2)}`
+    }
+    if (worstTradeEl) {
+        worstTradeEl.textContent = `Worst: $${summary.worstTrade.toFixed(2)}`
+    }
+}
+
+// Render P/L by Asset Type chart
+function renderPLAssetChart(data) {
+    const chartElement = document.getElementById('pl-asset-chart')
+    if (!chartElement || data.length === 0) return
+    
+    // Destroy previous chart
+    if (plSummaryCharts.asset) {
+        plSummaryCharts.asset.destroy()
+    }
+    
+    const options = {
+        series: data.map(item => item.pl),
+        chart: {
+            type: 'pie',
+            height: 300
+        },
+        labels: data.map(item => item.name),
+        colors: ['#14b8a6', '#f59e0b', '#8b5cf6'],
+        legend: {
+            position: 'bottom'
+        },
+        tooltip: {
+            y: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(2)
+                }
+            }
+        }
+    }
+    
+    plSummaryCharts.asset = new ApexCharts(chartElement, options)
+    plSummaryCharts.asset.render()
+}
+
+// Render P/L by Account Type chart
+function renderPLAccountChart(data) {
+    const chartElement = document.getElementById('pl-account-chart')
+    if (!chartElement || data.length === 0) return
+    
+    // Destroy previous chart
+    if (plSummaryCharts.account) {
+        plSummaryCharts.account.destroy()
+    }
+    
+    const options = {
+        series: [{
+            name: 'P/L',
+            data: data.map(item => item.pl)
+        }],
+        chart: {
+            type: 'bar',
+            height: 300,
+            toolbar: {
+                show: false
+            }
+        },
+        plotOptions: {
+            bar: {
+                horizontal: true,
+                dataLabels: {
+                    position: 'top'
+                }
+            }
+        },
+        dataLabels: {
+            enabled: true,
+            formatter: function(val) {
+                return '$' + val.toFixed(0)
+            },
+            offsetX: 0
+        },
+        xaxis: {
+            categories: data.map(item => item.name),
+            labels: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(0)
+                }
+            }
+        },
+        colors: ['#14b8a6']
+    }
+    
+    plSummaryCharts.account = new ApexCharts(chartElement, options)
+    plSummaryCharts.account.render()
+}
+
+// Render monthly P/L trend chart
+function renderPLMonthlyChart(data) {
+    const chartElement = document.getElementById('pl-monthly-chart')
+    if (!chartElement || data.length === 0) return
+    
+    // Destroy previous chart
+    if (plSummaryCharts.monthly) {
+        plSummaryCharts.monthly.destroy()
+    }
+    
+    const options = {
+        series: [{
+            name: 'Monthly P/L',
+            data: data.map(item => item.pl)
+        }],
+        chart: {
+            type: 'bar',
+            height: 350,
+            toolbar: {
+                show: true
+            }
+        },
+        plotOptions: {
+            bar: {
+                colors: {
+                    ranges: [{
+                        from: -Infinity,
+                        to: 0,
+                        color: '#ef4444'
+                    }, {
+                        from: 0,
+                        to: Infinity,
+                        color: '#10b981'
+                    }]
+                },
+                columnWidth: '70%'
+            }
+        },
+        dataLabels: {
+            enabled: false
+        },
+        xaxis: {
+            categories: data.map(item => {
+                const [year, month] = item.month.split('-')
+                const date = new Date(year, month - 1)
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+            }),
+            labels: {
+                rotate: -45
+            }
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(0)
+                }
+            }
+        },
+        tooltip: {
+            y: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(2)
+                }
+            }
+        }
+    }
+    
+    plSummaryCharts.monthly = new ApexCharts(chartElement, options)
+    plSummaryCharts.monthly.render()
+}
+
+// Update asset type breakdown table
+function updatePLAssetTable(data) {
+    const tbody = document.getElementById('pl-asset-table')
+    if (!tbody) return
+    
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-gray-500">No data available</td></tr>'
+        return
+    }
+    
+    tbody.innerHTML = data.map(item => {
+        const plColor = item.pl >= 0 ? 'text-green-600' : 'text-red-600'
+        const plSign = item.pl >= 0 ? '+' : ''
+        return `
+            <tr class="border-t hover:bg-gray-50">
+                <td class="px-4 py-3 font-semibold">${item.name}</td>
+                <td class="px-4 py-3 text-right">${item.trades}</td>
+                <td class="px-4 py-3 text-right ${plColor} font-semibold">${plSign}$${item.pl.toFixed(2)}</td>
+                <td class="px-4 py-3 text-right">${item.winRate.toFixed(1)}%</td>
+            </tr>
+        `
+    }).join('')
+}
+
+// Update account type breakdown table
+function updatePLAccountTable(data) {
+    const tbody = document.getElementById('pl-account-table')
+    if (!tbody) return
+    
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-3 text-center text-gray-500">No data available</td></tr>'
+        return
+    }
+    
+    tbody.innerHTML = data.map(item => {
+        const plColor = item.pl >= 0 ? 'text-green-600' : 'text-red-600'
+        const plSign = item.pl >= 0 ? '+' : ''
+        return `
+            <tr class="border-t hover:bg-gray-50">
+                <td class="px-4 py-3 font-semibold">${item.name}</td>
+                <td class="px-4 py-3 text-right">${item.trades}</td>
+                <td class="px-4 py-3 text-right ${plColor} font-semibold">${plSign}$${item.pl.toFixed(2)}</td>
+                <td class="px-4 py-3 text-right">${item.winRate.toFixed(1)}%</td>
+            </tr>
+        `
+    }).join('')
 }

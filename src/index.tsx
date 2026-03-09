@@ -3986,6 +3986,206 @@ app.get('/api/reports/pl', authMiddleware, async (c) => {
   })
 })
 
+// P/L Summary Report - detailed breakdown by asset type, account type, and time period
+app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const period = c.req.query('period') || 'ytd' // mtd, qtd, ytd, 12months, all
+    
+    // Calculate date range based on period
+    const now = new Date()
+    let startDate = ''
+    
+    switch (period) {
+      case 'mtd':
+        startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+        break
+      case 'qtd':
+        const quarter = Math.floor(now.getMonth() / 3)
+        const quarterStartMonth = quarter * 3 + 1
+        startDate = `${now.getFullYear()}-${String(quarterStartMonth).padStart(2, '0')}-01`
+        break
+      case 'ytd':
+        startDate = `${now.getFullYear()}-01-01`
+        break
+      case '12months':
+        const last12Months = new Date(now)
+        last12Months.setMonth(last12Months.getMonth() - 12)
+        startDate = last12Months.toISOString().split('T')[0]
+        break
+      case 'all':
+        startDate = '1900-01-01'
+        break
+    }
+    
+    // Get stock trades
+    const stockTrades = await DB.prepare(`
+      SELECT 
+        st.profit_loss,
+        st.close_date,
+        st.account_type,
+        'Stocks' as asset_type
+      FROM stock_trades st
+      WHERE st.user_id = ?
+        AND st.is_open = 0
+        AND st.close_date IS NOT NULL
+        AND st.close_date >= ?
+        AND st.profit_loss IS NOT NULL
+      ORDER BY st.close_date DESC
+    `).bind(userId, startDate).all()
+    
+    // Get option trades
+    const optionTrades = await DB.prepare(`
+      SELECT 
+        ot.profit_loss,
+        ot.close_date,
+        ot.account_type,
+        'Options' as asset_type
+      FROM option_trades ot
+      WHERE ot.user_id = ?
+        AND ot.is_open = 0
+        AND ot.close_date IS NOT NULL
+        AND ot.close_date >= ?
+        AND ot.profit_loss IS NOT NULL
+      ORDER BY ot.close_date DESC
+    `).bind(userId, startDate).all()
+    
+    // Get daily trades
+    const dailyTrades = await DB.prepare(`
+      SELECT 
+        dt.profit_loss,
+        dt.trade_date as close_date,
+        dt.account_type,
+        'Daily Trades' as asset_type
+      FROM daily_trades dt
+      WHERE dt.user_id = ?
+        AND dt.trade_date >= ?
+        AND dt.profit_loss IS NOT NULL
+      ORDER BY dt.trade_date DESC
+    `).bind(userId, startDate).all()
+    
+    // Combine all trades
+    const allTrades = [
+      ...stockTrades.results,
+      ...optionTrades.results,
+      ...dailyTrades.results
+    ]
+    
+    // Calculate overall metrics
+    const totalPL = allTrades.reduce((sum, t: any) => sum + (t.profit_loss || 0), 0)
+    const totalTrades = allTrades.length
+    const winningTrades = allTrades.filter((t: any) => t.profit_loss > 0).length
+    const losingTrades = allTrades.filter((t: any) => t.profit_loss < 0).length
+    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0
+    const avgTrade = totalTrades > 0 ? totalPL / totalTrades : 0
+    const bestTrade = allTrades.length > 0 ? Math.max(...allTrades.map((t: any) => t.profit_loss || 0)) : 0
+    const worstTrade = allTrades.length > 0 ? Math.min(...allTrades.map((t: any) => t.profit_loss || 0)) : 0
+    
+    // Group by asset type
+    const byAssetType: any = {}
+    allTrades.forEach((trade: any) => {
+      const assetType = trade.asset_type
+      if (!byAssetType[assetType]) {
+        byAssetType[assetType] = {
+          trades: [],
+          totalPL: 0,
+          totalTrades: 0,
+          wins: 0,
+          losses: 0
+        }
+      }
+      byAssetType[assetType].trades.push(trade)
+      byAssetType[assetType].totalPL += trade.profit_loss || 0
+      byAssetType[assetType].totalTrades += 1
+      if (trade.profit_loss > 0) byAssetType[assetType].wins += 1
+      if (trade.profit_loss < 0) byAssetType[assetType].losses += 1
+    })
+    
+    // Format asset type data
+    const assetTypeData = Object.keys(byAssetType).map(type => ({
+      name: type,
+      pl: byAssetType[type].totalPL,
+      trades: byAssetType[type].totalTrades,
+      wins: byAssetType[type].wins,
+      losses: byAssetType[type].losses,
+      winRate: byAssetType[type].totalTrades > 0 
+        ? (byAssetType[type].wins / byAssetType[type].totalTrades) * 100 
+        : 0
+    }))
+    
+    // Group by account type
+    const byAccountType: any = {}
+    allTrades.forEach((trade: any) => {
+      const accountType = trade.account_type || 'Unknown'
+      if (!byAccountType[accountType]) {
+        byAccountType[accountType] = {
+          trades: [],
+          totalPL: 0,
+          totalTrades: 0,
+          wins: 0,
+          losses: 0
+        }
+      }
+      byAccountType[accountType].trades.push(trade)
+      byAccountType[accountType].totalPL += trade.profit_loss || 0
+      byAccountType[accountType].totalTrades += 1
+      if (trade.profit_loss > 0) byAccountType[accountType].wins += 1
+      if (trade.profit_loss < 0) byAccountType[accountType].losses += 1
+    })
+    
+    // Format account type data
+    const accountTypeData = Object.keys(byAccountType).map(type => ({
+      name: type,
+      pl: byAccountType[type].totalPL,
+      trades: byAccountType[type].totalTrades,
+      wins: byAccountType[type].wins,
+      losses: byAccountType[type].losses,
+      winRate: byAccountType[type].totalTrades > 0 
+        ? (byAccountType[type].wins / byAccountType[type].totalTrades) * 100 
+        : 0
+    }))
+    
+    // Group by month for trend chart
+    const byMonth: any = {}
+    allTrades.forEach((trade: any) => {
+      if (!trade.close_date) return
+      const monthKey = trade.close_date.substring(0, 7) // YYYY-MM
+      if (!byMonth[monthKey]) {
+        byMonth[monthKey] = 0
+      }
+      byMonth[monthKey] += trade.profit_loss || 0
+    })
+    
+    // Format monthly data
+    const monthlyData = Object.keys(byMonth)
+      .sort()
+      .map(month => ({
+        month,
+        pl: byMonth[month]
+      }))
+    
+    return c.json({
+      summary: {
+        totalPL,
+        totalTrades,
+        winningTrades,
+        losingTrades,
+        winRate,
+        avgTrade,
+        bestTrade,
+        worstTrade
+      },
+      byAssetType: assetTypeData,
+      byAccountType: accountTypeData,
+      monthlyTrend: monthlyData
+    })
+  } catch (error) {
+    console.error('P/L Summary error:', error)
+    return c.json({ error: 'Failed to generate P/L summary' }, 500)
+  }
+})
+
 // Export to CSV endpoint
 app.get('/api/reports/export', authMiddleware, async (c) => {
   const userId = c.get('userId')
@@ -5515,14 +5715,170 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                         
                         <!-- P/L Summary Tab -->
                         <div id="report-tab-pl-summary" class="report-tab-content hidden">
-                            <div class="card">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                            <div class="mb-6">
+                                <h3 class="text-2xl font-bold text-gray-800 mb-4">
                                     <i class="fas fa-dollar-sign text-green-600 mr-2"></i>
-                                    P/L Summary Report
+                                    Profit & Loss Summary
                                 </h3>
-                                <p class="text-gray-600 italic">
-                                    <i class="fas fa-hammer mr-2"></i>Coming soon: Detailed profit/loss breakdown by asset type and time period
-                                </p>
+                                
+                                <!-- Time Period Selector -->
+                                <div class="card mb-6">
+                                    <div class="flex items-center gap-2 mb-4">
+                                        <i class="fas fa-calendar-alt text-brand-teal"></i>
+                                        <span class="font-semibold text-gray-700">Time Period:</span>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button onclick="loadPLSummary('mtd')" class="pl-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-brand-teal hover:text-white transition" data-period="mtd">
+                                            MTD
+                                        </button>
+                                        <button onclick="loadPLSummary('qtd')" class="pl-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-brand-teal hover:text-white transition" data-period="qtd">
+                                            QTD
+                                        </button>
+                                        <button onclick="loadPLSummary('ytd')" class="pl-period-btn active px-4 py-2 bg-brand-teal text-white rounded-lg" data-period="ytd">
+                                            YTD
+                                        </button>
+                                        <button onclick="loadPLSummary('12months')" class="pl-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-brand-teal hover:text-white transition" data-period="12months">
+                                            Last 12 Months
+                                        </button>
+                                        <button onclick="loadPLSummary('all')" class="pl-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-brand-teal hover:text-white transition" data-period="all">
+                                            All Time
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Summary Metrics Cards -->
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                    <div class="card bg-gradient-to-br from-green-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Total P/L</p>
+                                                <p class="text-2xl font-bold text-green-600" id="pl-total">$0.00</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="pl-total-subtitle">0 trades</p>
+                                            </div>
+                                            <div class="text-3xl text-green-600 opacity-20">
+                                                <i class="fas fa-dollar-sign"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-blue-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Win Rate</p>
+                                                <p class="text-2xl font-bold text-blue-600" id="pl-win-rate">0%</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="pl-win-loss">0W / 0L</p>
+                                            </div>
+                                            <div class="text-3xl text-blue-600 opacity-20">
+                                                <i class="fas fa-trophy"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-purple-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Average Trade</p>
+                                                <p class="text-2xl font-bold text-purple-600" id="pl-avg-trade">$0.00</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="pl-avg-subtitle">Per trade</p>
+                                            </div>
+                                            <div class="text-3xl text-purple-600 opacity-20">
+                                                <i class="fas fa-chart-bar"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-orange-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Best Trade</p>
+                                                <p class="text-2xl font-bold text-orange-600" id="pl-best-trade">$0.00</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="pl-worst-trade">Worst: $0</p>
+                                            </div>
+                                            <div class="text-3xl text-orange-600 opacity-20">
+                                                <i class="fas fa-star"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Charts Row -->
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                    <!-- P/L by Asset Type Chart -->
+                                    <div class="card">
+                                        <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                            <i class="fas fa-layer-group mr-2 text-brand-teal"></i>
+                                            P/L by Asset Type
+                                        </h4>
+                                        <div id="pl-asset-chart" style="height: 300px;"></div>
+                                    </div>
+                                    
+                                    <!-- P/L by Account Type Chart -->
+                                    <div class="card">
+                                        <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                            <i class="fas fa-wallet mr-2 text-brand-teal"></i>
+                                            P/L by Account Type
+                                        </h4>
+                                        <div id="pl-account-chart" style="height: 300px;"></div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Detailed Breakdown Tables -->
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                    <!-- By Asset Type Table -->
+                                    <div class="card">
+                                        <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                            <i class="fas fa-list mr-2 text-brand-teal"></i>
+                                            Breakdown by Asset Type
+                                        </h4>
+                                        <div class="overflow-x-auto">
+                                            <table class="w-full">
+                                                <thead>
+                                                    <tr class="bg-gray-100">
+                                                        <th class="px-4 py-3 text-left">Asset Type</th>
+                                                        <th class="px-4 py-3 text-right">Trades</th>
+                                                        <th class="px-4 py-3 text-right">P/L</th>
+                                                        <th class="px-4 py-3 text-right">Win Rate</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="pl-asset-table">
+                                                    <!-- Dynamic content -->
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- By Account Type Table -->
+                                    <div class="card">
+                                        <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                            <i class="fas fa-list mr-2 text-brand-teal"></i>
+                                            Breakdown by Account Type
+                                        </h4>
+                                        <div class="overflow-x-auto">
+                                            <table class="w-full">
+                                                <thead>
+                                                    <tr class="bg-gray-100">
+                                                        <th class="px-4 py-3 text-left">Account Type</th>
+                                                        <th class="px-4 py-3 text-right">Trades</th>
+                                                        <th class="px-4 py-3 text-right">P/L</th>
+                                                        <th class="px-4 py-3 text-right">Win Rate</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="pl-account-table">
+                                                    <!-- Dynamic content -->
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Monthly P/L Trend -->
+                                <div class="card">
+                                    <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                        <i class="fas fa-chart-line mr-2 text-brand-teal"></i>
+                                        Monthly P/L Trend
+                                    </h4>
+                                    <div id="pl-monthly-chart" style="height: 350px;"></div>
+                                </div>
                             </div>
                         </div>
                         
