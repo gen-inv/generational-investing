@@ -9505,6 +9505,8 @@ async function loadPLSummary(period = 'ytd') {
         const response = await api.get(`/api/reports/pl-summary?period=${period}`)
         const data = response.data
         
+        console.log('P/L Summary data loaded:', data)
+        
         // Update summary metrics
         updatePLSummaryMetrics(data.summary)
         
@@ -9519,7 +9521,14 @@ async function loadPLSummary(period = 'ytd') {
         
     } catch (error) {
         console.error('Error loading P/L summary:', error)
-        showNotification('Failed to load P/L summary', 'error')
+        console.error('Error response:', error.response?.data)
+        console.error('Error status:', error.response?.status)
+        
+        if (error.response?.status === 401) {
+            showNotification('Please log in to view P/L Summary', 'error')
+        } else {
+            showNotification('Failed to load P/L summary: ' + (error.response?.data?.error || error.message), 'error')
+        }
     }
 }
 

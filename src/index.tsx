@@ -3993,6 +3993,8 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     const { DB } = c.env
     const period = c.req.query('period') || 'ytd' // mtd, qtd, ytd, 12months, all
     
+    console.log(`P/L Summary request: userId=${userId}, period=${period}`)
+    
     // Calculate date range based on period
     const now = new Date()
     let startDate = ''
@@ -4018,6 +4020,8 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
         startDate = '1900-01-01'
         break
     }
+    
+    console.log(`Date range: startDate=${startDate}`)
     
     // Get stock trades
     const stockTrades = await DB.prepare(`
@@ -4164,6 +4168,9 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
         month,
         pl: byMonth[month]
       }))
+    
+    console.log(`P/L Summary result: ${totalTrades} trades, $${totalPL.toFixed(2)} total P/L`)
+    console.log(`Asset types: ${assetTypeData.length}, Account types: ${accountTypeData.length}, Months: ${monthlyData.length}`)
     
     return c.json({
       summary: {
