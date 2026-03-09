@@ -7260,18 +7260,42 @@ function calculateWeeklyPL(allTrades) {
     friday.setDate(monday.getDate() + 4)
     friday.setHours(23, 59, 59, 999)
     
-    // Format dates for display
+    // Format dates for comparison (YYYY-MM-DD)
     const mondayStr = monday.toISOString().split('T')[0]
     const fridayStr = friday.toISOString().split('T')[0]
     
+    console.log('Weekly P/L calculation:', {
+        today: today.toISOString().split('T')[0],
+        dayOfWeek,
+        monday: mondayStr,
+        friday: fridayStr,
+        totalTrades: allTrades.length
+    })
+    
     // Filter trades for this week (Mon-Fri) that are closed
     const weekTrades = allTrades.filter(trade => {
-        const tradeDate = new Date(trade.trade_date)
-        return tradeDate >= monday && tradeDate <= friday && !trade.is_open
+        // Compare date strings directly (YYYY-MM-DD format)
+        const tradeDate = trade.trade_date
+        const isInRange = tradeDate >= mondayStr && tradeDate <= fridayStr
+        const isClosed = !trade.is_open
+        
+        if (isInRange && isClosed) {
+            console.log('Week trade:', {
+                date: tradeDate,
+                pl: trade.profit_loss,
+                isClosed
+            })
+        }
+        
+        return isInRange && isClosed
     })
+    
+    console.log('Week trades found:', weekTrades.length)
     
     // Calculate total P/L
     const totalPL = weekTrades.reduce((sum, trade) => sum + (trade.profit_loss || 0), 0)
+    
+    console.log('Weekly P/L total:', totalPL)
     
     // Update display
     const plElement = document.getElementById('dt-weekly-pl')
