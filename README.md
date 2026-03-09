@@ -67,7 +67,19 @@
    - CSV export for Excel
    - Tax-ready reports
 
-7. **Brand Styling**
+7. **Reports Dashboard** ✨ NEW
+   - **P/L Summary**: Detailed profit/loss breakdown by asset type, account type, and time periods (MTD, QTD, YTD, Last 12 Months, All Time)
+   - **Strategy Analysis**: Performance comparison across different trading strategies with:
+     - Total return percentage and Sharpe ratio
+     - Maximum drawdown tracking
+     - Win rate analysis by strategy
+     - Strategy-specific P/L charts
+     - Monthly heatmap of profit/loss
+     - Benchmark comparison (placeholder for SPY/QQQ)
+   - Interactive ApexCharts visualizations
+   - Real-time metrics and performance indicators
+
+8. **Brand Styling**
    - RobPage brand colors:
      - Teal (#004F59) - Primary
      - Gold (#C9B25F) - Accent
@@ -113,6 +125,8 @@
 
 #### Reports
 - `GET /api/reports/pl?year=2026&month=1` - Get P/L report
+- `GET /api/reports/pl-summary?period=ytd` - Get P/L Summary with breakdowns
+- `GET /api/reports/strategy-analysis?period=ytd` - Get Strategy Analysis with performance metrics
 - `GET /api/reports/export?type=stocks&year=2026` - Export CSV
 
 ### 🔄 Features Ready for Implementation (See COMPLETE_IMPLEMENTATION_SPEC.md)
@@ -477,10 +491,11 @@ npx wrangler d1 execute webapp-production --local --command="SELECT * FROM compa
 Proprietary - All rights reserved
 
 ## Last Updated
-January 27, 2026
+March 9, 2026
 
 ## Project Status
 - ✅ v1.0 Complete - Core features implemented and tested
+- ✅ v1.2 Complete - Reports Dashboard with P/L Summary and Strategy Analysis ✨ NEW
 - 📋 v1.1 Specification Ready - See COMPLETE_IMPLEMENTATION_SPEC.md
 - 🚀 Ready for multi-session implementation
 
