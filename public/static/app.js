@@ -9580,45 +9580,116 @@ function updatePLSummaryMetrics(summary) {
 // Render P/L by Asset Type chart
 function renderPLAssetChart(data) {
     const chartElement = document.getElementById('pl-asset-chart')
-    if (!chartElement || data.length === 0) return
+    if (!chartElement) return
     
     // Destroy previous chart
     if (plSummaryCharts.asset) {
         plSummaryCharts.asset.destroy()
     }
     
-    const options = {
-        series: data.map(item => item.pl),
-        chart: {
-            type: 'pie',
-            height: 300
-        },
-        labels: data.map(item => item.name),
-        colors: ['#14b8a6', '#f59e0b', '#8b5cf6'],
-        legend: {
-            position: 'bottom'
-        },
-        tooltip: {
-            y: {
-                formatter: function(val) {
-                    return '$' + val.toFixed(2)
+    if (data.length === 0) {
+        chartElement.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">No data available</div>'
+        return
+    }
+    
+    // Check if there are any negative values - pie charts can't handle negatives
+    const hasNegative = data.some(item => item.pl < 0)
+    
+    if (hasNegative) {
+        // Use bar chart instead for mixed positive/negative data
+        const options = {
+            series: [{
+                name: 'P/L',
+                data: data.map(item => item.pl)
+            }],
+            chart: {
+                type: 'bar',
+                height: 300,
+                toolbar: {
+                    show: false
+                }
+            },
+            plotOptions: {
+                bar: {
+                    horizontal: false,
+                    dataLabels: {
+                        position: 'top'
+                    },
+                    colors: {
+                        ranges: [{
+                            from: -Infinity,
+                            to: 0,
+                            color: '#ef4444'
+                        }, {
+                            from: 0,
+                            to: Infinity,
+                            color: '#10b981'
+                        }]
+                    }
+                }
+            },
+            dataLabels: {
+                enabled: false
+            },
+            xaxis: {
+                categories: data.map(item => item.name)
+            },
+            yaxis: {
+                labels: {
+                    formatter: function(val) {
+                        return '$' + val.toFixed(0)
+                    }
+                }
+            },
+            tooltip: {
+                y: {
+                    formatter: function(val) {
+                        return '$' + val.toFixed(2)
+                    }
                 }
             }
         }
+        plSummaryCharts.asset = new ApexCharts(chartElement, options)
+    } else {
+        // Use pie chart for all positive data
+        const options = {
+            series: data.map(item => item.pl),
+            chart: {
+                type: 'pie',
+                height: 300
+            },
+            labels: data.map(item => item.name),
+            colors: ['#14b8a6', '#f59e0b', '#8b5cf6'],
+            legend: {
+                position: 'bottom'
+            },
+            tooltip: {
+                y: {
+                    formatter: function(val) {
+                        return '$' + val.toFixed(2)
+                    }
+                }
+            }
+        }
+        plSummaryCharts.asset = new ApexCharts(chartElement, options)
     }
     
-    plSummaryCharts.asset = new ApexCharts(chartElement, options)
     plSummaryCharts.asset.render()
 }
 
 // Render P/L by Account Type chart
 function renderPLAccountChart(data) {
     const chartElement = document.getElementById('pl-account-chart')
-    if (!chartElement || data.length === 0) return
+    if (!chartElement) return
     
     // Destroy previous chart
     if (plSummaryCharts.account) {
         plSummaryCharts.account.destroy()
+    }
+    
+    if (data.length === 0) {
+        chartElement.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">No data available</div>'
+        return
     }
     
     const options = {
@@ -9638,6 +9709,17 @@ function renderPLAccountChart(data) {
                 horizontal: true,
                 dataLabels: {
                     position: 'top'
+                },
+                colors: {
+                    ranges: [{
+                        from: -Infinity,
+                        to: 0,
+                        color: '#ef4444'
+                    }, {
+                        from: 0,
+                        to: Infinity,
+                        color: '#10b981'
+                    }]
                 }
             }
         },
@@ -9655,8 +9737,7 @@ function renderPLAccountChart(data) {
                     return '$' + val.toFixed(0)
                 }
             }
-        },
-        colors: ['#14b8a6']
+        }
     }
     
     plSummaryCharts.account = new ApexCharts(chartElement, options)
@@ -9666,11 +9747,16 @@ function renderPLAccountChart(data) {
 // Render monthly P/L trend chart
 function renderPLMonthlyChart(data) {
     const chartElement = document.getElementById('pl-monthly-chart')
-    if (!chartElement || data.length === 0) return
+    if (!chartElement) return
     
     // Destroy previous chart
     if (plSummaryCharts.monthly) {
         plSummaryCharts.monthly.destroy()
+    }
+    
+    if (data.length === 0) {
+        chartElement.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">No data available</div>'
+        return
     }
     
     const options = {
