@@ -4207,6 +4207,202 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     }, 500)
   }
 })
+// Strategy Analysis Report - comprehensive strategy performance comparison
+app.get('/api/reports/strategy-analysis', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const period = c.req.query('period') || 'ytd'
+    
+    console.log(`Strategy Analysis request: userId=${userId}, period=${period}`)
+    
+    // Calculate date range
+    const now = new Date()
+    let startDate = ''
+    
+    switch (period) {
+      case 'ytd':
+        startDate = `${now.getFullYear()}-01-01`
+        break
+      case '12months':
+        const last12Months = new Date(now)
+        last12Months.setMonth(last12Months.getMonth() - 12)
+        startDate = last12Months.toISOString().split('T')[0]
+        break
+      case 'all':
+        startDate = '1900-01-01'
+        break
+    }
+    
+    // Get all closed trades with strategy information
+    const optionTrades = await DB.prepare(`
+      SELECT 
+        ot.profit_loss,
+        ot.close_date,
+        ot.strategy_type,
+        ot.commission,
+        ot.close_commission
+      FROM option_trades ot
+      WHERE ot.user_id = ?
+        AND ot.is_open = 0
+        AND ot.close_date IS NOT NULL
+        AND ot.close_date >= ?
+        AND ot.profit_loss IS NOT NULL
+      ORDER BY ot.close_date ASC
+    `).bind(userId, startDate).all()
+    
+    const dailyTrades = await DB.prepare(`
+      SELECT 
+        dt.profit_loss,
+        dt.trade_date as close_date,
+        dt.strategy_type,
+        dt.commission
+      FROM daily_trades dt
+      WHERE dt.user_id = ?
+        AND dt.trade_date >= ?
+        AND dt.profit_loss IS NOT NULL
+      ORDER BY dt.trade_date ASC
+    `).bind(userId, startDate).all()
+    
+    // Combine all trades
+    const allTrades = [
+      ...optionTrades.results.map((t: any) => ({
+        ...t,
+        asset_type: 'Options'
+      })),
+      ...dailyTrades.results.map((t: any) => ({
+        ...t,
+        asset_type: 'Daily Trades'
+      }))
+    ]
+    
+    console.log(`Total trades for analysis: ${allTrades.length}`)
+    
+    // Group by strategy
+    const byStrategy: any = {}
+    allTrades.forEach((trade: any) => {
+      const strategy = trade.strategy_type || 'Other'
+      if (!byStrategy[strategy]) {
+        byStrategy[strategy] = {
+          trades: [],
+          pnl: []
+        }
+      }
+      byStrategy[strategy].trades.push(trade)
+      byStrategy[strategy].pnl.push(trade.profit_loss || 0)
+    })
+    
+    // Calculate statistics for each strategy
+    const strategyData = Object.keys(byStrategy).map(strategy => {
+      const trades = byStrategy[strategy].trades
+      const pnl = byStrategy[strategy].pnl
+      
+      const totalPL = pnl.reduce((sum: number, val: number) => sum + val, 0)
+      const wins = pnl.filter((val: number) => val > 0).length
+      const losses = pnl.filter((val: number) => val < 0).length
+      const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0
+      const avgPL = trades.length > 0 ? totalPL / trades.length : 0
+      const bestTrade = trades.length > 0 ? Math.max(...pnl) : 0
+      const worstTrade = trades.length > 0 ? Math.min(...pnl) : 0
+      
+      // Calculate Sharpe Ratio (simplified)
+      const mean = avgPL
+      const variance = pnl.reduce((sum: number, val: number) => sum + Math.pow(val - mean, 2), 0) / (pnl.length || 1)
+      const stdDev = Math.sqrt(variance)
+      const sharpe = stdDev > 0 ? (mean / stdDev) * Math.sqrt(252) : 0 // Annualized
+      
+      return {
+        strategy,
+        trades: trades.length,
+        totalPL,
+        avgPL,
+        wins,
+        losses,
+        winRate,
+        bestTrade,
+        worstTrade,
+        sharpe
+      }
+    })
+    
+    // Calculate overall portfolio metrics
+    const allPnl = allTrades.map((t: any) => t.profit_loss || 0)
+    const totalPL = allPnl.reduce((sum: number, val: number) => sum + val, 0)
+    const totalTrades = allTrades.length
+    const wins = allPnl.filter((val: number) => val > 0).length
+    const losses = allPnl.filter((val: number) => val < 0).length
+    const winRate = totalTrades > 0 ? (wins / totalTrades) * 100 : 0
+    
+    // Calculate cumulative returns for drawdown
+    let cumPL = 0
+    let peak = 0
+    let maxDrawdown = 0
+    const cumulativeReturns = allTrades.map((trade: any) => {
+      cumPL += trade.profit_loss || 0
+      if (cumPL > peak) peak = cumPL
+      const drawdown = peak > 0 ? ((peak - cumPL) / peak) * 100 : 0
+      if (drawdown > maxDrawdown) maxDrawdown = drawdown
+      return { date: trade.close_date, cumPL, peak, drawdown }
+    })
+    
+    // Calculate Sharpe Ratio for overall portfolio
+    const mean = totalTrades > 0 ? totalPL / totalTrades : 0
+    const variance = allPnl.reduce((sum: number, val: number) => sum + Math.pow(val - mean, 2), 0) / (totalTrades || 1)
+    const stdDev = Math.sqrt(variance)
+    const sharpe = stdDev > 0 ? (mean / stdDev) * Math.sqrt(252) : 0
+    
+    // Group by month for heatmap
+    const byMonth: any = {}
+    allTrades.forEach((trade: any) => {
+      if (!trade.close_date) return
+      const monthKey = trade.close_date.substring(0, 7) // YYYY-MM
+      if (!byMonth[monthKey]) {
+        byMonth[monthKey] = 0
+      }
+      byMonth[monthKey] += trade.profit_loss || 0
+    })
+    
+    const monthlyData = Object.keys(byMonth)
+      .sort()
+      .map(month => ({
+        month,
+        pl: byMonth[month]
+      }))
+    
+    // Calculate total return percentage (simplified - would need starting capital)
+    // Using arbitrary $100k starting capital for demonstration
+    const startingCapital = 100000
+    const totalReturn = (totalPL / startingCapital) * 100
+    
+    console.log(`Strategy Analysis complete: ${strategyData.length} strategies, ${totalTrades} trades`)
+    
+    return c.json({
+      overall: {
+        totalPL,
+        totalReturn,
+        totalTrades,
+        wins,
+        losses,
+        winRate,
+        sharpe,
+        maxDrawdown
+      },
+      strategies: strategyData,
+      monthlyData,
+      cumulativeReturns: cumulativeReturns.slice(-100) // Last 100 data points
+    })
+  } catch (error) {
+    console.error('Strategy Analysis error:', error)
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    return c.json({ 
+      error: 'Failed to generate strategy analysis',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
 
 // Export to CSV endpoint
 app.get('/api/reports/export', authMiddleware, async (c) => {
@@ -5919,14 +6115,198 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                         
                         <!-- Strategy Analysis Tab -->
                         <div id="report-tab-strategy" class="report-tab-content hidden">
-                            <div class="card">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                            <div class="mb-6">
+                                <h3 class="text-2xl font-bold text-gray-800 mb-4">
                                     <i class="fas fa-chess text-purple-600 mr-2"></i>
-                                    Strategy Analysis
+                                    Strategy Analysis & Performance Comparison
                                 </h3>
-                                <p class="text-gray-600 italic">
-                                    <i class="fas fa-hammer mr-2"></i>Coming soon: Compare performance across different trading strategies
-                                </p>
+                                
+                                <!-- Time Period Selector -->
+                                <div class="card mb-6">
+                                    <div class="flex items-center gap-2 mb-4">
+                                        <i class="fas fa-calendar-alt text-brand-teal"></i>
+                                        <span class="font-semibold text-gray-700">Time Period:</span>
+                                    </div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button onclick="loadStrategyAnalysis('ytd')" class="strategy-period-btn active px-4 py-2 bg-brand-teal text-white rounded-lg" data-period="ytd">
+                                            YTD
+                                        </button>
+                                        <button onclick="loadStrategyAnalysis('12months')" class="strategy-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-brand-teal hover:text-white transition" data-period="12months">
+                                            Last 12 Months
+                                        </button>
+                                        <button onclick="loadStrategyAnalysis('all')" class="strategy-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-brand-teal hover:text-white transition" data-period="all">
+                                            All Time
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Overall Performance Metrics -->
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                    <div class="card bg-gradient-to-br from-green-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Total Return</p>
+                                                <p class="text-2xl font-bold text-green-600" id="strategy-total-return">0%</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="strategy-total-pl">$0.00</p>
+                                            </div>
+                                            <div class="text-3xl text-green-600 opacity-20">
+                                                <i class="fas fa-chart-line"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-blue-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Sharpe Ratio</p>
+                                                <p class="text-2xl font-bold text-blue-600" id="strategy-sharpe">0.00</p>
+                                                <p class="text-xs text-gray-500 mt-1">Risk-adjusted return</p>
+                                            </div>
+                                            <div class="text-3xl text-blue-600 opacity-20">
+                                                <i class="fas fa-balance-scale"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-purple-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Max Drawdown</p>
+                                                <p class="text-2xl font-bold text-purple-600" id="strategy-max-dd">0%</p>
+                                                <p class="text-xs text-gray-500 mt-1">Peak to trough</p>
+                                            </div>
+                                            <div class="text-3xl text-purple-600 opacity-20">
+                                                <i class="fas fa-arrow-down"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-orange-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Win Rate</p>
+                                                <p class="text-2xl font-bold text-orange-600" id="strategy-win-rate">0%</p>
+                                                <p class="text-xs text-gray-500 mt-1" id="strategy-win-loss">0W / 0L</p>
+                                            </div>
+                                            <div class="text-3xl text-orange-600 opacity-20">
+                                                <i class="fas fa-trophy"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Strategy Comparison Charts -->
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                    <!-- Strategy Performance Comparison -->
+                                    <div class="card">
+                                        <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                            <i class="fas fa-chart-bar mr-2 text-brand-teal"></i>
+                                            Performance by Strategy
+                                        </h4>
+                                        <div id="strategy-performance-chart" style="height: 350px;"></div>
+                                    </div>
+                                    
+                                    <!-- Win Rate by Strategy -->
+                                    <div class="card">
+                                        <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                            <i class="fas fa-percent mr-2 text-brand-teal"></i>
+                                            Win Rate by Strategy
+                                        </h4>
+                                        <div id="strategy-winrate-chart" style="height: 350px;"></div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Detailed Strategy Table -->
+                                <div class="card mb-6">
+                                    <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                        <i class="fas fa-table mr-2 text-brand-teal"></i>
+                                        Detailed Strategy Breakdown
+                                    </h4>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead>
+                                                <tr class="bg-gray-100">
+                                                    <th class="px-4 py-3 text-left">Strategy</th>
+                                                    <th class="px-4 py-3 text-right">Trades</th>
+                                                    <th class="px-4 py-3 text-right">Total P/L</th>
+                                                    <th class="px-4 py-3 text-right">Avg P/L</th>
+                                                    <th class="px-4 py-3 text-right">Win Rate</th>
+                                                    <th class="px-4 py-3 text-right">Best Trade</th>
+                                                    <th class="px-4 py-3 text-right">Worst Trade</th>
+                                                    <th class="px-4 py-3 text-right">Sharpe</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="strategy-table">
+                                                <!-- Dynamic content -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                
+                                <!-- Benchmark Comparison -->
+                                <div class="card mb-6">
+                                    <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                        <i class="fas fa-chart-line mr-2 text-brand-teal"></i>
+                                        Benchmark Comparison
+                                    </h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                        <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <span class="text-sm font-semibold text-gray-700">SPY (S&P 500)</span>
+                                                <span class="text-xs text-gray-500">YTD</span>
+                                            </div>
+                                            <p class="text-xl font-bold text-blue-600" id="benchmark-spy">+0.0%</p>
+                                            <p class="text-xs text-gray-500 mt-1">Broad market index</p>
+                                        </div>
+                                        
+                                        <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <span class="text-sm font-semibold text-gray-700">QQQ (Nasdaq-100)</span>
+                                                <span class="text-xs text-gray-500">YTD</span>
+                                            </div>
+                                            <p class="text-xl font-bold text-purple-600" id="benchmark-qqq">+0.0%</p>
+                                            <p class="text-xs text-gray-500 mt-1">Tech-heavy index</p>
+                                        </div>
+                                        
+                                        <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <span class="text-sm font-semibold text-gray-700">Your Portfolio</span>
+                                                <span class="text-xs text-gray-500">YTD</span>
+                                            </div>
+                                            <p class="text-xl font-bold text-green-600" id="benchmark-portfolio">+0.0%</p>
+                                            <p class="text-xs text-gray-500 mt-1">Total return</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead>
+                                                <tr class="bg-gray-100">
+                                                    <th class="px-4 py-3 text-left">Metric</th>
+                                                    <th class="px-4 py-3 text-right">Your Portfolio</th>
+                                                    <th class="px-4 py-3 text-right">SPY</th>
+                                                    <th class="px-4 py-3 text-right">QQQ</th>
+                                                    <th class="px-4 py-3 text-right">Hedge Funds*</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="benchmark-table">
+                                                <!-- Dynamic content -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-4">
+                                        * Hedge fund benchmarks: YTD ~8-12%, Sharpe ~1.5-2.0, Max DD ~10-15%
+                                    </p>
+                                </div>
+                                
+                                <!-- Monthly Performance Heat Map -->
+                                <div class="card">
+                                    <h4 class="text-lg font-semibold text-gray-800 mb-4">
+                                        <i class="fas fa-calendar-check mr-2 text-brand-teal"></i>
+                                        Monthly Performance Heat Map
+                                    </h4>
+                                    <div id="strategy-heatmap-chart" style="height: 400px;"></div>
+                                </div>
                             </div>
                         </div>
                         

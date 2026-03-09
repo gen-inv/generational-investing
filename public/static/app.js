@@ -8504,7 +8504,7 @@ function showReportTab(tabName) {
             // TODO: Load Performance Charts
             break
         case 'strategy':
-            // TODO: Load Strategy Analysis
+            loadStrategyAnalysis('ytd')
             break
         case 'positions':
             // TODO: Load Position Analysis
@@ -9890,4 +9890,292 @@ function updatePLAccountTable(data) {
             </tr>
         `
     }).join('')
+}
+
+// ============================================================================
+// STRATEGY ANALYSIS FUNCTIONS
+// ============================================================================
+
+async function loadStrategyAnalysis(period = 'ytd') {
+    try {
+        // Update button states
+        document.querySelectorAll('.strategy-period-btn').forEach(btn => {
+            btn.classList.remove('active', 'bg-brand-teal', 'text-white')
+            btn.classList.add('bg-gray-200', 'text-gray-700')
+        })
+        const activeBtn = document.querySelector(`.strategy-period-btn[data-period="${period}"]`)
+        if (activeBtn) {
+            activeBtn.classList.add('active', 'bg-brand-teal', 'text-white')
+            activeBtn.classList.remove('bg-gray-200', 'text-gray-700')
+        }
+        
+        // Fetch strategy analysis data
+        const response = await api.get(`/api/reports/strategy-analysis?period=${period}`)
+        const data = response.data
+        
+        console.log('Strategy Analysis data:', data)
+        
+        // Update overall metrics
+        updateStrategyMetrics(data.overall)
+        
+        // Render strategy comparison chart and table
+        renderStrategyPerformanceChart(data.strategies)
+        renderStrategyWinRateChart(data.strategies)
+        updateStrategyTable(data.strategies)
+        
+        // Update benchmark comparison (placeholder for now)
+        updateBenchmarkComparison(data.overall)
+        
+        // Render monthly heatmap
+        renderMonthlyHeatmap(data.monthlyData)
+        
+    } catch (error) {
+        console.error('Error loading strategy analysis:', error)
+        console.error('Error response:', error.response?.data)
+        if (error.response?.status === 401) {
+            showNotification('Please log in to view Strategy Analysis', 'error')
+        } else {
+            showNotification('Failed to load strategy analysis: ' + (error.response?.data?.error || error.message), 'error')
+        }
+    }
+}
+
+function updateStrategyMetrics(overall) {
+    // Total Return
+    const returnEl = document.getElementById('strategy-total-return')
+    const plEl = document.getElementById('strategy-total-pl')
+    if (returnEl) {
+        const sign = overall.totalReturn >= 0 ? '+' : ''
+        returnEl.textContent = `${sign}${overall.totalReturn.toFixed(2)}%`
+        returnEl.className = `text-2xl font-bold ${overall.totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}`
+    }
+    if (plEl) {
+        const sign = overall.totalPL >= 0 ? '+' : ''
+        plEl.textContent = `${sign}$${overall.totalPL.toFixed(2)}`
+    }
+    
+    // Sharpe Ratio
+    const sharpeEl = document.getElementById('strategy-sharpe')
+    if (sharpeEl) {
+        sharpeEl.textContent = overall.sharpe.toFixed(2)
+    }
+    
+    // Max Drawdown
+    const ddEl = document.getElementById('strategy-max-dd')
+    if (ddEl) {
+        ddEl.textContent = `-${overall.maxDrawdown.toFixed(2)}%`
+    }
+    
+    // Win Rate
+    const winRateEl = document.getElementById('strategy-win-rate')
+    const winLossEl = document.getElementById('strategy-win-loss')
+    if (winRateEl) {
+        winRateEl.textContent = `${overall.winRate.toFixed(1)}%`
+    }
+    if (winLossEl) {
+        winLossEl.textContent = `${overall.wins}W / ${overall.losses}L`
+    }
+}
+
+function renderStrategyPerformanceChart(strategies) {
+    const chartElement = document.getElementById('strategy-performance-chart')
+    if (!chartElement || strategies.length === 0) return
+    
+    // Strategy name mapping
+    const strategyNames = {
+        'SELLING_PUT': 'Short Put',
+        'CREDIT_SPREAD': 'Credit Spread',
+        'DEBIT_SPREAD': 'Debit Spread',
+        'IRON_CONDOR': 'Iron Condor',
+        'CREDIT_SPREAD_CALL': 'Call Credit Spread',
+        'CREDIT_SPREAD_PUT': 'Put Credit Spread'
+    }
+    
+    const options = {
+        series: [{
+            name: 'Total P/L',
+            data: strategies.map(s => s.totalPL)
+        }],
+        chart: {
+            type: 'bar',
+            height: 350
+        },
+        plotOptions: {
+            bar: {
+                horizontal: false,
+                colors: {
+                    ranges: [{
+                        from: -Infinity,
+                        to: 0,
+                        color: '#ef4444'
+                    }, {
+                        from: 0,
+                        to: Infinity,
+                        color: '#10b981'
+                    }]
+                }
+            }
+        },
+        dataLabels: {
+            enabled: false
+        },
+        xaxis: {
+            categories: strategies.map(s => strategyNames[s.strategy] || s.strategy)
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(0)
+                }
+            }
+        }
+    }
+    
+    new ApexCharts(chartElement, options).render()
+}
+
+function renderStrategyWinRateChart(strategies) {
+    const chartElement = document.getElementById('strategy-winrate-chart')
+    if (!chartElement || strategies.length === 0) return
+    
+    const strategyNames = {
+        'SELLING_PUT': 'Short Put',
+        'CREDIT_SPREAD': 'Credit Spread',
+        'DEBIT_SPREAD': 'Debit Spread',
+        'IRON_CONDOR': 'Iron Condor',
+        'CREDIT_SPREAD_CALL': 'Call Credit Spread',
+        'CREDIT_SPREAD_PUT': 'Put Credit Spread'
+    }
+    
+    const options = {
+        series: [{
+            name: 'Win Rate',
+            data: strategies.map(s => s.winRate)
+        }],
+        chart: {
+            type: 'bar',
+            height: 350
+        },
+        plotOptions: {
+            bar: {
+                horizontal: true
+            }
+        },
+        colors: ['#14b8a6'],
+        xaxis: {
+            categories: strategies.map(s => strategyNames[s.strategy] || s.strategy),
+            labels: {
+                formatter: function(val) {
+                    return val.toFixed(1) + '%'
+                }
+            }
+        }
+    }
+    
+    new ApexCharts(chartElement, options).render()
+}
+
+function updateStrategyTable(strategies) {
+    const tbody = document.getElementById('strategy-table')
+    if (!tbody) return
+    
+    const strategyNames = {
+        'SELLING_PUT': 'Short Put',
+        'CREDIT_SPREAD': 'Credit Spread',
+        'DEBIT_SPREAD': 'Debit Spread',
+        'IRON_CONDOR': 'Iron Condor',
+        'CREDIT_SPREAD_CALL': 'Call Credit Spread',
+        'CREDIT_SPREAD_PUT': 'Put Credit Spread'
+    }
+    
+    tbody.innerHTML = strategies.map(s => {
+        const plColor = s.totalPL >= 0 ? 'text-green-600' : 'text-red-600'
+        const plSign = s.totalPL >= 0 ? '+' : ''
+        return `
+            <tr class="border-t hover:bg-gray-50">
+                <td class="px-4 py-3 font-semibold">${strategyNames[s.strategy] || s.strategy}</td>
+                <td class="px-4 py-3 text-right">${s.trades}</td>
+                <td class="px-4 py-3 text-right ${plColor} font-semibold">${plSign}$${s.totalPL.toFixed(2)}</td>
+                <td class="px-4 py-3 text-right">${plSign}$${s.avgPL.toFixed(2)}</td>
+                <td class="px-4 py-3 text-right">${s.winRate.toFixed(1)}%</td>
+                <td class="px-4 py-3 text-right text-green-600">$${s.bestTrade.toFixed(2)}</td>
+                <td class="px-4 py-3 text-right text-red-600">$${s.worstTrade.toFixed(2)}</td>
+                <td class="px-4 py-3 text-right">${s.sharpe.toFixed(2)}</td>
+            </tr>
+        `
+    }).join('')
+}
+
+function updateBenchmarkComparison(overall) {
+    // Placeholder - would need actual market data API
+    document.getElementById('benchmark-spy').textContent = '+10.5%'
+    document.getElementById('benchmark-qqq').textContent = '+12.8%'
+    const portfolioReturn = overall.totalReturn
+    const portfolioEl = document.getElementById('benchmark-portfolio')
+    if (portfolioEl) {
+        const sign = portfolioReturn >= 0 ? '+' : ''
+        portfolioEl.textContent = `${sign}${portfolioReturn.toFixed(1)}%`
+        portfolioEl.className = `text-xl font-bold ${portfolioReturn >= 0 ? 'text-green-600' : 'text-red-600'}`
+    }
+    
+    // Update comparison table
+    const tbody = document.getElementById('benchmark-table')
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr class="border-t"><td class="px-4 py-3">YTD Return</td><td class="px-4 py-3 text-right font-semibold">${portfolioReturn.toFixed(1)}%</td><td class="px-4 py-3 text-right">10.5%</td><td class="px-4 py-3 text-right">12.8%</td><td class="px-4 py-3 text-right">8-12%</td></tr>
+            <tr class="border-t"><td class="px-4 py-3">Sharpe Ratio</td><td class="px-4 py-3 text-right font-semibold">${overall.sharpe.toFixed(2)}</td><td class="px-4 py-3 text-right">1.2</td><td class="px-4 py-3 text-right">1.4</td><td class="px-4 py-3 text-right">1.5-2.0</td></tr>
+            <tr class="border-t"><td class="px-4 py-3">Max Drawdown</td><td class="px-4 py-3 text-right font-semibold">${overall.maxDrawdown.toFixed(1)}%</td><td class="px-4 py-3 text-right">8.5%</td><td class="px-4 py-3 text-right">12.3%</td><td class="px-4 py-3 text-right">10-15%</td></tr>
+            <tr class="border-t"><td class="px-4 py-3">Win Rate</td><td class="px-4 py-3 text-right font-semibold">${overall.winRate.toFixed(1)}%</td><td class="px-4 py-3 text-right">N/A</td><td class="px-4 py-3 text-right">N/A</td><td class="px-4 py-3 text-right">55-65%</td></tr>
+        `
+    }
+}
+
+function renderMonthlyHeatmap(monthlyData) {
+    const chartElement = document.getElementById('strategy-heatmap-chart')
+    if (!chartElement || monthlyData.length === 0) return
+    
+    const options = {
+        series: [{
+            name: 'Monthly P/L',
+            data: monthlyData.map(m => m.pl)
+        }],
+        chart: {
+            type: 'bar',
+            height: 400
+        },
+        plotOptions: {
+            bar: {
+                colors: {
+                    ranges: [{
+                        from: -Infinity,
+                        to: 0,
+                        color: '#ef4444'
+                    }, {
+                        from: 0,
+                        to: Infinity,
+                        color: '#10b981'
+                    }]
+                }
+            }
+        },
+        xaxis: {
+            categories: monthlyData.map(m => {
+                const [year, month] = m.month.split('-')
+                const date = new Date(year, month - 1)
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' })
+            }),
+            labels: {
+                rotate: -45
+            }
+        },
+        yaxis: {
+            labels: {
+                formatter: function(val) {
+                    return '$' + val.toFixed(0)
+                }
+            }
+        }
+    }
+    
+    new ApexCharts(chartElement, options).render()
 }
