@@ -4065,9 +4065,10 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
       SELECT 
         dt.profit_loss,
         dt.trade_date as close_date,
-        dt.account_type,
+        COALESCE(a.account_type, 'Unknown') as account_type,
         'Daily Trades' as asset_type
       FROM daily_trades dt
+      LEFT JOIN accounts a ON dt.account_id = a.id
       WHERE dt.user_id = ?
         AND dt.trade_date >= ?
         AND dt.profit_loss IS NOT NULL
