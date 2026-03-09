@@ -2836,7 +2836,7 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
         ticker = ?, strategy_type = ?, strike_price = ?,
         strike_price_2 = ?, strike_price_3 = ?, strike_price_4 = ?,
         premium = ?, quantity = ?, expiration_date = ?,
-        account_type = ?, trade_date = ?, commission = ?,
+        account_type = ?, account_id = ?, trade_date = ?, commission = ?,
         close_date = ?, close_price = ?, close_price_2 = ?, close_price_3 = ?, close_price_4 = ?,
         close_commission = ?,
         notes = ?
@@ -2852,6 +2852,7 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       data.quantity,
       data.expiration_date,
       accountType,
+      data.account_id || null,
       data.trade_date,
       data.commission || 0,
       data.close_date || null,

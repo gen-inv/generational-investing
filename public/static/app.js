@@ -6034,44 +6034,61 @@ async function reduceFromOptionPosition(optionId) {
             const proportionalOpenCommission = (option.commission || 0) * (contractsToClose / option.quantity)
             const remainingOpenCommission = (option.commission || 0) - proportionalOpenCommission
             
+            // Create a new closed trade for the contracts being closed
+            const closedTrade = {
+                company_id: option.company_id,
+                account_id: option.account_id,
+                ticker: option.ticker,
+                trade_date: option.trade_date,
+                strategy_type: option.strategy_type,
+                strike_price: option.strike_price,
+                strike_price_2: option.strike_price_2 || null,
+                strike_price_3: option.strike_price_3 || null,
+                strike_price_4: option.strike_price_4 || null,
+                premium: option.premium,
+                quantity: contractsToClose,
+                expiration_date: option.expiration_date,
+                option_type: option.option_type || null,
+                commission: proportionalOpenCommission,
+                is_open: false,
+                close_date: closeDate,
+                close_price: closePremium,
+                close_commission: closeCommission
+            }
+            
+            // Calculate P/L for the closed portion
+            const openCost = contractsToClose * option.premium * 100
+            const closeCost = contractsToClose * closePremium * 100
+            const totalCommissions = proportionalOpenCommission + closeCommission
+            closedTrade.profit_loss = openCost - closeCost - totalCommissions
+            
             try {
-                // Create a new closed trade for the contracts being closed
-                const closedTrade = {
-                    company_id: option.company_id,
-                    account_id: option.account_id,
-                    ticker: option.ticker,
-                    trade_date: option.trade_date,
-                    strategy_type: option.strategy_type,
-                    strike_price: option.strike_price,
-                    strike_price_2: option.strike_price_2 || null,
-                    strike_price_3: option.strike_price_3 || null,
-                    strike_price_4: option.strike_price_4 || null,
-                    premium: option.premium,
-                    quantity: contractsToClose,
-                    expiration_date: option.expiration_date,
-                    option_type: option.option_type || null,
-                    commission: proportionalOpenCommission,
-                    is_open: false,
-                    close_date: closeDate,
-                    close_price: closePremium,
-                    close_commission: closeCommission
-                }
-                
-                // Calculate P/L for the closed portion
-                const openCost = contractsToClose * option.premium * 100
-                const closeCost = contractsToClose * closePremium * 100
-                const totalCommissions = proportionalOpenCommission + closeCommission
-                closedTrade.profit_loss = openCost - closeCost - totalCommissions
+                console.log('Creating closed trade:', closedTrade)
                 
                 // Create the new closed trade
                 await api.post('/api/options', closedTrade)
                 
                 // Update the original trade: reduce quantity and commission
                 const remainingContracts = option.quantity - contractsToClose
-                await api.put(`/api/options/${optionId}`, {
+                const updateData = {
+                    ticker: option.ticker,
+                    strategy_type: option.strategy_type,
+                    strike_price: option.strike_price,
+                    strike_price_2: option.strike_price_2 || null,
+                    strike_price_3: option.strike_price_3 || null,
+                    strike_price_4: option.strike_price_4 || null,
+                    premium: option.premium,
                     quantity: remainingContracts,
-                    commission: remainingOpenCommission
-                })
+                    expiration_date: option.expiration_date,
+                    account_type: option.account_type,
+                    account_id: option.account_id,
+                    trade_date: option.trade_date,
+                    commission: remainingOpenCommission,
+                    notes: option.notes || null
+                }
+                
+                console.log('Updating original trade:', updateData)
+                await api.put(`/api/options/${optionId}`, updateData)
                 
                 modal.remove()
                 loadOptions()
