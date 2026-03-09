@@ -8507,7 +8507,7 @@ function showReportTab(tabName) {
             loadStrategyAnalysis('ytd')
             break
         case 'positions':
-            // TODO: Load Position Analysis
+            loadPositionAnalysis()
             break
         case 'closed-trades':
             loadClosedTrades()
@@ -10609,4 +10609,400 @@ function updateMonthlyReturnsTable(monthlyData) {
         
         tbody.appendChild(row)
     })
+}
+
+// ============================================================================
+// POSITION ANALYSIS FUNCTIONS
+// ============================================================================
+
+// Chart instances for position tab
+const positionCharts = {
+    sector: null,
+    account: null
+}
+
+async function loadPositionAnalysis() {
+    try {
+        console.log('Loading position analysis')
+        
+        // Fetch position data
+        const response = await api.get('/api/reports/positions')
+        const data = response.data
+        
+        console.log('Position data:', data)
+        
+        // Update summary metrics
+        updatePositionMetrics(data.summary)
+        
+        // Update top holdings table
+        updateTopHoldingsTable(data.topHoldings)
+        
+        // Render charts
+        renderSectorAllocationChart(data.sectorAllocation)
+        renderAccountAllocationChart(data.accountAllocation)
+        
+        // Update breakdown tables
+        updateSectorBreakdownTable(data.sectorAllocation)
+        updateIndustryBreakdownTable(data.industryAllocation)
+        
+        // Update concentration analysis
+        updateConcentrationAnalysis(data.summary)
+        
+    } catch (error) {
+        console.error('Error loading position analysis:', error)
+        console.error('Error response:', error.response?.data)
+        if (error.response?.status === 401) {
+            showNotification('Please log in to view Position Analysis', 'error')
+        } else {
+            showNotification('Failed to load position analysis: ' + (error.response?.data?.error || error.message), 'error')
+        }
+    }
+}
+
+function updatePositionMetrics(summary) {
+    // Total Positions
+    const totalPosEl = document.getElementById('pos-total-positions')
+    if (totalPosEl) {
+        totalPosEl.textContent = summary.totalPositions
+    }
+    
+    // Top 5 Concentration
+    const top5El = document.getElementById('pos-top5-concentration')
+    if (top5El) {
+        top5El.textContent = `${summary.top5Concentration.toFixed(1)}%`
+        // Color code based on concentration
+        if (summary.top5Concentration > 60) {
+            top5El.className = 'text-2xl font-bold text-red-600'
+        } else if (summary.top5Concentration > 40) {
+            top5El.className = 'text-2xl font-bold text-orange-600'
+        } else {
+            top5El.className = 'text-2xl font-bold text-green-600'
+        }
+    }
+    
+    // Diversification Score
+    const divEl = document.getElementById('pos-diversification')
+    if (divEl) {
+        divEl.textContent = summary.diversificationScore.toFixed(0)
+        // Color code based on score
+        if (summary.diversificationScore > 75) {
+            divEl.className = 'text-2xl font-bold text-green-600'
+        } else if (summary.diversificationScore > 50) {
+            divEl.className = 'text-2xl font-bold text-blue-600'
+        } else {
+            divEl.className = 'text-2xl font-bold text-orange-600'
+        }
+    }
+    
+    // Largest Position
+    const largestEl = document.getElementById('pos-largest')
+    if (largestEl) {
+        largestEl.textContent = `${summary.largestPosition.toFixed(1)}%`
+        // Color code based on size
+        if (summary.largestPosition > 20) {
+            largestEl.className = 'text-2xl font-bold text-red-600'
+        } else if (summary.largestPosition > 10) {
+            largestEl.className = 'text-2xl font-bold text-orange-600'
+        } else {
+            largestEl.className = 'text-2xl font-bold text-purple-600'
+        }
+    }
+}
+
+function updateTopHoldingsTable(holdings) {
+    const tbody = document.getElementById('top-holdings-table')
+    if (!tbody) return
+    
+    tbody.innerHTML = ''
+    
+    if (holdings.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-500">No open positions</td></tr>'
+        return
+    }
+    
+    holdings.forEach((holding, index) => {
+        const row = document.createElement('tr')
+        row.className = 'border-b border-gray-100 hover:bg-gray-50'
+        
+        // Rank badge
+        let rankBadge = `<span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm font-semibold">${index + 1}</span>`
+        if (index === 0) {
+            rankBadge = `<span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-sm font-semibold"><i class="fas fa-crown mr-1"></i>1</span>`
+        } else if (index === 1) {
+            rankBadge = `<span class="px-2 py-1 bg-gray-300 text-gray-700 rounded text-sm font-semibold">2</span>`
+        } else if (index === 2) {
+            rankBadge = `<span class="px-2 py-1 bg-orange-200 text-orange-700 rounded text-sm font-semibold">3</span>`
+        }
+        
+        // Weight bar
+        const weightBarWidth = Math.min(holding.weight, 100)
+        const weightColor = holding.weight > 20 ? 'bg-red-500' : holding.weight > 10 ? 'bg-orange-500' : 'bg-green-500'
+        
+        row.innerHTML = `
+            <td class="px-4 py-3 text-center">
+                ${rankBadge}
+            </td>
+            <td class="px-4 py-3">
+                <span class="font-bold text-brand-teal">${holding.ticker}</span>
+            </td>
+            <td class="px-4 py-3">
+                <span class="text-gray-800">${holding.companyName}</span>
+            </td>
+            <td class="px-4 py-3 text-right font-semibold">
+                ${holding.quantity.toLocaleString()}
+            </td>
+            <td class="px-4 py-3 text-right">
+                $${holding.avgPrice.toFixed(2)}
+            </td>
+            <td class="px-4 py-3 text-right font-bold text-blue-600">
+                $${holding.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </td>
+            <td class="px-4 py-3 text-right">
+                <div class="flex items-center justify-end gap-2">
+                    <span class="font-bold">${holding.weight.toFixed(2)}%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2 mt-1">
+                    <div class="${weightColor} h-2 rounded-full" style="width: ${weightBarWidth}%"></div>
+                </div>
+            </td>
+            <td class="px-4 py-3">
+                <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">${holding.accountType}</span>
+            </td>
+        `
+        
+        tbody.appendChild(row)
+    })
+}
+
+function renderSectorAllocationChart(sectorData) {
+    const chartElement = document.getElementById('sector-allocation-chart')
+    if (!chartElement) return
+    
+    // Destroy existing chart
+    if (positionCharts.sector) {
+        positionCharts.sector.destroy()
+    }
+    
+    if (sectorData.length === 0) {
+        chartElement.innerHTML = '<div class="text-center text-gray-500 py-8"><i class="fas fa-chart-pie text-4xl mb-2"></i><p>No sector data available</p></div>'
+        return
+    }
+    
+    const options = {
+        series: sectorData.map(s => s.weight),
+        chart: {
+            type: 'donut',
+            height: 350
+        },
+        labels: sectorData.map(s => s.sector),
+        colors: ['#14b8a6', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899', '#84cc16', '#f97316'],
+        plotOptions: {
+            pie: {
+                donut: {
+                    size: '65%',
+                    labels: {
+                        show: true,
+                        total: {
+                            show: true,
+                            label: 'Total Sectors',
+                            formatter: function () {
+                                return sectorData.length
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        dataLabels: {
+            enabled: true,
+            formatter: function(val) {
+                return val.toFixed(1) + '%'
+            }
+        },
+        legend: {
+            position: 'bottom',
+            horizontalAlign: 'center'
+        },
+        tooltip: {
+            y: {
+                formatter: function(val) {
+                    return val.toFixed(2) + '%'
+                }
+            }
+        }
+    }
+    
+    positionCharts.sector = new ApexCharts(chartElement, options)
+    positionCharts.sector.render()
+}
+
+function renderAccountAllocationChart(accountData) {
+    const chartElement = document.getElementById('account-allocation-chart')
+    if (!chartElement) return
+    
+    // Destroy existing chart
+    if (positionCharts.account) {
+        positionCharts.account.destroy()
+    }
+    
+    if (accountData.length === 0) {
+        chartElement.innerHTML = '<div class="text-center text-gray-500 py-8"><i class="fas fa-chart-pie text-4xl mb-2"></i><p>No account data available</p></div>'
+        return
+    }
+    
+    const options = {
+        series: accountData.map(a => a.weight),
+        chart: {
+            type: 'donut',
+            height: 350
+        },
+        labels: accountData.map(a => a.accountType),
+        colors: ['#004F59', '#C9B25F', '#14b8a6', '#8b5cf6'],
+        plotOptions: {
+            pie: {
+                donut: {
+                    size: '65%',
+                    labels: {
+                        show: true,
+                        total: {
+                            show: true,
+                            label: 'Total Accounts',
+                            formatter: function () {
+                                return accountData.length
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        dataLabels: {
+            enabled: true,
+            formatter: function(val) {
+                return val.toFixed(1) + '%'
+            }
+        },
+        legend: {
+            position: 'bottom',
+            horizontalAlign: 'center'
+        },
+        tooltip: {
+            y: {
+                formatter: function(val) {
+                    return val.toFixed(2) + '%'
+                }
+            }
+        }
+    }
+    
+    positionCharts.account = new ApexCharts(chartElement, options)
+    positionCharts.account.render()
+}
+
+function updateSectorBreakdownTable(sectorData) {
+    const tbody = document.getElementById('sector-breakdown-table')
+    if (!tbody) return
+    
+    tbody.innerHTML = ''
+    
+    if (sectorData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-gray-500">No sector data available</td></tr>'
+        return
+    }
+    
+    sectorData.forEach(sector => {
+        const row = document.createElement('tr')
+        row.className = 'border-b border-gray-100 hover:bg-gray-50'
+        
+        // Weight bar
+        const weightBarWidth = Math.min(sector.weight, 100)
+        
+        row.innerHTML = `
+            <td class="px-4 py-3">
+                <span class="font-semibold text-gray-800">${sector.sector}</span>
+            </td>
+            <td class="px-4 py-3 text-right font-bold text-blue-600">
+                $${sector.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </td>
+            <td class="px-4 py-3 text-right">
+                <span class="font-bold">${sector.weight.toFixed(2)}%</span>
+            </td>
+            <td class="px-4 py-3 text-center">
+                <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">${sector.positions}</span>
+            </td>
+            <td class="px-4 py-3">
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div class="bg-blue-500 h-2 rounded-full" style="width: ${weightBarWidth}%"></div>
+                </div>
+            </td>
+        `
+        
+        tbody.appendChild(row)
+    })
+}
+
+function updateIndustryBreakdownTable(industryData) {
+    const tbody = document.getElementById('industry-breakdown-table')
+    if (!tbody) return
+    
+    tbody.innerHTML = ''
+    
+    if (industryData.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-gray-500">No industry data available</td></tr>'
+        return
+    }
+    
+    industryData.forEach(industry => {
+        const row = document.createElement('tr')
+        row.className = 'border-b border-gray-100 hover:bg-gray-50'
+        
+        row.innerHTML = `
+            <td class="px-4 py-3">
+                <span class="text-gray-800">${industry.industry}</span>
+            </td>
+            <td class="px-4 py-3 text-right font-bold text-green-600">
+                $${industry.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </td>
+            <td class="px-4 py-3 text-right font-bold">
+                ${industry.weight.toFixed(2)}%
+            </td>
+            <td class="px-4 py-3 text-center">
+                <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">${industry.positions}</span>
+            </td>
+        `
+        
+        tbody.appendChild(row)
+    })
+}
+
+function updateConcentrationAnalysis(summary) {
+    // Top 5 Concentration
+    const top5El = document.getElementById('concentration-top5')
+    if (top5El) {
+        top5El.textContent = `${summary.top5Concentration.toFixed(1)}%`
+    }
+    
+    // Top 10 Concentration
+    const top10El = document.getElementById('concentration-top10')
+    if (top10El) {
+        top10El.textContent = `${summary.top10Concentration.toFixed(1)}%`
+    }
+    
+    // HHI Score
+    const hhiEl = document.getElementById('concentration-hhi')
+    const hhiLabelEl = document.getElementById('concentration-hhi-label')
+    if (hhiEl) {
+        hhiEl.textContent = summary.hhi.toFixed(0)
+        
+        // Update label and color
+        if (summary.hhi > 2500) {
+            hhiEl.className = 'text-xl font-bold text-red-600'
+            if (hhiLabelEl) hhiLabelEl.textContent = 'High concentration'
+        } else if (summary.hhi > 1500) {
+            hhiEl.className = 'text-xl font-bold text-orange-600'
+            if (hhiLabelEl) hhiLabelEl.textContent = 'Moderate concentration'
+        } else {
+            hhiEl.className = 'text-xl font-bold text-green-600'
+            if (hhiLabelEl) hhiLabelEl.textContent = 'Low concentration'
+        }
+    }
 }

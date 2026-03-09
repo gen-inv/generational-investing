@@ -4684,6 +4684,207 @@ app.get('/api/reports/performance', authMiddleware, async (c) => {
   }
 })
 
+// Position Analysis endpoint - Top holdings, sector allocation, concentration
+app.get('/api/reports/positions', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    
+    console.log(`Position Analysis request: userId=${userId}`)
+    
+    // Get all open stock positions with company details
+    const stockPositions = await DB.prepare(`
+      SELECT 
+        st.ticker,
+        st.quantity,
+        st.price as avg_price,
+        st.account_type,
+        st.trade_date,
+        c.company_name,
+        c.sector,
+        c.industry,
+        c.market_cap,
+        (st.quantity * st.price) as position_value
+      FROM stock_trades st
+      LEFT JOIN companies c ON st.company_id = c.id
+      WHERE st.user_id = ?
+        AND st.is_open = 1
+      ORDER BY (st.quantity * st.price) DESC
+    `).bind(userId).all()
+    
+    console.log(`Found ${stockPositions.results.length} open stock positions`)
+    
+    // Get current account balances for total portfolio value
+    const accounts = await DB.prepare(`
+      SELECT 
+        account_type,
+        balance_cad,
+        balance_usd,
+        cash_balance_usd
+      FROM account_balances
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+      LIMIT 10
+    `).bind(userId).all()
+    
+    // Get latest balance per account type
+    const accountMap = new Map()
+    accounts.results.forEach((acc: any) => {
+      if (!accountMap.has(acc.account_type)) {
+        accountMap.set(acc.account_type, acc)
+      }
+    })
+    
+    // Calculate total portfolio value (using 1.4 as CAD/USD rate)
+    const exchangeRate = 1.4
+    let totalPortfolioValue = 0
+    accountMap.forEach((acc: any) => {
+      totalPortfolioValue += (acc.balance_cad || 0) + ((acc.balance_usd || 0) * exchangeRate)
+    })
+    
+    // If no account balances, use sum of position values
+    if (totalPortfolioValue === 0) {
+      totalPortfolioValue = stockPositions.results.reduce((sum: number, pos: any) => sum + (pos.position_value || 0), 0)
+    }
+    
+    console.log(`Total portfolio value: $${totalPortfolioValue.toFixed(2)}`)
+    
+    // Calculate position metrics
+    const positions = stockPositions.results.map((pos: any) => {
+      const value = pos.position_value || 0
+      const weight = totalPortfolioValue > 0 ? (value / totalPortfolioValue) * 100 : 0
+      
+      return {
+        ticker: pos.ticker,
+        companyName: pos.company_name || pos.ticker,
+        quantity: pos.quantity,
+        avgPrice: pos.avg_price,
+        value: value,
+        weight: weight,
+        sector: pos.sector || 'Unknown',
+        industry: pos.industry || 'Unknown',
+        accountType: pos.account_type,
+        tradeDate: pos.trade_date
+      }
+    })
+    
+    // Top holdings (top 10 by value)
+    const topHoldings = positions.slice(0, 10)
+    
+    // Calculate sector allocation
+    const sectorMap = new Map()
+    positions.forEach(pos => {
+      const sector = pos.sector || 'Unknown'
+      if (!sectorMap.has(sector)) {
+        sectorMap.set(sector, { value: 0, count: 0 })
+      }
+      const current = sectorMap.get(sector)
+      sectorMap.set(sector, {
+        value: current.value + pos.value,
+        count: current.count + 1
+      })
+    })
+    
+    const sectorAllocation = Array.from(sectorMap.entries()).map(([sector, data]: [string, any]) => ({
+      sector,
+      value: data.value,
+      weight: totalPortfolioValue > 0 ? (data.value / totalPortfolioValue) * 100 : 0,
+      positions: data.count
+    })).sort((a, b) => b.value - a.value)
+    
+    // Calculate industry allocation (top 10)
+    const industryMap = new Map()
+    positions.forEach(pos => {
+      const industry = pos.industry || 'Unknown'
+      if (!industryMap.has(industry)) {
+        industryMap.set(industry, { value: 0, count: 0 })
+      }
+      const current = industryMap.get(industry)
+      industryMap.set(industry, {
+        value: current.value + pos.value,
+        count: current.count + 1
+      })
+    })
+    
+    const industryAllocation = Array.from(industryMap.entries()).map(([industry, data]: [string, any]) => ({
+      industry,
+      value: data.value,
+      weight: totalPortfolioValue > 0 ? (data.value / totalPortfolioValue) * 100 : 0,
+      positions: data.count
+    })).sort((a, b) => b.value - a.value).slice(0, 10)
+    
+    // Calculate account allocation
+    const accountAllocationMap = new Map()
+    positions.forEach(pos => {
+      const accountType = pos.accountType || 'Unknown'
+      if (!accountAllocationMap.has(accountType)) {
+        accountAllocationMap.set(accountType, { value: 0, count: 0 })
+      }
+      const current = accountAllocationMap.get(accountType)
+      accountAllocationMap.set(accountType, {
+        value: current.value + pos.value,
+        count: current.count + 1
+      })
+    })
+    
+    const accountAllocation = Array.from(accountAllocationMap.entries()).map(([account, data]: [string, any]) => ({
+      accountType: account,
+      value: data.value,
+      weight: totalPortfolioValue > 0 ? (data.value / totalPortfolioValue) * 100 : 0,
+      positions: data.count
+    })).sort((a, b) => b.value - a.value)
+    
+    // Calculate concentration metrics
+    const top5Value = positions.slice(0, 5).reduce((sum, pos) => sum + pos.value, 0)
+    const top10Value = positions.slice(0, 10).reduce((sum, pos) => sum + pos.value, 0)
+    const top5Concentration = totalPortfolioValue > 0 ? (top5Value / totalPortfolioValue) * 100 : 0
+    const top10Concentration = totalPortfolioValue > 0 ? (top10Value / totalPortfolioValue) * 100 : 0
+    
+    // Herfindahl-Hirschman Index (HHI) - measure of concentration
+    // 0-1500: low concentration, 1500-2500: moderate, >2500: high concentration
+    const hhi = positions.reduce((sum, pos) => sum + Math.pow(pos.weight, 2), 0)
+    
+    // Calculate diversification score (inverse of concentration)
+    const diversificationScore = positions.length > 0 ? Math.min(100, (positions.length / 20) * 100) : 0
+    
+    // Risk metrics
+    const largestPosition = positions.length > 0 ? positions[0].weight : 0
+    const avgPositionSize = positions.length > 0 
+      ? positions.reduce((sum, pos) => sum + pos.weight, 0) / positions.length 
+      : 0
+    
+    console.log(`Position analysis complete: ${positions.length} positions, top 5 concentration: ${top5Concentration.toFixed(2)}%`)
+    
+    return c.json({
+      summary: {
+        totalPositions: positions.length,
+        totalValue: totalPortfolioValue,
+        top5Concentration,
+        top10Concentration,
+        hhi,
+        diversificationScore,
+        largestPosition,
+        avgPositionSize
+      },
+      topHoldings,
+      sectorAllocation,
+      industryAllocation,
+      accountAllocation,
+      allPositions: positions
+    })
+  } catch (error) {
+    console.error('Position Analysis error:', error)
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    return c.json({ 
+      error: 'Failed to generate position analysis',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
 // Export to CSV endpoint
 app.get('/api/reports/export', authMiddleware, async (c) => {
   const userId = c.get('userId')
@@ -6735,15 +6936,198 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                         </div>
                         
                         <!-- Position Analysis Tab -->
+                        <!-- Position Analysis Tab -->
                         <div id="report-tab-positions" class="report-tab-content hidden">
-                            <div class="card">
-                                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                            <div class="mb-6">
+                                <h3 class="text-2xl font-bold text-gray-800 mb-4">
                                     <i class="fas fa-sitemap text-orange-600 mr-2"></i>
-                                    Position Analysis
+                                    Position Analysis & Portfolio Allocation
                                 </h3>
-                                <p class="text-gray-600 italic">
-                                    <i class="fas fa-hammer mr-2"></i>Coming soon: Top holdings, sector allocation, position concentration
-                                </p>
+                                
+                                <!-- Summary Metrics Cards -->
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                                    <div class="card bg-gradient-to-br from-blue-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Total Positions</p>
+                                                <p class="text-2xl font-bold text-blue-600" id="pos-total-positions">0</p>
+                                                <p class="text-xs text-gray-500 mt-1">Open stock positions</p>
+                                            </div>
+                                            <div class="text-3xl text-blue-600 opacity-20">
+                                                <i class="fas fa-chart-pie"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-orange-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Top 5 Concentration</p>
+                                                <p class="text-2xl font-bold text-orange-600" id="pos-top5-concentration">0%</p>
+                                                <p class="text-xs text-gray-500 mt-1">Of total portfolio</p>
+                                            </div>
+                                            <div class="text-3xl text-orange-600 opacity-20">
+                                                <i class="fas fa-compress-alt"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-green-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Diversification Score</p>
+                                                <p class="text-2xl font-bold text-green-600" id="pos-diversification">0</p>
+                                                <p class="text-xs text-gray-500 mt-1">Out of 100</p>
+                                            </div>
+                                            <div class="text-3xl text-green-600 opacity-20">
+                                                <i class="fas fa-network-wired"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="card bg-gradient-to-br from-purple-50 to-white">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-sm text-gray-600 font-semibold">Largest Position</p>
+                                                <p class="text-2xl font-bold text-purple-600" id="pos-largest">0%</p>
+                                                <p class="text-xs text-gray-500 mt-1">Single position weight</p>
+                                            </div>
+                                            <div class="text-3xl text-purple-600 opacity-20">
+                                                <i class="fas fa-crown"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Top Holdings Table -->
+                                <div class="card mb-6">
+                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-trophy text-yellow-600 mr-2"></i>
+                                        Top Holdings
+                                    </h4>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead>
+                                                <tr class="bg-gray-100">
+                                                    <th class="px-4 py-3 text-left">Rank</th>
+                                                    <th class="px-4 py-3 text-left">Ticker</th>
+                                                    <th class="px-4 py-3 text-left">Company</th>
+                                                    <th class="px-4 py-3 text-right">Shares</th>
+                                                    <th class="px-4 py-3 text-right">Avg Price</th>
+                                                    <th class="px-4 py-3 text-right">Value</th>
+                                                    <th class="px-4 py-3 text-right">Weight %</th>
+                                                    <th class="px-4 py-3 text-left">Account</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="top-holdings-table">
+                                                <!-- Dynamic content -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                    <!-- Sector Allocation Chart -->
+                                    <div class="card">
+                                        <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                            <i class="fas fa-building text-blue-600 mr-2"></i>
+                                            Sector Allocation
+                                        </h4>
+                                        <div id="sector-allocation-chart" style="height: 350px;"></div>
+                                    </div>
+                                    
+                                    <!-- Account Allocation Chart -->
+                                    <div class="card">
+                                        <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                            <i class="fas fa-wallet text-purple-600 mr-2"></i>
+                                            Account Allocation
+                                        </h4>
+                                        <div id="account-allocation-chart" style="height: 350px;"></div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Sector Breakdown Table -->
+                                <div class="card mb-6">
+                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-layer-group text-blue-600 mr-2"></i>
+                                        Sector Breakdown
+                                    </h4>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead>
+                                                <tr class="bg-gray-100">
+                                                    <th class="px-4 py-3 text-left">Sector</th>
+                                                    <th class="px-4 py-3 text-right">Value</th>
+                                                    <th class="px-4 py-3 text-right">Weight %</th>
+                                                    <th class="px-4 py-3 text-center">Positions</th>
+                                                    <th class="px-4 py-3 text-center">Allocation</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="sector-breakdown-table">
+                                                <!-- Dynamic content -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                
+                                <!-- Industry Breakdown -->
+                                <div class="card mb-6">
+                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-industry text-green-600 mr-2"></i>
+                                        Top Industries
+                                    </h4>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead>
+                                                <tr class="bg-gray-100">
+                                                    <th class="px-4 py-3 text-left">Industry</th>
+                                                    <th class="px-4 py-3 text-right">Value</th>
+                                                    <th class="px-4 py-3 text-right">Weight %</th>
+                                                    <th class="px-4 py-3 text-center">Positions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="industry-breakdown-table">
+                                                <!-- Dynamic content -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                
+                                <!-- Concentration Analysis -->
+                                <div class="card">
+                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
+                                        <i class="fas fa-chart-bar text-orange-600 mr-2"></i>
+                                        Concentration Analysis
+                                    </h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div class="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                            <p class="text-sm text-gray-600 font-semibold mb-1">Top 5 Holdings</p>
+                                            <p class="text-xl font-bold text-blue-600" id="concentration-top5">0%</p>
+                                            <p class="text-xs text-gray-500 mt-1">Of portfolio value</p>
+                                        </div>
+                                        <div class="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                                            <p class="text-sm text-gray-600 font-semibold mb-1">Top 10 Holdings</p>
+                                            <p class="text-xl font-bold text-purple-600" id="concentration-top10">0%</p>
+                                            <p class="text-xs text-gray-500 mt-1">Of portfolio value</p>
+                                        </div>
+                                        <div class="p-4 bg-green-50 rounded-lg border border-green-200">
+                                            <p class="text-sm text-gray-600 font-semibold mb-1">HHI Score</p>
+                                            <p class="text-xl font-bold text-green-600" id="concentration-hhi">0</p>
+                                            <p class="text-xs text-gray-500 mt-1" id="concentration-hhi-label">Low concentration</p>
+                                        </div>
+                                    </div>
+                                    <div class="mt-4 p-4 bg-gray-50 rounded-lg">
+                                        <p class="text-sm text-gray-700">
+                                            <strong>Concentration Guide:</strong> 
+                                            Top 5 &lt;40% (Well diversified) | 
+                                            40-60% (Moderate) | 
+                                            &gt;60% (Concentrated) | 
+                                            HHI &lt;1500 (Low) | 
+                                            1500-2500 (Moderate) | 
+                                            &gt;2500 (High)
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         
