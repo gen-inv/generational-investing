@@ -5881,12 +5881,26 @@ async function addToOptionPosition(optionId) {
             const totalCommission = (option.commission || 0) + newCommission
             
             try {
-                await api.put(`/api/options/${optionId}`, {
-                    quantity: totalContracts,
+                // Send full trade data to PUT endpoint
+                const updateData = {
+                    ticker: option.ticker,
+                    strategy_type: option.strategy_type,
+                    strike_price: option.strike_price,
+                    strike_price_2: option.strike_price_2 || null,
+                    strike_price_3: option.strike_price_3 || null,
+                    strike_price_4: option.strike_price_4 || null,
                     premium: avgPremium,
+                    quantity: totalContracts,
+                    expiration_date: option.expiration_date,
+                    account_type: option.account_type,
+                    account_id: option.account_id,
+                    trade_date: tradeDate,
                     commission: totalCommission,
-                    trade_date: tradeDate
-                })
+                    notes: option.notes || null
+                }
+                
+                console.log('Adding to position:', updateData)
+                await api.put(`/api/options/${optionId}`, updateData)
                 
                 modal.remove()
                 loadOptions()
@@ -5894,7 +5908,8 @@ async function addToOptionPosition(optionId) {
                 document.getElementById('option-details-modal')?.remove()
             } catch (error) {
                 console.error('Error adding to position:', error)
-                alert('Failed to add to position. Please try again.')
+                console.error('Error response:', error.response?.data)
+                alert(`Failed to add to position: ${error.response?.data?.error || error.message}`)
             }
         })
     } catch (error) {
