@@ -2776,13 +2776,14 @@ app.post('/api/options', authMiddleware, async (c) => {
   
     const result = await DB.prepare(`
       INSERT INTO option_trades (
-        user_id, company_id, ticker, strategy_type, strike_price,
+        user_id, company_id, account_id, ticker, strategy_type, strike_price,
         strike_price_2, strike_price_3, strike_price_4, premium, quantity,
         expiration_date, account_type, trade_date, commission, is_open, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       userId,
       data.company_id,
+      data.account_id,
       data.ticker,
       data.strategy_type,
       data.strike_price,
