@@ -6075,7 +6075,9 @@ async function reduceFromOptionPosition(optionId) {
                 document.getElementById('option-details-modal')?.remove()
             } catch (error) {
                 console.error('Error reducing position:', error)
-                alert('Failed to reduce position. Please try again.')
+                console.error('Error response:', error.response?.data)
+                console.error('Closed trade data:', closedTrade)
+                alert(`Failed to reduce position: ${error.response?.data?.error || error.message}`)
             }
         })
     } catch (error) {
