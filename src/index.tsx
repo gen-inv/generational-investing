@@ -4189,7 +4189,15 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     })
   } catch (error) {
     console.error('P/L Summary error:', error)
-    return c.json({ error: 'Failed to generate P/L summary' }, 500)
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      error: error
+    })
+    return c.json({ 
+      error: 'Failed to generate P/L summary',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
   }
 })
 
