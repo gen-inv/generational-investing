@@ -5771,6 +5771,11 @@ async function addToOptionPosition(optionId) {
             return
         }
         
+        if (!option.account_id) {
+            alert('This position does not have an account assigned. Please edit the position and assign an account before adding to it.')
+            return
+        }
+        
         const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
         
         const modal = document.createElement('div')
@@ -5909,6 +5914,11 @@ async function reduceFromOptionPosition(optionId) {
         
         if (!option || !option.is_open) {
             alert('Option trade not found or already closed')
+            return
+        }
+        
+        if (!option.account_id) {
+            alert('This position does not have an account assigned. Please edit the position and assign an account before reducing it.')
             return
         }
         
