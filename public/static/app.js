@@ -5766,13 +5766,10 @@ async function addToOptionPosition(optionId) {
         const response = await api.get('/api/options')
         const option = response.data.find(o => o.id === optionId)
         
+        console.log('Option data for add:', option)
+        
         if (!option || !option.is_open) {
             alert('Option trade not found or already closed')
-            return
-        }
-        
-        if (!option.account_id) {
-            alert('This position does not have an account assigned. Please edit the position and assign an account before adding to it.')
             return
         }
         
@@ -5912,13 +5909,10 @@ async function reduceFromOptionPosition(optionId) {
         const response = await api.get('/api/options')
         const option = response.data.find(o => o.id === optionId)
         
+        console.log('Option data for reduce:', option)
+        
         if (!option || !option.is_open) {
             alert('Option trade not found or already closed')
-            return
-        }
-        
-        if (!option.account_id) {
-            alert('This position does not have an account assigned. Please edit the position and assign an account before reducing it.')
             return
         }
         
