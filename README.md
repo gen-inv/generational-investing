@@ -83,6 +83,13 @@
      - Strategy-specific P/L charts
      - Monthly heatmap of profit/loss
      - Benchmark comparison (placeholder for SPY/QQQ)
+   - **Position Analysis**: Portfolio composition and concentration metrics:
+     - **Top Holdings Table**: Ranked list of top 10 positions with weight bars
+     - **Sector Allocation**: Donut chart and detailed breakdown by sector
+     - **Industry Breakdown**: Top 10 industries with position counts
+     - **Account Allocation**: Distribution across account types
+     - **Concentration Metrics**: Top 5/10 concentration, HHI score, diversification score
+     - **Risk Indicators**: Largest position size, average position weight
    - Interactive ApexCharts visualizations
    - Real-time metrics and performance indicators
 
@@ -135,6 +142,7 @@
 - `GET /api/reports/pl-summary?period=ytd` - Get P/L Summary with breakdowns
 - `GET /api/reports/performance?period=ytd` - Get Performance Analysis with portfolio growth and drawdown metrics
 - `GET /api/reports/strategy-analysis?period=ytd` - Get Strategy Analysis with performance metrics
+- `GET /api/reports/positions` - Get Position Analysis with holdings, sector allocation, and concentration
 - `GET /api/reports/export?type=stocks&year=2026` - Export CSV
 
 ### 🔄 Features Ready for Implementation (See COMPLETE_IMPLEMENTATION_SPEC.md)
