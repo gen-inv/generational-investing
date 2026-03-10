@@ -517,7 +517,7 @@ function showDailyTradeTab(tabName) {
         // Check for monthly expiration warning
         checkMonthlyExpirationAlert()
         
-        // Set entry date and time to current date/time
+        // Always set entry date and time to current date/time when tab is opened
         const now = new Date()
         const year = now.getFullYear()
         const month = String(now.getMonth() + 1).padStart(2, '0')
@@ -526,12 +526,12 @@ function showDailyTradeTab(tabName) {
         const minutes = String(now.getMinutes()).padStart(2, '0')
         
         const entryDateInput = document.getElementById('dt-entry-date')
-        if (entryDateInput && !entryDateInput.value) {
+        if (entryDateInput) {
             entryDateInput.value = `${year}-${month}-${day}`
         }
         
         const entryTimeInput = document.getElementById('dt-entry-time')
-        if (entryTimeInput && !entryTimeInput.value) {
+        if (entryTimeInput) {
             entryTimeInput.value = `${hours}:${minutes}`
         }
         
@@ -576,23 +576,7 @@ function updateRollingWindowLabels() {
 
 // Initialize Daily Trade spread calculations
 function initializeDailyTradeCalculations() {
-    // Set current date and time as defaults
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const day = String(now.getDate()).padStart(2, '0')
-    const hours = String(now.getHours()).padStart(2, '0')
-    const minutes = String(now.getMinutes()).padStart(2, '0')
-    
-    const entryDateInput = document.getElementById('dt-entry-date')
-    if (entryDateInput && !entryDateInput.value) {
-        entryDateInput.value = `${year}-${month}-${day}`
-    }
-    
-    const entryTimeInput = document.getElementById('dt-entry-time')
-    if (entryTimeInput && !entryTimeInput.value) {
-        entryTimeInput.value = `${hours}:${minutes}`
-    }
+    // Note: Date and time are now set in showDailyTradeTab() before this function is called
     
     // Add listener to strike width to update displays
     const strikeWidthInput = document.getElementById('dt-strike-width')
