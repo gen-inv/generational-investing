@@ -2015,6 +2015,9 @@ app.post('/api/stocks', authMiddleware, async (c) => {
   }
 })
 
+// DEPRECATED: This endpoint is deprecated. Use POST /api/stocks for new transactions
+// and PUT /api/stocks/:id/close for closing positions.
+// This endpoint is kept for backward compatibility with legacy stock_trades table data.
 app.put('/api/stocks/:id', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
@@ -2022,7 +2025,7 @@ app.put('/api/stocks/:id', authMiddleware, async (c) => {
     const data = await c.req.json()
     const { DB } = c.env
     
-    // Verify trade belongs to user
+    // Verify trade belongs to user (legacy stock_trades table)
     const trade = await DB.prepare(`
       SELECT id FROM stock_trades WHERE id = ? AND user_id = ?
     `).bind(tradeId, userId).first()
@@ -2205,49 +2208,80 @@ app.put('/api/stocks/:id/close', authMiddleware, async (c) => {
 app.put('/api/stocks/:id/reopen', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
-    const tradeId = c.req.param('id')
+    const holdingId = c.req.param('id')
     const { DB } = c.env
     
-    // Verify trade belongs to user
-    const trade = await DB.prepare(`
-      SELECT id, is_open FROM stock_trades WHERE id = ? AND user_id = ?
-    `).bind(tradeId, userId).first()
+    // Verify holding belongs to user
+    const holding = await DB.prepare(`
+      SELECT * FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).first()
     
-    if (!trade) {
-      return c.json({ error: 'Trade not found' }, 404)
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
     }
     
-    if (trade.is_open === 1) {
-      return c.json({ error: 'Trade is already open' }, 400)
+    if (holding.is_open === 1) {
+      return c.json({ error: 'Position is already open' }, 400)
     }
     
-    // Re-open the trade and clear closing data
+    // Delete the SELL transaction that closed this position
     await DB.prepare(`
-      UPDATE stock_trades SET
-        is_open = 1,
-        close_date = NULL,
-        close_price = NULL,
-        close_commission = NULL,
-        profit_loss = NULL
-      WHERE id = ? AND user_id = ?
-    `).bind(tradeId, userId).run()
+      DELETE FROM stock_transactions
+      WHERE holding_id = ? AND transaction_type = 'SELL' AND notes = 'Position closed'
+    `).bind(holdingId).run()
     
-    return c.json({ success: true, message: 'Trade re-opened successfully' })
+    // Re-open the holding
+    await DB.prepare(`
+      UPDATE stock_holdings SET
+        is_open = 1,
+        closed_date = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).run()
+    
+    return c.json({ success: true, message: 'Position re-opened successfully' })
   } catch (error) {
-    console.error('Re-open stock trade error:', error)
-    return c.json({ error: 'Failed to re-open stock trade' }, 500)
+    console.error('Re-open stock holding error:', error)
+    return c.json({ error: 'Failed to re-open stock position' }, 500)
   }
 })
 
 app.delete('/api/stocks/:id', authMiddleware, async (c) => {
-  const userId = c.get('userId')
-  const tradeId = c.req.param('id')
-  
-  await c.env.DB.prepare(`
-    DELETE FROM stock_trades WHERE id = ? AND user_id = ?
-  `).bind(tradeId, userId).run()
-  
-  return c.json({ success: true })
+  try {
+    const userId = c.get('userId')
+    const holdingId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Verify holding belongs to user
+    const holding = await DB.prepare(`
+      SELECT id FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).first()
+    
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
+    }
+    
+    // Delete all transactions for this holding (CASCADE will handle this in DB)
+    // But we'll do it explicitly for clarity
+    await DB.prepare(`
+      DELETE FROM stock_transactions WHERE holding_id = ?
+    `).bind(holdingId).run()
+    
+    // Delete any cost basis adjustments
+    await DB.prepare(`
+      DELETE FROM cost_basis_adjustments WHERE holding_id = ?
+    `).bind(holdingId).run()
+    
+    // Delete the holding itself
+    await DB.prepare(`
+      DELETE FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).run()
+    
+    return c.json({ success: true })
+  } catch (error) {
+    console.error('Delete stock holding error:', error)
+    return c.json({ error: 'Failed to delete stock holding' }, 500)
+  }
 })
 
 // ============================================================================
@@ -4023,23 +4057,61 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     
     console.log(`Date range: startDate=${startDate}`)
     
-    // Get stock trades
-    console.log('Fetching stock trades...')
-    const stockTrades = await DB.prepare(`
+    // Get closed stock positions with calculated P/L
+    console.log('Fetching closed stock positions...')
+    const stockPositions = await DB.prepare(`
       SELECT 
-        st.profit_loss,
-        st.close_date,
-        st.account_type,
-        'Stocks' as asset_type
-      FROM stock_trades st
-      WHERE st.user_id = ?
-        AND st.is_open = 0
-        AND st.close_date IS NOT NULL
-        AND st.close_date >= ?
-        AND st.profit_loss IS NOT NULL
-      ORDER BY st.close_date DESC
+        sh.id as holding_id,
+        sh.closed_date as close_date,
+        a.account_type,
+        'Stocks' as asset_type,
+        sh.total_shares,
+        sh.average_price
+      FROM stock_holdings sh
+      JOIN accounts a ON sh.account_id = a.id
+      WHERE sh.user_id = ?
+        AND sh.is_open = 0
+        AND sh.closed_date IS NOT NULL
+        AND sh.closed_date >= ?
+      ORDER BY sh.closed_date DESC
     `).bind(userId, startDate).all()
-    console.log(`Stock trades fetched: ${stockTrades.results.length}`)
+    
+    // Calculate P/L for each closed stock position
+    const stockTrades = await Promise.all(stockPositions.results.map(async (holding: any) => {
+      // Get all transactions for this holding
+      const transactions = await DB.prepare(`
+        SELECT transaction_type, shares, price_per_share, commission
+        FROM stock_transactions
+        WHERE holding_id = ?
+        ORDER BY transaction_date ASC
+      `).bind(holding.holding_id).all()
+      
+      let totalBuyValue = 0
+      let totalBuyCommissions = 0
+      let totalSellValue = 0
+      let totalSellCommissions = 0
+      
+      transactions.results.forEach((tx: any) => {
+        if (tx.transaction_type === 'BUY') {
+          totalBuyValue += tx.shares * tx.price_per_share
+          totalBuyCommissions += tx.commission || 0
+        } else if (tx.transaction_type === 'SELL') {
+          totalSellValue += tx.shares * tx.price_per_share
+          totalSellCommissions += tx.commission || 0
+        }
+      })
+      
+      // P/L = Sale Proceeds - Cost Basis - All Commissions
+      const profitLoss = totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
+      
+      return {
+        profit_loss: profitLoss,
+        close_date: holding.close_date,
+        account_type: holding.account_type,
+        asset_type: holding.asset_type
+      }
+    }))
+    console.log(`Stock positions fetched and calculated: ${stockTrades.length}`)
     
     // Get option trades
     console.log('Fetching option trades...')
@@ -4078,7 +4150,7 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     
     // Combine all trades
     const allTrades = [
-      ...stockTrades.results,
+      ...stockTrades,
       ...optionTrades.results,
       ...dailyTrades.results
     ]
@@ -4911,12 +4983,30 @@ app.get('/api/reports/export', authMiddleware, async (c) => {
   let params = [userId]
   
   if (type === 'stocks') {
-    query = `SELECT * FROM stock_trades WHERE user_id = ?`
+    // Export stock holdings with all transactions
+    query = `
+      SELECT 
+        sh.id,
+        sh.ticker,
+        a.account_type,
+        a.account_name,
+        sh.total_shares,
+        sh.average_price,
+        sh.is_open,
+        sh.opened_date,
+        sh.closed_date,
+        sh.notes,
+        c.company_name
+      FROM stock_holdings sh
+      JOIN accounts a ON sh.account_id = a.id
+      LEFT JOIN companies c ON sh.company_id = c.id
+      WHERE sh.user_id = ?`
     if (year) {
-      query += ` AND strftime('%Y', trade_date) = ?`
+      query += ` AND (strftime('%Y', sh.opened_date) = ? OR strftime('%Y', sh.closed_date) = ?)`
+      params.push(year)
       params.push(year)
     }
-    query += ` ORDER BY trade_date DESC`
+    query += ` ORDER BY sh.opened_date DESC`
   } else if (type === 'options') {
     query = `SELECT * FROM option_trades WHERE user_id = ?`
     if (year) {

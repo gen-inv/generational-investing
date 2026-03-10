@@ -249,10 +249,67 @@ The following features are fully specified and ready to implement:
    - notes, created_at, updated_at
 
 8. **cost_basis_adjustments**
-   - id, user_id, stock_trade_id
+   - id, user_id, holding_id (references stock_holdings)
    - adjustment_type (DIVIDEND, COVERED_CALL, SELLING_PUT)
    - amount, adjustment_date, notes
    - created_at
+
+9. **accounts**
+   - id, user_id, account_name, account_type
+   - created_at, updated_at
+   - Account types: Cash, TFSA, RRSP, LIRA
+
+10. **daily_trades**
+    - id, user_id, account_id, trade_date
+    - profit_loss, notes
+    - created_at
+
+### Stock Position Management Architecture
+
+**The application uses a two-table system for stock positions:**
+
+**1. `stock_holdings` - Aggregate Position Table**
+- Stores the current state of each stock position
+- One row per ticker per account (e.g., AAPL in RRSP, AAPL in TFSA = 2 rows)
+- Automatically calculates:
+  - `total_shares`: Sum of all BUY minus all SELL transactions
+  - `average_price`: Weighted average price of all BUY transactions
+  - `is_open`: 1 if position is open, 0 if closed
+- Updated automatically when transactions are added
+- Used by: Dashboard, Position Analysis, Portfolio Overview
+
+**2. `stock_transactions` - Transaction History Table**
+- Stores every individual BUY/SELL transaction
+- Multiple rows per holding (transaction history)
+- Links to `stock_holdings` via `holding_id` foreign key
+- Contains: shares, price_per_share, commission, transaction_date
+- Used for: P/L calculation, transaction history, audit trail
+
+**How It Works:**
+
+```
+User adds a BUY transaction:
+1. Check if holding exists for this ticker+account
+2. If YES: Update total_shares and average_price in stock_holdings
+3. If NO: Create new row in stock_holdings
+4. Always: Create transaction record in stock_transactions
+
+User adds a SELL transaction:
+1. Reduce total_shares in stock_holdings
+2. If total_shares reaches 0: Set is_open = 0, closed_date = today
+3. Create SELL transaction record in stock_transactions
+
+P/L Calculation (for closed positions):
+1. Get all BUY transactions: Sum(shares * price_per_share) + Sum(commissions)
+2. Get all SELL transactions: Sum(shares * price_per_share) - Sum(commissions)
+3. P/L = Total SELL proceeds - Total BUY cost - All commissions
+```
+
+**Legacy `stock_trades` Table:**
+- Deprecated for new functionality
+- Used only for backward compatibility
+- Contains flat BUY/SELL records with no aggregation
+- Being phased out in favor of holdings+transactions model
 
 ### Data Flow
 1. User authenticates → JWT token generated
