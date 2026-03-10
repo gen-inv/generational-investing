@@ -1777,5 +1777,864 @@ describe('Option Trade Tests', () => {
     const data = await listResponse.json()
     expect(data.length).toBeGreaterThanOrEqual(3)
   })
+
+  it('should update an option trade', async () => {
+    const response = await fetch(`${BASE_URL}/api/options/${optionTradeId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        notes: 'Updated notes for stockpiling'
+      })
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should close an option trade with profit', async () => {
+    // Close the selling put for profit
+    const response = await fetch(`${BASE_URL}/api/options/${optionTradeId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${optionToken}`
+      },
+      body: JSON.stringify({
+        is_open: 0,
+        close_date: '2024-03-10',
+        close_price: 0.50, // Bought back for less
+        profit_loss: ((2.50 * 2 * 100) - (0.50 * 2 * 100) - 1.30) // Premium - Close - Commission
+      })
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should reopen a closed option trade', async () => {
+    const response = await fetch(`${BASE_URL}/api/options/${optionTradeId}/reopen`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${optionToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should delete an option trade', async () => {
+    const response = await fetch(`${BASE_URL}/api/options/${optionTradeId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${optionToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+})
+
+describe('Stock Holdings and Transactions Tests', () => {
+  let stockHoldingsToken: string = ''
+  let stockHoldingsAccountId: number = 0
+  let stockHoldingsCompanyId: number = 0
+  let stockHoldingId: number = 0
+
+  beforeAll(async () => {
+    // Create user
+    const email = generateEmail()
+    const userResponse = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Holdings Test User'
+      })
+    })
+    const userData = await userResponse.json()
+    stockHoldingsToken = userData.token
+
+    // Create account
+    const accountResponse = await fetch(`${BASE_URL}/api/accounts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockHoldingsToken}`
+      },
+      body: JSON.stringify({
+        account_name: 'Holdings Test Account',
+        account_type: 'TFSA',
+        default_currency: 'CAD',
+        balance_cad: 100000,
+        balance_usd: 0,
+        cash_balance_cad: 50000,
+        cash_balance_usd: 0
+      })
+    })
+    const accountData = await accountResponse.json()
+    stockHoldingsAccountId = accountData.id
+
+    // Create company
+    const companyResponse = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockHoldingsToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'SHOP',
+        research_score: 85
+      })
+    })
+    const companyData = await companyResponse.json()
+    stockHoldingsCompanyId = companyData.id
+  })
+
+  it('should create initial BUY and create stock_holding', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockHoldingsToken}`
+      },
+      body: JSON.stringify({
+        company_id: stockHoldingsCompanyId,
+        ticker: 'SHOP',
+        account_id: stockHoldingsAccountId,
+        trade_type: 'BUY',
+        quantity: 100,
+        price: 80.00,
+        trade_date: '2024-01-15',
+        commission: 5.00
+      })
+    })
+
+    expect(response.status).toBe(201)
+    const data = await response.json()
+    expect(data.id).toBeDefined()
+    stockHoldingId = data.id
+  })
+
+  it('should aggregate multiple BUY transactions', async () => {
+    // Second BUY
+    await fetch(`${BASE_URL}/api/stocks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockHoldingsToken}`
+      },
+      body: JSON.stringify({
+        company_id: stockHoldingsCompanyId,
+        ticker: 'SHOP',
+        account_id: stockHoldingsAccountId,
+        trade_type: 'BUY',
+        quantity: 50,
+        price: 85.00,
+        trade_date: '2024-02-01',
+        commission: 3.00
+      })
+    })
+
+    // Get holding and verify aggregation
+    // Average should be: (100 * 80 + 50 * 85) / 150 = 81.67
+    const response = await fetch(`${BASE_URL}/api/stocks?open=true`, {
+      headers: { 'Authorization': `Bearer ${stockHoldingsToken}` }
+    })
+
+    const data = await response.json()
+    const shopHolding = data.find((h: any) => h.ticker === 'SHOP')
+    expect(shopHolding).toBeDefined()
+    expect(shopHolding.total_shares).toBe(150)
+    expect(shopHolding.average_price).toBeCloseTo(81.67, 2)
+  })
+
+  it('should handle partial SELL transaction', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockHoldingsToken}`
+      },
+      body: JSON.stringify({
+        company_id: stockHoldingsCompanyId,
+        ticker: 'SHOP',
+        account_id: stockHoldingsAccountId,
+        trade_type: 'SELL',
+        quantity: 50,
+        price: 90.00,
+        trade_date: '2024-03-01',
+        commission: 3.00
+      })
+    })
+
+    expect(response.status).toBe(201)
+
+    // Verify holding updated
+    const listResponse = await fetch(`${BASE_URL}/api/stocks?open=true`, {
+      headers: { 'Authorization': `Bearer ${stockHoldingsToken}` }
+    })
+
+    const data = await listResponse.json()
+    const shopHolding = data.find((h: any) => h.ticker === 'SHOP')
+    expect(shopHolding.total_shares).toBe(100) // 150 - 50
+  })
+
+  it('should close holding with full SELL', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks/${stockHoldingId}/close`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockHoldingsToken}`
+      },
+      body: JSON.stringify({
+        close_price: 95.00,
+        close_date: '2024-04-01',
+        commission: 5.00
+      })
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+    expect(data.profit_loss).toBeDefined()
+  })
+
+  it('should reopen a closed holding', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks/${stockHoldingId}/reopen`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${stockHoldingsToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should delete stock holding and cascade transactions', async () => {
+    const response = await fetch(`${BASE_URL}/api/stocks/${stockHoldingId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${stockHoldingsToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should get purchase history for a stock', async () => {
+    // Create new holding first
+    const createResponse = await fetch(`${BASE_URL}/api/stocks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${stockHoldingsToken}`
+      },
+      body: JSON.stringify({
+        company_id: stockHoldingsCompanyId,
+        ticker: 'SHOP',
+        account_id: stockHoldingsAccountId,
+        trade_type: 'BUY',
+        quantity: 75,
+        price: 82.00,
+        trade_date: '2024-05-01',
+        commission: 4.00
+      })
+    })
+    const createData = await createResponse.json()
+    const newHoldingId = createData.id
+
+    // Get purchase history
+    const response = await fetch(`${BASE_URL}/api/stocks/${newHoldingId}/purchase-history`, {
+      headers: { 'Authorization': `Bearer ${stockHoldingsToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(Array.isArray(data)).toBe(true)
+    expect(data.length).toBeGreaterThan(0)
+  })
+})
+
+describe('Daily Trades Tests', () => {
+  let dailyTradesToken: string = ''
+  let dailyTradeId: number = 0
+
+  beforeAll(async () => {
+    // Create user
+    const email = generateEmail()
+    const userResponse = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Daily Trades Test User'
+      })
+    })
+    const userData = await userResponse.json()
+    dailyTradesToken = userData.token
+  })
+
+  it('should get default daily trade config', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trade/config`, {
+      headers: { 'Authorization': `Bearer ${dailyTradesToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.default_contracts).toBeDefined()
+    expect(data.rolling_window_days).toBeDefined()
+  })
+
+  it('should update daily trade config', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trade/config`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${dailyTradesToken}`
+      },
+      body: JSON.stringify({
+        default_contracts: 5,
+        rolling_window_days: 60
+      })
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.default_contracts).toBe(5)
+    expect(data.rolling_window_days).toBe(60)
+  })
+
+  it('should create a daily trade', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trades`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${dailyTradesToken}`
+      },
+      body: JSON.stringify({
+        entry_date: '2024-03-10',
+        entry_time: '09:35:00',
+        account_type: 'Cash',
+        strategy_type: 'CALL_SPREAD',
+        spx_price: 5150.00,
+        call_strike_buy: 5145,
+        call_strike_sell: 5150,
+        call_credit: 2.50,
+        put_strike_buy: 5100,
+        put_strike_sell: 5105,
+        put_credit: 2.25,
+        contracts: 3,
+        commission: 6.50
+      })
+    })
+
+    expect(response.status).toBe(201)
+    const data = await response.json()
+    expect(data.id).toBeDefined()
+    dailyTradeId = data.id
+  })
+
+  it('should list all daily trades', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trades`, {
+      headers: { 'Authorization': `Bearer ${dailyTradesToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(Array.isArray(data)).toBe(true)
+    expect(data.length).toBeGreaterThan(0)
+  })
+
+  it('should get today active trades', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trades/today`, {
+      headers: { 'Authorization': `Bearer ${dailyTradesToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(Array.isArray(data)).toBe(true)
+  })
+
+  it('should get daily trade stats', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trades/stats?rolling=true`, {
+      headers: { 'Authorization': `Bearer ${dailyTradesToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.totalPL).toBeDefined()
+    expect(data.totalTrades).toBeDefined()
+    expect(data.winRate).toBeDefined()
+  })
+
+  it('should get day-of-week stats', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trades/day-stats`, {
+      headers: { 'Authorization': `Bearer ${dailyTradesToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(Array.isArray(data)).toBe(true)
+  })
+
+  it('should get chart data', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trades/chart-data`, {
+      headers: { 'Authorization': `Bearer ${dailyTradesToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.labels).toBeDefined()
+    expect(data.cumulativePL).toBeDefined()
+  })
+
+  it('should close a daily trade', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trades/${dailyTradeId}/close`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${dailyTradesToken}`
+      },
+      body: JSON.stringify({
+        exit_time: '15:45:00',
+        close_commission: 6.50,
+        call_close_debit: 0.50,
+        put_close_debit: 0.25
+      })
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+    expect(data.profit_loss).toBeDefined()
+  })
+
+  it('should update a daily trade', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trades/${dailyTradeId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${dailyTradesToken}`
+      },
+      body: JSON.stringify({
+        journal: 'Good trade, waited for setup'
+      })
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should delete a daily trade', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trades/${dailyTradeId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${dailyTradesToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should reset daily trade config to defaults', async () => {
+    const response = await fetch(`${BASE_URL}/api/daily-trade/config/reset`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${dailyTradesToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.default_contracts).toBe(2)
+    expect(data.rolling_window_days).toBe(50)
+  })
+})
+
+describe('Reports Tests', () => {
+  let reportsToken: string = ''
+  let reportsAccountId: number = 0
+  let reportsCompanyId: number = 0
+
+  beforeAll(async () => {
+    // Create user with some trades for reporting
+    const email = generateEmail()
+    const userResponse = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Reports Test User'
+      })
+    })
+    const userData = await userResponse.json()
+    reportsToken = userData.token
+
+    // Create account
+    const accountResponse = await fetch(`${BASE_URL}/api/accounts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${reportsToken}`
+      },
+      body: JSON.stringify({
+        account_name: 'Reports Test Account',
+        account_type: 'TFSA',
+        default_currency: 'CAD',
+        balance_cad: 100000,
+        balance_usd: 0,
+        cash_balance_cad: 50000,
+        cash_balance_usd: 0
+      })
+    })
+    const accountData = await accountResponse.json()
+    reportsAccountId = accountData.id
+
+    // Create company
+    const companyResponse = await fetch(`${BASE_URL}/api/companies`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${reportsToken}`
+      },
+      body: JSON.stringify({
+        ticker: 'AMD',
+        research_score: 88
+      })
+    })
+    const companyData = await companyResponse.json()
+    reportsCompanyId = companyData.id
+
+    // Create a closed stock holding for P/L
+    const stockResponse = await fetch(`${BASE_URL}/api/stocks`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${reportsToken}`
+      },
+      body: JSON.stringify({
+        company_id: reportsCompanyId,
+        ticker: 'AMD',
+        account_id: reportsAccountId,
+        trade_type: 'BUY',
+        quantity: 100,
+        price: 150.00,
+        trade_date: '2024-01-15'
+      })
+    })
+    const stockData = await stockResponse.json()
+    
+    // Close it for profit
+    await fetch(`${BASE_URL}/api/stocks/${stockData.id}/close`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${reportsToken}`
+      },
+      body: JSON.stringify({
+        close_price: 165.00,
+        close_date: '2024-02-15',
+        commission: 5.00
+      })
+    })
+  })
+
+  it('should get P/L summary report', async () => {
+    const response = await fetch(`${BASE_URL}/api/reports/pl-summary?period=ytd`, {
+      headers: { 'Authorization': `Bearer ${reportsToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.summary).toBeDefined()
+    expect(data.summary.totalPL).toBeDefined()
+    expect(data.summary.totalTrades).toBeGreaterThan(0)
+  })
+
+  it('should get position analysis report', async () => {
+    const response = await fetch(`${BASE_URL}/api/reports/positions`, {
+      headers: { 'Authorization': `Bearer ${reportsToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.summary).toBeDefined()
+    expect(data.positions).toBeDefined()
+  })
+
+  it('should get performance report', async () => {
+    const response = await fetch(`${BASE_URL}/api/reports/performance`, {
+      headers: { 'Authorization': `Bearer ${reportsToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.portfolioGrowth).toBeDefined()
+  })
+
+  it('should get portfolio overview report', async () => {
+    const response = await fetch(`${BASE_URL}/api/reports/portfolio-overview`, {
+      headers: { 'Authorization': `Bearer ${reportsToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.accounts).toBeDefined()
+    expect(data.total_value).toBeDefined()
+  })
+
+  it('should get strategy analysis report', async () => {
+    const response = await fetch(`${BASE_URL}/api/reports/strategy-analysis?period=ytd`, {
+      headers: { 'Authorization': `Bearer ${reportsToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.summary).toBeDefined()
+  })
+
+  it('should export trades as CSV', async () => {
+    const response = await fetch(`${BASE_URL}/api/reports/export?type=stocks`, {
+      headers: { 'Authorization': `Bearer ${reportsToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/csv')
+  })
+})
+
+describe('Historical Balance Tests', () => {
+  let histToken: string = ''
+  let histAccountId: number = 0
+  let histBalanceId: number = 0
+
+  beforeAll(async () => {
+    // Create user and account
+    const email = generateEmail()
+    const userResponse = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'History Test User'
+      })
+    })
+    const userData = await userResponse.json()
+    histToken = userData.token
+
+    const accountResponse = await fetch(`${BASE_URL}/api/accounts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${histToken}`
+      },
+      body: JSON.stringify({
+        account_name: 'History Test Account',
+        account_type: 'RRSP',
+        default_currency: 'USD',
+        balance_usd: 75000,
+        cash_balance_usd: 15000
+      })
+    })
+    const accountData = await accountResponse.json()
+    histAccountId = accountData.id
+  })
+
+  it('should list historical balances', async () => {
+    const response = await fetch(`${BASE_URL}/api/historical-balances`, {
+      headers: { 'Authorization': `Bearer ${histToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(Array.isArray(data)).toBe(true)
+    // Should have initial balance from account creation
+    expect(data.length).toBeGreaterThan(0)
+  })
+
+  it('should create historical balance manually', async () => {
+    const response = await fetch(`${BASE_URL}/api/historical-balances`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${histToken}`
+      },
+      body: JSON.stringify({
+        account_id: histAccountId,
+        balance_cad: 0,
+        balance_usd: 80000,
+        cash_balance_cad: 0,
+        cash_balance_usd: 16000,
+        month: 2,
+        year: 2024
+      })
+    })
+
+    expect(response.status).toBe(201)
+    const data = await response.json()
+    expect(data.id).toBeDefined()
+    histBalanceId = data.id
+  })
+
+  it('should update historical balance', async () => {
+    const response = await fetch(`${BASE_URL}/api/historical-balances/${histBalanceId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${histToken}`
+      },
+      body: JSON.stringify({
+        balance_usd: 82000
+      })
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should delete historical balance', async () => {
+    const response = await fetch(`${BASE_URL}/api/historical-balances/${histBalanceId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${histToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should create account snapshot', async () => {
+    const response = await fetch(`${BASE_URL}/api/accounts/${histAccountId}/snapshot`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${histToken}` }
+    })
+
+    expect(response.status).toBe(201)
+    const data = await response.json()
+    expect(data.id).toBeDefined()
+  })
+})
+
+describe('User Profile Tests', () => {
+  let profileToken: string = ''
+
+  beforeAll(async () => {
+    const email = generateEmail()
+    const userResponse = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'Profile Test User'
+      })
+    })
+    const userData = await userResponse.json()
+    profileToken = userData.token
+  })
+
+  it('should get user profile', async () => {
+    const response = await fetch(`${BASE_URL}/api/user/profile`, {
+      headers: { 'Authorization': `Bearer ${profileToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.email).toBeDefined()
+    expect(data.name).toBe('Profile Test User')
+  })
+
+  it('should update user profile', async () => {
+    const response = await fetch(`${BASE_URL}/api/user/profile`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${profileToken}`
+      },
+      body: JSON.stringify({
+        name: 'Updated Profile Name'
+      })
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should change password', async () => {
+    const response = await fetch(`${BASE_URL}/api/user/password`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${profileToken}`
+      },
+      body: JSON.stringify({
+        currentPassword: 'test123',
+        newPassword: 'newtest123'
+      })
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.success).toBe(true)
+  })
+
+  it('should reject password change with wrong current password', async () => {
+    const response = await fetch(`${BASE_URL}/api/user/password`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${profileToken}`
+      },
+      body: JSON.stringify({
+        currentPassword: 'wrongpassword',
+        newPassword: 'anotherpassword'
+      })
+    })
+
+    expect(response.status).toBe(400)
+    const data = await response.json()
+    expect(data.error).toBeDefined()
+  })
+})
+
+describe('Dashboard YTD Performance Tests', () => {
+  let ytdToken: string = ''
+
+  beforeAll(async () => {
+    const email = generateEmail()
+    const userResponse = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password: 'test123',
+        name: 'YTD Test User'
+      })
+    })
+    const userData = await userResponse.json()
+    ytdToken = userData.token
+  })
+
+  it('should get YTD performance metrics', async () => {
+    const response = await fetch(`${BASE_URL}/api/dashboard/ytd-performance`, {
+      headers: { 'Authorization': `Bearer ${ytdToken}` }
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.ytd_pl).toBeDefined()
+    expect(data.ytd_return_pct).toBeDefined()
+    expect(data.total_deposits).toBeDefined()
+  })
 })
 
