@@ -4816,8 +4816,23 @@ app.get('/api/reports/positions', authMiddleware, async (c) => {
       positions: data.count
     })).sort((a, b) => b.value - a.value).slice(0, 10)
     
-    // Calculate account allocation
+    // Get all accounts to ensure comprehensive allocation
+    const allAccounts = await DB.prepare(`
+      SELECT DISTINCT account_type
+      FROM accounts
+      WHERE user_id = ?
+      ORDER BY account_type
+    `).bind(userId).all()
+    
+    // Calculate account allocation - include ALL accounts
     const accountAllocationMap = new Map()
+    
+    // Initialize all accounts with 0 values
+    allAccounts.results.forEach((acc: any) => {
+      accountAllocationMap.set(acc.account_type, { value: 0, count: 0 })
+    })
+    
+    // Add actual position values
     positions.forEach(pos => {
       const accountType = pos.accountType || 'Unknown'
       if (!accountAllocationMap.has(accountType)) {
