@@ -10621,32 +10621,36 @@ const positionCharts = {
     account: null
 }
 
+// Position analysis state
+let positionAnalysisData = null
+let currentHoldingsView = 'account' // 'account' or 'portfolio'
+
 async function loadPositionAnalysis() {
     try {
         console.log('Loading position analysis')
         
         // Fetch position data
         const response = await api.get('/api/reports/positions')
-        const data = response.data
+        positionAnalysisData = response.data
         
-        console.log('Position data:', data)
+        console.log('Position data:', positionAnalysisData)
         
         // Update summary metrics
-        updatePositionMetrics(data.summary)
+        updatePositionMetrics(positionAnalysisData.summary)
         
-        // Update top holdings table
-        updateTopHoldingsTable(data.topHoldings)
+        // Render holdings based on current view
+        renderHoldingsByView()
         
         // Render charts
-        renderSectorAllocationChart(data.sectorAllocation)
-        renderAccountAllocationChart(data.accountAllocation)
+        renderSectorAllocationChart(positionAnalysisData.sectorAllocation)
+        renderAccountAllocationChart(positionAnalysisData.accountAllocation)
         
         // Update breakdown tables
-        updateSectorBreakdownTable(data.sectorAllocation)
-        updateIndustryBreakdownTable(data.industryAllocation)
+        updateSectorBreakdownTable(positionAnalysisData.sectorAllocation)
+        updateIndustryBreakdownTable(positionAnalysisData.industryAllocation)
         
         // Update concentration analysis
-        updateConcentrationAnalysis(data.summary)
+        updateConcentrationAnalysis(positionAnalysisData.summary)
         
     } catch (error) {
         console.error('Error loading position analysis:', error)
@@ -10657,6 +10661,67 @@ async function loadPositionAnalysis() {
             showNotification('Failed to load position analysis: ' + (error.response?.data?.error || error.message), 'error')
         }
     }
+}
+
+function switchHoldingsView(view) {
+    currentHoldingsView = view
+    
+    // Update button styles
+    const accountBtn = document.getElementById('holdings-by-account-btn')
+    const portfolioBtn = document.getElementById('holdings-by-portfolio-btn')
+    
+    if (view === 'account') {
+        accountBtn.className = 'px-4 py-2 bg-brand-teal text-white rounded font-semibold hover:bg-brand-teal-dark transition'
+        portfolioBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 rounded font-semibold hover:bg-gray-300 transition'
+    } else {
+        accountBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 rounded font-semibold hover:bg-gray-300 transition'
+        portfolioBtn.className = 'px-4 py-2 bg-brand-teal text-white rounded font-semibold hover:bg-brand-teal-dark transition'
+    }
+    
+    // Re-render holdings
+    renderHoldingsByView()
+}
+
+function renderHoldingsByView() {
+    if (!positionAnalysisData) return
+    
+    let holdings
+    if (currentHoldingsView === 'account') {
+        // Show top 10 by account (already in response)
+        holdings = positionAnalysisData.topHoldings
+    } else {
+        // Aggregate by ticker across all accounts for portfolio view
+        const aggregated = new Map()
+        positionAnalysisData.allPositions.forEach(pos => {
+            if (aggregated.has(pos.ticker)) {
+                const existing = aggregated.get(pos.ticker)
+                existing.quantity += pos.quantity
+                existing.value += pos.value
+                existing.costBasis += pos.costBasis
+                existing.weight += pos.weight
+                existing.accounts.push(pos.accountType)
+            } else {
+                aggregated.set(pos.ticker, {
+                    ticker: pos.ticker,
+                    companyName: pos.companyName,
+                    quantity: pos.quantity,
+                    avgPrice: pos.value / pos.quantity, // Recalculate avg price
+                    costBasis: pos.costBasis,
+                    value: pos.value,
+                    weight: pos.weight,
+                    accountType: 'Multiple', // Special indicator for portfolio view
+                    accounts: [pos.accountType]
+                })
+            }
+        })
+        
+        // Sort by value and take top 10
+        holdings = Array.from(aggregated.values())
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10)
+    }
+    
+    updateTopHoldingsTable(holdings)
 }
 
 function updatePositionMetrics(summary) {
@@ -10716,7 +10781,7 @@ function updateTopHoldingsTable(holdings) {
     tbody.innerHTML = ''
     
     if (holdings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-gray-500">No open positions</td></tr>'
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-gray-500">No open positions</td></tr>'
         return
     }
     
@@ -10738,6 +10803,14 @@ function updateTopHoldingsTable(holdings) {
         const weightBarWidth = Math.min(holding.weight, 100)
         const weightColor = holding.weight > 20 ? 'bg-red-500' : holding.weight > 10 ? 'bg-orange-500' : 'bg-green-500'
         
+        // Account display (handle portfolio view)
+        let accountDisplay
+        if (holding.accountType === 'Multiple') {
+            accountDisplay = `<span class="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">Multiple Accounts</span>`
+        } else {
+            accountDisplay = `<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">${holding.accountType}</span>`
+        }
+        
         row.innerHTML = `
             <td class="px-4 py-3 text-center">
                 ${rankBadge}
@@ -10754,6 +10827,9 @@ function updateTopHoldingsTable(holdings) {
             <td class="px-4 py-3 text-right">
                 $${holding.avgPrice.toFixed(2)}
             </td>
+            <td class="px-4 py-3 text-right font-semibold text-gray-700">
+                $${holding.costBasis.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </td>
             <td class="px-4 py-3 text-right font-bold text-blue-600">
                 $${holding.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </td>
@@ -10766,7 +10842,7 @@ function updateTopHoldingsTable(holdings) {
                 </div>
             </td>
             <td class="px-4 py-3">
-                <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">${holding.accountType}</span>
+                ${accountDisplay}
             </td>
         `
         

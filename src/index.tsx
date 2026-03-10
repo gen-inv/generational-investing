@@ -4822,24 +4822,47 @@ app.get('/api/reports/positions', authMiddleware, async (c) => {
     
     console.log(`Total portfolio value: $${totalPortfolioValue.toFixed(2)}`)
     
-    // Calculate position metrics
-    const positions = stockPositions.results.map((pos: any) => {
+    // Calculate position metrics with cost basis adjustments
+    const positions = await Promise.all(stockPositions.results.map(async (pos: any) => {
       const value = pos.position_value || 0
       const weight = totalPortfolioValue > 0 ? (value / totalPortfolioValue) * 100 : 0
+      
+      // Get cost basis adjustments for this position (by ticker and account)
+      // Note: We need to get the holding_id first
+      const holding = await DB.prepare(`
+        SELECT id FROM stock_holdings
+        WHERE user_id = ? AND ticker = ? AND account_id = (
+          SELECT id FROM accounts WHERE user_id = ? AND account_type = ?
+        ) AND is_open = 1
+      `).bind(userId, pos.ticker, userId, pos.account_type).first()
+      
+      let totalAdjustments = 0
+      if (holding) {
+        const adjustments = await DB.prepare(`
+          SELECT COALESCE(SUM(amount), 0) as total
+          FROM cost_basis_adjustments
+          WHERE holding_id = ? AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL')
+        `).bind(holding.id).first()
+        totalAdjustments = adjustments?.total || 0
+      }
+      
+      const costBasis = (pos.avg_price * pos.quantity) - totalAdjustments
       
       return {
         ticker: pos.ticker,
         companyName: pos.company_name || pos.ticker,
         quantity: pos.quantity,
         avgPrice: pos.avg_price,
+        costBasis: costBasis,
         value: value,
         weight: weight,
         sector: pos.sector || 'Unknown',
         industry: pos.industry || 'Unknown',
         accountType: pos.account_type,
-        tradeDate: pos.trade_date
+        tradeDate: pos.trade_date,
+        adjustments: totalAdjustments
       }
-    })
+    }))
     
     // Top holdings (top 10 by value)
     const topHoldings = positions.slice(0, 10)
@@ -7107,10 +7130,30 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 
                                 <!-- Top Holdings Table -->
                                 <div class="card mb-6">
-                                    <h4 class="text-lg font-bold text-gray-800 mb-4">
-                                        <i class="fas fa-trophy text-yellow-600 mr-2"></i>
-                                        Top Holdings
-                                    </h4>
+                                    <div class="flex items-center justify-between mb-4">
+                                        <h4 class="text-lg font-bold text-gray-800">
+                                            <i class="fas fa-trophy text-yellow-600 mr-2"></i>
+                                            Top Holdings
+                                        </h4>
+                                        <div class="flex gap-2">
+                                            <button 
+                                                id="holdings-by-account-btn" 
+                                                class="px-4 py-2 bg-brand-teal text-white rounded font-semibold hover:bg-brand-teal-dark transition"
+                                                onclick="switchHoldingsView('account')"
+                                            >
+                                                <i class="fas fa-wallet mr-1"></i>
+                                                By Account
+                                            </button>
+                                            <button 
+                                                id="holdings-by-portfolio-btn" 
+                                                class="px-4 py-2 bg-gray-200 text-gray-700 rounded font-semibold hover:bg-gray-300 transition"
+                                                onclick="switchHoldingsView('portfolio')"
+                                            >
+                                                <i class="fas fa-chart-pie mr-1"></i>
+                                                By Portfolio
+                                            </button>
+                                        </div>
+                                    </div>
                                     <div class="overflow-x-auto">
                                         <table class="w-full">
                                             <thead>
@@ -7120,6 +7163,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                                     <th class="px-4 py-3 text-left">Company</th>
                                                     <th class="px-4 py-3 text-right">Shares</th>
                                                     <th class="px-4 py-3 text-right">Avg Price</th>
+                                                    <th class="px-4 py-3 text-right">Cost Basis</th>
                                                     <th class="px-4 py-3 text-right">Value</th>
                                                     <th class="px-4 py-3 text-right">Weight %</th>
                                                     <th class="px-4 py-3 text-left">Account</th>
