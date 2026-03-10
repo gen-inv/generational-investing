@@ -4692,27 +4692,25 @@ app.get('/api/reports/positions', authMiddleware, async (c) => {
     
     console.log(`Position Analysis request: userId=${userId}`)
     
-    // Get all open stock positions with company details
-    // Aggregate by ticker and account_type to handle multiple BUY transactions
+    // Get all open stock positions with company details from stock_holdings
     const stockPositions = await DB.prepare(`
       SELECT 
-        st.ticker,
-        st.account_type,
-        SUM(st.quantity) as quantity,
-        AVG(st.price) as avg_price,
-        MAX(st.trade_date) as trade_date,
+        sh.ticker,
+        a.account_type,
+        sh.total_shares as quantity,
+        sh.average_price as avg_price,
+        sh.opened_date as trade_date,
         c.company_name,
         c.sector,
         c.industry,
         c.market_cap,
-        SUM(st.quantity * st.price) as position_value
-      FROM stock_trades st
-      LEFT JOIN companies c ON st.company_id = c.id
-      WHERE st.user_id = ?
-        AND st.is_open = 1
-        AND st.trade_type = 'BUY'
-      GROUP BY st.ticker, st.account_type, c.company_name, c.sector, c.industry, c.market_cap
-      ORDER BY SUM(st.quantity * st.price) DESC
+        (sh.total_shares * sh.average_price) as position_value
+      FROM stock_holdings sh
+      JOIN accounts a ON sh.account_id = a.id
+      LEFT JOIN companies c ON sh.company_id = c.id
+      WHERE sh.user_id = ?
+        AND sh.is_open = 1
+      ORDER BY (sh.total_shares * sh.average_price) DESC
     `).bind(userId).all()
     
     console.log(`Found ${stockPositions.results.length} open stock positions`)
