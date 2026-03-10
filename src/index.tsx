@@ -4846,14 +4846,15 @@ app.get('/api/reports/positions', authMiddleware, async (c) => {
         totalAdjustments = adjustments?.total || 0
       }
       
-      const costBasis = (pos.avg_price * pos.quantity) - totalAdjustments
+      const totalCostBasis = (pos.avg_price * pos.quantity) - totalAdjustments
+      const costBasisPerShare = pos.quantity > 0 ? totalCostBasis / pos.quantity : 0
       
       return {
         ticker: pos.ticker,
         companyName: pos.company_name || pos.ticker,
         quantity: pos.quantity,
         avgPrice: pos.avg_price,
-        costBasis: costBasis,
+        costBasis: costBasisPerShare,
         value: value,
         weight: weight,
         sector: pos.sector || 'Unknown',
@@ -7163,7 +7164,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                                     <th class="px-4 py-3 text-left">Company</th>
                                                     <th class="px-4 py-3 text-right">Shares</th>
                                                     <th class="px-4 py-3 text-right">Avg Price</th>
-                                                    <th class="px-4 py-3 text-right">Cost Basis</th>
+                                                    <th class="px-4 py-3 text-right">Cost/Share</th>
                                                     <th class="px-4 py-3 text-right">Value</th>
                                                     <th class="px-4 py-3 text-right">Weight %</th>
                                                     <th class="px-4 py-3 text-left">Account</th>

@@ -10695,23 +10695,41 @@ function renderHoldingsByView() {
         positionAnalysisData.allPositions.forEach(pos => {
             if (aggregated.has(pos.ticker)) {
                 const existing = aggregated.get(pos.ticker)
+                // Accumulate total cost (cost basis per share × quantity)
+                const totalCost = existing.costBasis * existing.quantity
+                const additionalCost = pos.costBasis * pos.quantity
+                
                 existing.quantity += pos.quantity
                 existing.value += pos.value
-                existing.costBasis += pos.costBasis
                 existing.weight += pos.weight
-                existing.accounts.push(pos.accountType)
+                
+                // Recalculate weighted average cost basis per share
+                existing.costBasis = (totalCost + additionalCost) / existing.quantity
+                
+                // Track unique accounts
+                if (!existing.accounts.includes(pos.accountType)) {
+                    existing.accounts.push(pos.accountType)
+                }
             } else {
                 aggregated.set(pos.ticker, {
                     ticker: pos.ticker,
                     companyName: pos.companyName,
                     quantity: pos.quantity,
                     avgPrice: pos.value / pos.quantity, // Recalculate avg price
-                    costBasis: pos.costBasis,
+                    costBasis: pos.costBasis, // Already per share from backend
                     value: pos.value,
                     weight: pos.weight,
-                    accountType: 'Multiple', // Special indicator for portfolio view
                     accounts: [pos.accountType]
                 })
+            }
+        })
+        
+        // After aggregation, determine accountType display
+        aggregated.forEach((holding, ticker) => {
+            if (holding.accounts.length > 1) {
+                holding.accountType = 'Multiple'
+            } else {
+                holding.accountType = holding.accounts[0]
             }
         })
         
@@ -10828,7 +10846,7 @@ function updateTopHoldingsTable(holdings) {
                 $${holding.avgPrice.toFixed(2)}
             </td>
             <td class="px-4 py-3 text-right font-semibold text-gray-700">
-                $${holding.costBasis.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                $${holding.costBasis.toFixed(2)}
             </td>
             <td class="px-4 py-3 text-right font-bold text-blue-600">
                 $${holding.value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
