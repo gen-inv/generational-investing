@@ -218,15 +218,28 @@ The following features are fully specified and ready to implement:
    - month, year
    - created_at, updated_at
 
-4. **stock_trades**
+4. **stock_trades** (Legacy - deprecated for new trades)
    - id, user_id, company_id, ticker
    - trade_type (BUY/SELL)
    - quantity, price, account_type
    - trade_date, is_open (boolean)
    - cost_basis_adjustment, notes
    - created_at, updated_at
+   
+5. **stock_holdings** (Current - used for Position Analysis)
+   - id, user_id, company_id, ticker, account_id
+   - total_shares, average_price
+   - is_open (boolean), opened_date, closed_date
+   - notes, created_at, updated_at
+   - UNIQUE(user_id, ticker, account_id, is_open)
 
-5. **option_trades**
+6. **stock_transactions** (Individual buy/sell transactions)
+   - id, user_id, holding_id
+   - transaction_type (BUY/SELL)
+   - shares, price_per_share, transaction_date
+   - commission, notes, created_at
+
+7. **option_trades**
    - id, user_id, company_id, ticker
    - strategy_type
    - strike_price (1-4 for multi-leg strategies)
@@ -235,7 +248,7 @@ The following features are fully specified and ready to implement:
    - is_open, close_date, close_price, profit_loss
    - notes, created_at, updated_at
 
-6. **cost_basis_adjustments**
+8. **cost_basis_adjustments**
    - id, user_id, stock_trade_id
    - adjustment_type (DIVIDEND, COVERED_CALL, SELLING_PUT)
    - amount, adjustment_date, notes
