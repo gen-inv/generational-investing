@@ -1435,11 +1435,23 @@ app.post('/api/accounts/:id/snapshot', authMiddleware, async (c) => {
     const userId = c.get('userId');
     const accountId = parseInt(c.req.param('id'));
     const { DB } = c.env;
-    const { month, year } = await c.req.json();
+    
+    // Parse request body, default to empty object if body is empty
+    let body = {};
+    try {
+      body = await c.req.json();
+    } catch (e) {
+      // Empty body is okay, we'll use defaults
+    }
+    
+    // Use provided month/year or default to current month/year
+    const now = new Date();
+    const month = (body as any).month || (now.getMonth() + 1);
+    const year = (body as any).year || now.getFullYear();
 
     // Get current account details
     const account = await DB.prepare(`
-      SELECT account_id, balance_cad, balance_usd, cash_balance_usd, default_currency
+      SELECT id, balance_cad, balance_usd, cash_balance_usd, default_currency
       FROM accounts
       WHERE id = ? AND user_id = ?
     `).bind(accountId, userId).first() as any;
@@ -1449,10 +1461,16 @@ app.post('/api/accounts/:id/snapshot', authMiddleware, async (c) => {
     }
 
     // Get exchange rates
-    const rateResponse = await fetch(`${c.req.url.split('/api')[0]}/api/exchange-rate?month=${month}&year=${year}`, {
-      headers: { 'Authorization': c.req.header('Authorization') || '' }
-    });
-    const rates = await rateResponse.json() as any;
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    let rates = await DB.prepare(`
+      SELECT usd_to_cad, cad_to_usd FROM exchange_rates 
+      WHERE month = ? AND year = ?
+    `).bind(currentMonth, currentYear).first() as any;
+    
+    if (!rates) {
+      rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
+    }
 
     // Determine balance and currency based on default_currency
     const balance = account.default_currency === 'USD' ? account.balance_usd : account.balance_cad;
@@ -1460,7 +1478,7 @@ app.post('/api/accounts/:id/snapshot', authMiddleware, async (c) => {
                         (account.cash_balance_usd * rates.usd_to_cad);
 
     // Save snapshot
-    await DB.prepare(`
+    const result = await DB.prepare(`
       INSERT OR REPLACE INTO account_balance_history (
         user_id, account_id, balance, cash_balance, currency,
         month, year, exchange_rate_to_usd, exchange_rate_to_cad
@@ -1478,7 +1496,7 @@ app.post('/api/accounts/:id/snapshot', authMiddleware, async (c) => {
       rates.usd_to_cad
     ).run();
 
-    return c.json({ success: true });
+    return c.json({ success: true, id: result.meta.last_row_id }, 201);
   } catch (error: any) {
     console.error('Save snapshot error:', error);
     return c.json({ error: 'Failed to save balance snapshot' }, 500);
@@ -2853,8 +2871,17 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
     const data = await c.req.json()
     const { DB } = c.env
     
+    // First, get the existing trade data
+    const existingTrade = await DB.prepare(`
+      SELECT * FROM option_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first() as any
+    
+    if (!existingTrade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+    
     // If account_id is provided, fetch account_type
-    let accountType = data.account_type
+    let accountType = data.account_type !== undefined ? data.account_type : existingTrade.account_type
     if (data.account_id) {
       const account = await DB.prepare(`
         SELECT account_type FROM accounts WHERE id = ? AND user_id = ?
@@ -2865,6 +2892,8 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       }
     }
     
+    // Build UPDATE query with only provided fields (PATCH-style)
+    // D1 doesn't accept undefined, so use null as fallback
     await DB.prepare(`
       UPDATE option_trades SET
         ticker = ?, strategy_type = ?, strike_price = ?,
@@ -2876,46 +2905,65 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
         notes = ?
       WHERE id = ? AND user_id = ?
     `).bind(
-      data.ticker,
-      data.strategy_type,
-      data.strike_price,
-      data.strike_price_2 || null,
-      data.strike_price_3 || null,
-      data.strike_price_4 || null,
-      data.premium,
-      data.quantity,
-      data.expiration_date,
+      data.ticker !== undefined ? data.ticker : existingTrade.ticker,
+      data.strategy_type !== undefined ? data.strategy_type : existingTrade.strategy_type,
+      data.strike_price !== undefined ? data.strike_price : existingTrade.strike_price,
+      data.strike_price_2 !== undefined ? data.strike_price_2 : (existingTrade.strike_price_2 ?? null),
+      data.strike_price_3 !== undefined ? data.strike_price_3 : (existingTrade.strike_price_3 ?? null),
+      data.strike_price_4 !== undefined ? data.strike_price_4 : (existingTrade.strike_price_4 ?? null),
+      data.premium !== undefined ? data.premium : existingTrade.premium,
+      data.quantity !== undefined ? data.quantity : existingTrade.quantity,
+      data.expiration_date !== undefined ? data.expiration_date : existingTrade.expiration_date,
       accountType,
-      data.account_id || null,
-      data.trade_date,
-      data.commission || 0,
-      data.close_date || null,
-      data.close_price || null,
-      data.close_price_2 || null,
-      data.close_price_3 || null,
-      data.close_price_4 || null,
-      data.close_commission || null,
-      data.notes || null,
+      data.account_id !== undefined ? data.account_id : (existingTrade.account_id ?? null),
+      data.trade_date !== undefined ? data.trade_date : existingTrade.trade_date,
+      data.commission !== undefined ? data.commission : (existingTrade.commission ?? 0),
+      data.close_date !== undefined ? data.close_date : (existingTrade.close_date ?? null),
+      data.close_price !== undefined ? data.close_price : (existingTrade.close_price ?? null),
+      data.close_price_2 !== undefined ? data.close_price_2 : (existingTrade.close_price_2 ?? null),
+      data.close_price_3 !== undefined ? data.close_price_3 : (existingTrade.close_price_3 ?? null),
+      data.close_price_4 !== undefined ? data.close_price_4 : (existingTrade.close_price_4 ?? null),
+      data.close_commission !== undefined ? data.close_commission : (existingTrade.close_commission ?? null),
+      data.notes !== undefined ? data.notes : (existingTrade.notes ?? null),
       tradeId,
       userId
     ).run()
     
+    // Merge data with existing trade for calculations
+    const mergedData = {
+      ticker: data.ticker !== undefined ? data.ticker : existingTrade.ticker,
+      strategy_type: data.strategy_type !== undefined ? data.strategy_type : existingTrade.strategy_type,
+      strike_price: data.strike_price !== undefined ? data.strike_price : existingTrade.strike_price,
+      strike_price_2: data.strike_price_2 !== undefined ? data.strike_price_2 : existingTrade.strike_price_2,
+      strike_price_3: data.strike_price_3 !== undefined ? data.strike_price_3 : existingTrade.strike_price_3,
+      strike_price_4: data.strike_price_4 !== undefined ? data.strike_price_4 : existingTrade.strike_price_4,
+      premium: data.premium !== undefined ? data.premium : existingTrade.premium,
+      quantity: data.quantity !== undefined ? data.quantity : existingTrade.quantity,
+      commission: data.commission !== undefined ? data.commission : (existingTrade.commission || 0),
+      close_date: data.close_date !== undefined ? data.close_date : existingTrade.close_date,
+      close_price: data.close_price !== undefined ? data.close_price : existingTrade.close_price,
+      close_price_2: data.close_price_2 !== undefined ? data.close_price_2 : existingTrade.close_price_2,
+      close_price_3: data.close_price_3 !== undefined ? data.close_price_3 : existingTrade.close_price_3,
+      close_price_4: data.close_price_4 !== undefined ? data.close_price_4 : existingTrade.close_price_4,
+      close_commission: data.close_commission !== undefined ? data.close_commission : existingTrade.close_commission
+    }
+    
     // Recalculate profit_loss and is_open if close fields are provided
-    if (data.close_date && data.close_price !== null && data.close_price !== undefined) {
-      const openCommission = data.commission || 0
-      const closeCommission = data.close_commission || 0
-      const contracts = data.quantity
-      const strategyType = data.strategy_type
+    if (mergedData.close_date && mergedData.close_price !== null && mergedData.close_price !== undefined) {
+      const openCommission = mergedData.commission || 0
+      const closeCommission = mergedData.close_commission || 0
+      const contracts = mergedData.quantity
+      const strategyType = mergedData.strategy_type
       
       let profitLoss = 0
       
       // Calculate P/L based on strategy type
       if (strategyType === 'CREDIT_SPREAD' || strategyType === 'DEBIT_SPREAD') {
         // Two-leg spread
-        const shortOpenPremium = data.premium  // strike_price (short leg)
-        const longOpenPremium = data.strike_price_2 || 0  // strike_price_2 (long leg)
-        const shortClosePremium = data.close_price || 0
-        const longClosePremium = data.close_price_2 || 0
+        const shortOpenPremium = mergedData.premium  // strike_price (short leg)
+        const longOpenPremium = mergedData.strike_price_2 || 0  // strike_price_2 (long leg)
+        const shortClosePremium = mergedData.close_price || 0
+        const longClosePremium = mergedData.close_price_2 || 0
         
         const openCredit = (shortOpenPremium - longOpenPremium) * contracts * 100
         const closeDebit = (shortClosePremium - longClosePremium) * contracts * 100
@@ -2923,15 +2971,15 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
         
       } else if (strategyType === 'IRON_CONDOR') {
         // Four-leg iron condor
-        const scOpen = data.premium || 0  // Short Call
-        const lcOpen = data.strike_price_2 || 0  // Long Call
-        const spOpen = data.strike_price_3 || 0  // Short Put
-        const lpOpen = data.strike_price_4 || 0  // Long Put
+        const scOpen = mergedData.premium || 0  // Short Call
+        const lcOpen = mergedData.strike_price_2 || 0  // Long Call
+        const spOpen = mergedData.strike_price_3 || 0  // Short Put
+        const lpOpen = mergedData.strike_price_4 || 0  // Long Put
         
-        const scClose = data.close_price || 0
-        const lcClose = data.close_price_2 || 0
-        const spClose = data.close_price_3 || 0
-        const lpClose = data.close_price_4 || 0
+        const scClose = mergedData.close_price || 0
+        const lcClose = mergedData.close_price_2 || 0
+        const spClose = mergedData.close_price_3 || 0
+        const lpClose = mergedData.close_price_4 || 0
         
         const openCredit = ((scOpen - lcOpen) + (spOpen - lpOpen)) * contracts * 100
         const closeDebit = ((scClose - lcClose) + (spClose - lpClose)) * contracts * 100
@@ -2939,8 +2987,8 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
         
       } else {
         // Single-leg (SELLING_PUT, SELLING_PUT_LONG_TERM, BUYING_PUT, LONG_CALL, COVERED_CALL)
-        const openPremium = data.premium
-        const closePremium = data.close_price
+        const openPremium = mergedData.premium
+        const closePremium = mergedData.close_price
         
         if (strategyType === 'BUYING_PUT' || strategyType === 'LONG_CALL') {
           // Debit strategies: profit when close > open
