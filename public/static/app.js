@@ -908,8 +908,13 @@ async function loadDailyTradeConfig() {
         // Ensure accounts are loaded first
         if (!accountsList || accountsList.length === 0) {
             console.log('Loading accounts list...')
-            await loadAccountsList()
-            console.log('Accounts loaded:', accountsList)
+            try {
+                await loadAccountsList()
+                console.log('Accounts loaded:', accountsList)
+            } catch (accountsError) {
+                console.error('Failed to load accounts, continuing with config load:', accountsError)
+                accountsList = []
+            }
         } else {
             console.log('Using cached accounts:', accountsList)
         }
@@ -951,7 +956,10 @@ async function loadDailyTradeConfig() {
         }
         
         // Account-based sizing config
-        document.getElementById('dt-account-max-loss-percent').value = config.account_max_loss_percent || 4.00
+        const accountMaxLossInput = document.getElementById('dt-account-max-loss-percent')
+        if (accountMaxLossInput) {
+            accountMaxLossInput.value = config.account_max_loss_percent || 4.00
+        }
         
         // Initialize sizing type UI
         toggleSizingType()
