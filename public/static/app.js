@@ -671,6 +671,33 @@ function updateStrikeWidthDisplays() {
     updateTradeSummary()
 }
 
+// Update contracts hint based on position sizing configuration
+function updateContractsHint(config) {
+    const hintElement = document.getElementById('dt-contracts-hint')
+    if (!hintElement) return
+    
+    // Check if position sizing is enabled
+    if (config.enable_position_sizing) {
+        const sizingType = config.position_sizing_type || 'profit'
+        
+        if (sizingType === 'profit') {
+            // Profit-based sizing - orange
+            const rollingWindow = config.rolling_profit_window || 50
+            hintElement.innerHTML = `<i class="fas fa-chart-line mr-1"></i>Profit-based sizing (last ${rollingWindow} trades)`
+            hintElement.className = 'text-xs text-orange-600 font-semibold mt-1 block'
+        } else if (sizingType === 'account') {
+            // Account-based sizing - purple
+            const maxLossPct = config.account_max_loss_percent || 4.00
+            hintElement.innerHTML = `<i class="fas fa-wallet mr-1"></i>Account-based sizing (${maxLossPct}% max loss)`
+            hintElement.className = 'text-xs text-purple-600 font-semibold mt-1 block'
+        }
+    } else {
+        // Manual sizing - grey
+        hintElement.innerHTML = '<i class="fas fa-hand-paper mr-1"></i>Manual sizing'
+        hintElement.className = 'text-xs text-gray-500 mt-1 block'
+    }
+}
+
 // Adjust contracts with +/- buttons
 function adjustContracts(delta) {
     const contractsInput = document.getElementById('dt-contracts')
@@ -964,6 +991,9 @@ async function loadDailyTradeConfig() {
         // Update strike width displays in Today's Trading tab
         updateStrikeWidthDisplays()
         
+        // Update contracts hint in Quick Entry Form
+        updateContractsHint(config)
+        
         console.log('Daily Trade config loaded successfully', config)
     } catch (error) {
         console.error('Error loading Daily Trade config:', error)
@@ -1003,6 +1033,8 @@ async function saveDailyTradeConfig() {
             alert('✅ Configuration saved successfully!')
             // Update rolling window labels
             updateRollingWindowLabels()
+            // Update contracts hint
+            updateContractsHint(config)
             // Close modal
             closeDailyTradeConfig()
         } else {
