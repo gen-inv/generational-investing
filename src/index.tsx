@@ -5586,6 +5586,13 @@ app.get('/', (c) => {
                                         <i class="fas fa-shield-alt text-orange-600 mr-2"></i>Risk Management & Position Sizing
                                     </h3>
                                     <div class="space-y-4">
+                                        <!-- Rolling Profit Window (always visible - used for stats and sizing) -->
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Rolling Profit Window (Last X Trades)</label>
+                                            <input type="number" id="dt-rolling-profit-window" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
+                                            <small class="text-gray-500">Number of recent trades for performance stats and position sizing</small>
+                                        </div>
+                                        
                                         <!-- Master Toggle for Position Sizing -->
                                         <div>
                                             <label class="flex items-center justify-between p-3 bg-blue-50 border border-blue-300 rounded-lg cursor-pointer hover:bg-blue-100">
@@ -5627,17 +5634,12 @@ app.get('/', (c) => {
                                             
                                             <!-- Profit-Based Config -->
                                             <div id="dt-profit-sizing-config" class="space-y-3">
-                                                <div>
-                                                    <label class="block text-gray-700 font-semibold mb-2">Rolling Profit Window (Last X Trades)</label>
-                                                    <input type="number" id="dt-rolling-profit-window" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
-                                                    <small class="text-gray-500">Number of recent trades to analyze for sizing</small>
-                                                </div>
                                                 <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                                                     <div class="flex items-start">
                                                         <i class="fas fa-info-circle text-blue-600 mr-2 mt-1"></i>
                                                         <div class="text-sm text-gray-700">
                                                             <strong>Formula:</strong> <code>Contracts = floor(Total Profit / (Strike Width × 100))</code><br>
-                                                            Capped at Max Contract Limit below.
+                                                            Uses Rolling Profit Window above. Capped at Max Contract Limit below.
                                                         </div>
                                                     </div>
                                                 </div>
