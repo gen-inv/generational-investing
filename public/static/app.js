@@ -914,6 +914,13 @@ async function loadDailyTradeConfig() {
             console.log('Using cached accounts:', accountsList)
         }
         
+        // Check if user has any accounts
+        if (!accountsList || accountsList.length === 0) {
+            alert('⚠️ No accounts found!\n\nPlease create at least one account before configuring Daily Trades.\n\nGo to the Accounts section to create your first account.')
+            closeDailyTradeConfig()
+            return
+        }
+        
         const response = await api.get('/api/daily-trade/config')
         const config = response.data
         
@@ -997,7 +1004,16 @@ async function loadDailyTradeConfig() {
         console.log('Daily Trade config loaded successfully', config)
     } catch (error) {
         console.error('Error loading Daily Trade config:', error)
-        alert('Failed to load configuration. Using defaults.')
+        
+        // Provide more specific error message
+        if (error.response && error.response.status === 401) {
+            alert('❌ Authentication failed. Please log in again.')
+        } else if (error.message && error.message.includes('accounts')) {
+            alert('❌ Failed to load accounts.\n\nPlease ensure you have created at least one account before configuring Daily Trades.')
+        } else {
+            alert('❌ Failed to load Daily Trade configuration.\n\nPlease try refreshing the page. If the problem persists, check the browser console for details.')
+        }
+        closeDailyTradeConfig()
     }
 }
 
