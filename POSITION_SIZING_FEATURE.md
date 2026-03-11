@@ -64,6 +64,15 @@ Reset response includes the new fields with default values.
 
 ### 4. JavaScript Functions
 
+#### `updateContractsHint(config)` 🆕
+- Updates the hint below the Contracts field in Quick Entry Form
+- Provides visual feedback of active position sizing method
+- Three states with different colors and icons:
+  - **Manual sizing** (grey): `🖐 Manual sizing`
+  - **Profit-based** (orange): `📊 Profit-based sizing (last X trades)`
+  - **Account-based** (purple): `💰 Account-based sizing (Y% max loss)`
+- Called automatically on config load and after saving
+
 #### `togglePositionSizing()`
 - Shows/hides the entire position sizing configuration section
 - Called when master toggle changes state
@@ -116,6 +125,30 @@ Enhanced to:
 - **Respect Max Contract Limit**: Both calculations are capped at your configured maximum
 - **Strike Width**: Both use your configured strike width in calculations
 - **Dynamic**: Recalculates automatically when conditions change
+
+### Visual Feedback on Quick Entry Form
+
+The Contracts field in the Quick Entry Form displays a dynamic hint that reflects your current configuration:
+
+**Manual Sizing** (default, grey text):
+```
+Contracts: [1]
+🖐 Manual sizing
+```
+
+**Profit-Based Sizing** (orange text):
+```
+Contracts: [1]
+📊 Profit-based sizing (last 50 trades)
+```
+
+**Account-Based Sizing** (purple text):
+```
+Contracts: [1]
+💰 Account-based sizing (4.00% max loss)
+```
+
+This provides immediate visual confirmation of which sizing method is active when entering trades.
 
 ## Testing
 
@@ -176,10 +209,20 @@ Potential improvements:
 
 ## Commit Information
 
-**Commit**: f81e981
-**Message**: "Add account-based position sizing to daily trade config"
+**Latest Commit**: 8f8b4b9
+**Message**: "Add dynamic contracts hint to Quick Entry Form"
 **Date**: 2026-03-11
 **Tests**: ✅ All 93 tests passing
+
+**Full Commit History**:
+```
+8f8b4b9 - Add dynamic contracts hint to Quick Entry Form
+4e7dbde - Update documentation for Rolling Profit Window repositioning
+cee434e - Move Rolling Profit Window above position sizing toggle
+a58d60b - Update README with Daily Trades and position sizing features
+7609e50 - Add comprehensive documentation for position sizing feature
+f81e981 - Add account-based position sizing to daily trade config
+```
 
 ## Deployment
 
