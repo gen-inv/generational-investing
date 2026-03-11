@@ -6,9 +6,10 @@
 - **Features**: User authentication, company research tracking, multi-account management, stock & option trading, P/L reporting
 
 ## URLs
+- **Production**: https://app.generationalinvesting.ca
+- **Production (Pages.dev)**: https://generational-investing.pages.dev
 - **Development**: https://3000-imi5lx8i4w7yx1t3dzzid-18e660f9.sandbox.novita.ai
-- **Production**: Will be available after Cloudflare Pages deployment
-- **GitHub**: (Repository to be created)
+- **GitHub**: https://github.com/rob-page/generational-investing
 
 ## Demo Account
 - **Email**: demo@generationalinvesting.ca
