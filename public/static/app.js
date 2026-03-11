@@ -905,6 +905,30 @@ async function loadDailyTradeConfig() {
         document.getElementById('dt-atm-proximity-limit').value = config.atm_proximity_limit || 30
         document.getElementById('dt-time-exit').value = config.time_exit ? config.time_exit.substring(0, 5) : '14:00'
         
+        // New position sizing fields
+        const enablePositionSizing = document.getElementById('dt-enable-position-sizing')
+        if (enablePositionSizing) {
+            enablePositionSizing.checked = config.enable_position_sizing || false
+            // Initialize UI state
+            togglePositionSizing()
+        }
+        
+        // Position sizing type
+        const sizingType = config.position_sizing_type || 'profit'
+        const profitRadio = document.querySelector('input[name="dt-position-sizing-type"][value="profit"]')
+        const accountRadio = document.querySelector('input[name="dt-position-sizing-type"][value="account"]')
+        if (sizingType === 'profit' && profitRadio) {
+            profitRadio.checked = true
+        } else if (sizingType === 'account' && accountRadio) {
+            accountRadio.checked = true
+        }
+        
+        // Account-based sizing config
+        document.getElementById('dt-account-max-loss-percent').value = config.account_max_loss_percent || 4.00
+        
+        // Initialize sizing type UI
+        toggleSizingType()
+        
         // Set the profit-based sizing toggle to match the default configuration
         const profitSizingToggle = document.getElementById('dt-profit-sizing-toggle')
         if (profitSizingToggle) {
@@ -955,6 +979,9 @@ async function saveDailyTradeConfig() {
             max_contract_limit: parseInt(document.getElementById('dt-max-contract-limit').value),
             rolling_profit_window: parseInt(document.getElementById('dt-rolling-profit-window').value),
             enable_profit_sizing_default: document.getElementById('dt-enable-profit-sizing-default').checked,
+            enable_position_sizing: document.getElementById('dt-enable-position-sizing').checked,
+            position_sizing_type: document.querySelector('input[name="dt-position-sizing-type"]:checked').value,
+            account_max_loss_percent: parseFloat(document.getElementById('dt-account-max-loss-percent').value),
             target_premium_min: parseFloat(document.getElementById('dt-target-premium-min').value),
             target_premium_max: parseFloat(document.getElementById('dt-target-premium-max').value),
             guideline_delta: parseFloat(document.getElementById('dt-guideline-delta').value),
@@ -1006,6 +1033,35 @@ async function resetDailyTradeConfig() {
     } catch (error) {
         console.error('Error resetting Daily Trade config:', error)
         alert('❌ Failed to reset configuration. Please try again.')
+    }
+}
+
+// Toggle position sizing master switch
+function togglePositionSizing() {
+    const isEnabled = document.getElementById('dt-enable-position-sizing').checked
+    const sizingConfig = document.getElementById('dt-sizing-config')
+    
+    if (isEnabled) {
+        sizingConfig.classList.remove('hidden')
+        // Initialize the sizing type display
+        toggleSizingType()
+    } else {
+        sizingConfig.classList.add('hidden')
+    }
+}
+
+// Toggle between profit-based and account-based sizing
+function toggleSizingType() {
+    const selectedType = document.querySelector('input[name="dt-position-sizing-type"]:checked')?.value
+    const profitConfig = document.getElementById('dt-profit-sizing-config')
+    const accountConfig = document.getElementById('dt-account-sizing-config')
+    
+    if (selectedType === 'profit') {
+        profitConfig.classList.remove('hidden')
+        accountConfig.classList.add('hidden')
+    } else if (selectedType === 'account') {
+        profitConfig.classList.add('hidden')
+        accountConfig.classList.remove('hidden')
     }
 }
 

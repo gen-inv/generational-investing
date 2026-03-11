@@ -3093,6 +3093,9 @@ app.get('/api/daily-trade/config', authMiddleware, async (c) => {
         max_contract_limit: 25,
         rolling_profit_window: 50,
         enable_profit_sizing_default: false,
+        enable_position_sizing: false,
+        position_sizing_type: 'profit',
+        account_max_loss_percent: 4.00,
         target_premium_min: 10.00,
         target_premium_max: 15.00,
         guideline_delta: -0.10,
@@ -3131,6 +3134,9 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
           max_contract_limit = ?,
           rolling_profit_window = ?,
           enable_profit_sizing_default = ?,
+          enable_position_sizing = ?,
+          position_sizing_type = ?,
+          account_max_loss_percent = ?,
           target_premium_min = ?,
           target_premium_max = ?,
           guideline_delta = ?,
@@ -3146,6 +3152,9 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
         data.max_contract_limit,
         data.rolling_profit_window,
         data.enable_profit_sizing_default ? 1 : 0,
+        data.enable_position_sizing ? 1 : 0,
+        data.position_sizing_type || 'profit',
+        data.account_max_loss_percent || 4.00,
         data.target_premium_min,
         data.target_premium_max,
         data.guideline_delta || -0.10,
@@ -3165,6 +3174,9 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
           max_contract_limit,
           rolling_profit_window,
           enable_profit_sizing_default,
+          enable_position_sizing,
+          position_sizing_type,
+          account_max_loss_percent,
           target_premium_min,
           target_premium_max,
           guideline_delta,
@@ -3174,12 +3186,15 @@ app.post('/api/daily-trade/config', authMiddleware, async (c) => {
           atm_proximity_limit,
           time_exit,
           default_account_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         userId,
         data.max_contract_limit,
         data.rolling_profit_window,
         data.enable_profit_sizing_default ? 1 : 0,
+        data.enable_position_sizing ? 1 : 0,
+        data.position_sizing_type || 'profit',
+        data.account_max_loss_percent || 4.00,
         data.target_premium_min,
         data.target_premium_max,
         data.guideline_delta || -0.10,
@@ -3215,6 +3230,9 @@ app.post('/api/daily-trade/config/reset', authMiddleware, async (c) => {
       config: {
         max_contract_limit: 25,
         rolling_profit_window: 50,
+        enable_position_sizing: false,
+        position_sizing_type: 'profit',
+        account_max_loss_percent: 4.00,
         target_premium_min: 10.00,
         target_premium_max: 15.00,
         strike_width: 5,
@@ -5565,38 +5583,93 @@ app.get('/', (c) => {
                                 <!-- Trading Rules & Risk Management -->
                                 <div class="card">
                                     <h3 class="text-xl font-bold text-gray-800 mb-4">
-                                        <i class="fas fa-shield-alt text-orange-600 mr-2"></i>Risk Management
+                                        <i class="fas fa-shield-alt text-orange-600 mr-2"></i>Risk Management & Position Sizing
                                     </h3>
                                     <div class="space-y-4">
+                                        <!-- Master Toggle for Position Sizing -->
                                         <div>
-                                            <label class="block text-gray-700 font-semibold mb-2">Max Contract Limit (Absolute)</label>
-                                            <input type="number" id="dt-max-contract-limit" value="25" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="25">
-                                            <small class="text-gray-500">Maximum contracts allowed regardless of profit</small>
-                                        </div>
-                                        <div>
-                                            <label class="block text-gray-700 font-semibold mb-2">Rolling Profit Window (Number of Trades)</label>
-                                            <input type="number" id="dt-rolling-profit-window" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
-                                            <small class="text-gray-500">Number of recent trades to calculate profit-based contract sizing</small>
-                                        </div>
-                                        <div>
-                                            <label class="flex items-center justify-between p-3 bg-gray-50 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-100">
+                                            <label class="flex items-center justify-between p-3 bg-blue-50 border border-blue-300 rounded-lg cursor-pointer hover:bg-blue-100">
                                                 <div>
-                                                    <div class="font-semibold text-gray-700">Enable Profit-Based Sizing by Default</div>
-                                                    <div class="text-sm text-gray-500">Automatically enable profit-based sizing on the Quick Entry Form</div>
+                                                    <div class="font-semibold text-gray-700">Enable Calculated Position Sizing</div>
+                                                    <div class="text-sm text-gray-500">Use automated contract sizing based on strategy</div>
                                                 </div>
                                                 <div class="relative inline-block w-12 h-6">
-                                                    <input type="checkbox" id="dt-enable-profit-sizing-default" class="sr-only peer">
+                                                    <input type="checkbox" id="dt-enable-position-sizing" class="sr-only peer" onchange="togglePositionSizing()">
                                                     <div class="w-full h-full bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
                                                 </div>
                                             </label>
                                         </div>
-                                        <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                                            <div class="flex items-start">
-                                                <i class="fas fa-info-circle text-blue-600 mr-2 mt-1"></i>
-                                                <div class="text-sm text-gray-700">
-                                                    <strong>Profit-Based Contract Sizing:</strong> Contract limit per trade is calculated based on profit from the configured rolling window of recent trades. Formula: <code>Profit ÷ (Strike Width × 100) = Contracts</code> (truncated, not rounded). Minimum starts at 1 contract. Max risk per trade is auto-calculated each time based on configured credit strike width. <em>No daily trade maximums or daily loss limits.</em>
+                                        
+                                        <!-- Position Sizing Config (hidden by default) -->
+                                        <div id="dt-sizing-config" class="hidden space-y-4 pl-4 border-l-4 border-orange-300">
+                                            <!-- Type Toggle -->
+                                            <div>
+                                                <label class="block text-gray-700 font-semibold mb-3">Sizing Method</label>
+                                                <div class="grid grid-cols-2 gap-3">
+                                                    <label class="relative flex items-center justify-center p-3 border-2 border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-orange-600 has-[:checked]:bg-orange-50">
+                                                        <input type="radio" name="dt-position-sizing-type" value="profit" class="sr-only" onchange="toggleSizingType()" checked>
+                                                        <div class="text-center">
+                                                            <i class="fas fa-chart-line text-lg mb-1"></i>
+                                                            <div class="font-semibold">Profit-Based</div>
+                                                            <div class="text-xs text-gray-500">Recent trades</div>
+                                                        </div>
+                                                    </label>
+                                                    <label class="relative flex items-center justify-center p-3 border-2 border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 has-[:checked]:border-orange-600 has-[:checked]:bg-orange-50">
+                                                        <input type="radio" name="dt-position-sizing-type" value="account" class="sr-only" onchange="toggleSizingType()">
+                                                        <div class="text-center">
+                                                            <i class="fas fa-wallet text-lg mb-1"></i>
+                                                            <div class="font-semibold">Account-Based</div>
+                                                            <div class="text-xs text-gray-500">% of balance</div>
+                                                        </div>
+                                                    </label>
                                                 </div>
                                             </div>
+                                            
+                                            <!-- Profit-Based Config -->
+                                            <div id="dt-profit-sizing-config" class="space-y-3">
+                                                <div>
+                                                    <label class="block text-gray-700 font-semibold mb-2">Rolling Profit Window (Last X Trades)</label>
+                                                    <input type="number" id="dt-rolling-profit-window" value="50" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="50">
+                                                    <small class="text-gray-500">Number of recent trades to analyze for sizing</small>
+                                                </div>
+                                                <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                    <div class="flex items-start">
+                                                        <i class="fas fa-info-circle text-blue-600 mr-2 mt-1"></i>
+                                                        <div class="text-sm text-gray-700">
+                                                            <strong>Formula:</strong> <code>Contracts = floor(Total Profit / (Strike Width × 100))</code><br>
+                                                            Capped at Max Contract Limit below.
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Account-Based Config -->
+                                            <div id="dt-account-sizing-config" class="hidden space-y-3">
+                                                <div>
+                                                    <label class="block text-gray-700 font-semibold mb-2">Max Loss % of Account Balance</label>
+                                                    <div class="flex items-center gap-2">
+                                                        <input type="number" step="0.01" id="dt-account-max-loss-percent" value="4.00" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="4.00">
+                                                        <span class="text-gray-600 font-semibold">%</span>
+                                                    </div>
+                                                    <small class="text-gray-500">Position sized to limit max loss to this % of account</small>
+                                                </div>
+                                                <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                    <div class="flex items-start">
+                                                        <i class="fas fa-info-circle text-blue-600 mr-2 mt-1"></i>
+                                                        <div class="text-sm text-gray-700">
+                                                            <strong>Formula:</strong> <code>Contracts = floor((Balance × Max Loss %) / (Strike Width × 100))</code><br>
+                                                            Capped at Max Contract Limit below.
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Max Contract Limit (always visible) -->
+                                        <div>
+                                            <label class="block text-gray-700 font-semibold mb-2">Max Contract Limit (Upper Bound)</label>
+                                            <input type="number" id="dt-max-contract-limit" value="25" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="25">
+                                            <small class="text-gray-500">Absolute maximum contracts regardless of calculation</small>
                                         </div>
                                     </div>
                                 </div>
