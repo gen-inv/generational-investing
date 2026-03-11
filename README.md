@@ -60,14 +60,42 @@
    - Expiration date management
    - P/L calculation for closed positions
 
-6. **P/L Reporting System**
+6. **Daily Trades (0DTE SPX Trading)** ✨ NEW
+   - Zero Days to Expiration (0DTE) option trading for SPX
+   - Strategy types:
+     - Iron Condor (most common)
+     - Credit Spread
+     - Debit Spread  
+     - Butterfly
+     - Other custom strategies
+   - Real-time trade entry with SPX/VIX prices
+   - Exit tracking with profit/loss calculation
+   - Performance statistics:
+     - Daily and rolling P/L
+     - Win rate analysis
+     - Day-of-week performance
+     - Cumulative return charts
+   - **Advanced Position Sizing** 🆕:
+     - Master toggle for calculated position sizing
+     - Two sizing methods:
+       - **Profit-Based**: Calculates contracts based on rolling profit window
+       - **Account-Based**: Calculates contracts based on % of account balance
+     - Both methods respect max contract limit
+     - Configurable parameters per method
+   - Configuration management:
+     - Risk parameters (max contracts, profit windows, max loss %)
+     - Entry rules (premium range, delta, strike width)
+     - Exit rules (profit target, ATM limit, time exit)
+     - Default account selection
+
+7. **P/L Reporting System**
    - Monthly and yearly profit/loss reports
    - Account-type segregation
    - Strategy-type breakdowns
    - CSV export for Excel
    - Tax-ready reports
 
-7. **Reports Dashboard** ✨ NEW
+8. **Reports Dashboard** ✨ NEW
    - **P/L Summary**: Detailed profit/loss breakdown by asset type, account type, and time periods (MTD, QTD, YTD, Last 12 Months, All Time)
    - **Performance Analysis**: Portfolio growth tracking with comprehensive performance metrics:
      - **Portfolio Growth Chart**: Cumulative P/L with peak tracking over time
@@ -93,7 +121,7 @@
    - Interactive ApexCharts visualizations
    - Real-time metrics and performance indicators
 
-8. **Brand Styling**
+9. **Brand Styling**
    - RobPage brand colors:
      - Teal (#004F59) - Primary
      - Gold (#C9B25F) - Accent
@@ -136,6 +164,26 @@
 - `POST /api/options` - Add option trade
 - `PUT /api/options/:id` - Update option trade
 - `DELETE /api/options/:id` - Delete option trade
+
+#### Daily Trades (0DTE)
+- `GET /api/daily-trades` - Get all daily trades
+  - Query params: `date=YYYY-MM-DD`, `is_open=true/false`
+- `GET /api/daily-trades/today` - Get today's trades
+- `GET /api/daily-trades/stats?period=rolling` - Get trade statistics
+  - Periods: `rolling`, `month`, `year`, `all`
+  - Query param: `limit=50` (for rolling)
+- `GET /api/daily-trades/day-stats` - Get day-of-week statistics
+- `GET /api/daily-trades/chart-data?period=rolling&limit=50` - Get chart data
+- `POST /api/daily-trades` - Create new daily trade
+- `PUT /api/daily-trades/:id` - Update daily trade
+- `PUT /api/daily-trades/:id/close` - Close daily trade
+- `DELETE /api/daily-trades/:id` - Delete daily trade
+
+#### Daily Trade Configuration
+- `GET /api/daily-trade/config` - Get user's configuration
+- `POST /api/daily-trade/config` - Save configuration
+  - Body includes: `max_contract_limit`, `rolling_profit_window`, `enable_position_sizing`, `position_sizing_type`, `account_max_loss_percent`, `target_premium_min/max`, `strike_width`, etc.
+- `POST /api/daily-trade/config/reset` - Reset to defaults
 
 #### Reports
 - `GET /api/reports/pl?year=2026&month=1` - Get P/L report
