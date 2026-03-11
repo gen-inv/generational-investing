@@ -34,10 +34,18 @@ Reset response includes the new fields with default values.
 
 ### 3. Frontend UI
 
+#### Rolling Profit Window (Always Visible)
+- Located at the top of Risk Management section
+- **Dual Purpose**:
+  1. Displays statistics on the Performance tab
+  2. Used for profit-based position sizing calculations
+- Default value: 50 trades
+- Always visible regardless of position sizing toggle state
+
 #### Master Toggle
 - Toggle to enable/disable calculated position sizing
-- When disabled, hides all sizing configuration
-- Located in Risk Management section
+- When disabled, hides sizing method selector and configuration
+- Located below Rolling Profit Window
 
 #### Type Selector
 - Radio buttons for "Profit-Based" vs "Account-Based"
@@ -45,7 +53,7 @@ Reset response includes the new fields with default values.
 - Only visible when master toggle is enabled
 
 #### Profit-Based Config (existing)
-- **Rolling Profit Window**: Number of recent trades to analyze
+- Uses the **Rolling Profit Window** field above (shared with performance stats)
 - **Formula**: `Contracts = floor(Total Profit / (Strike Width × 100))`
 - Capped at Max Contract Limit
 
@@ -86,14 +94,15 @@ Enhanced to:
 ### Enable Calculated Position Sizing
 1. Navigate to Daily Trade Configuration (gear icon)
 2. Locate "Risk Management & Position Sizing" section
-3. Toggle "Enable Calculated Position Sizing" ON
-4. Configuration section will appear
+3. Note the **Rolling Profit Window** at the top (always visible, used for stats and sizing)
+4. Toggle "Enable Calculated Position Sizing" ON
+5. Configuration section will appear below
 
 ### Choose Sizing Method
 
 #### Option A: Profit-Based (existing method)
 1. Select "Profit-Based" radio button
-2. Set "Rolling Profit Window" (default: 50 trades)
+2. The **Rolling Profit Window** field at the top determines how many recent trades to analyze
 3. Formula calculates contracts based on recent trade profits
 4. Best for: Traders who want to scale up after profitable runs
 
