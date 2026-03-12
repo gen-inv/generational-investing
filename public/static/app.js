@@ -7034,9 +7034,6 @@ async function renderPLTrendChart(period) {
             yMinIndividual = -500 // Default minimum if no losses
         }
         
-        // Store the original min with 20% buffer before normalization
-        const originalMinWithBuffer = yMinIndividual
-        
         // Round individual axis to nice values
         yMaxIndividual = Math.ceil(yMaxIndividual / 100) * 100
         yMinIndividual = Math.floor(yMinIndividual / 100) * 100
@@ -7047,19 +7044,16 @@ async function renderPLTrendChart(period) {
         const cumulativeRatio = Math.abs(yMaxCumulative) / (yMaxCumulative - yMinCumulative)
         const individualRatio = Math.abs(yMaxIndividual) / (yMaxIndividual - yMinIndividual)
         
-        // Adjust axes to match ratios
+        // Adjust axes to match ratios - prefer expanding range rather than shrinking
+        // to maintain the 20% buffer on individual axis
         if (cumulativeRatio > individualRatio) {
-            // Individual axis needs more negative range
+            // Individual axis needs more negative range to match cumulative ratio
             const targetRange = yMaxIndividual / cumulativeRatio
             yMinIndividual = yMaxIndividual - targetRange
             yMinIndividual = Math.floor(yMinIndividual / 100) * 100
-            
-            // Ensure we maintain at least 20% buffer below largest loss
-            if (yMinIndividual > originalMinWithBuffer) {
-                yMinIndividual = Math.floor(originalMinWithBuffer / 100) * 100
-            }
         } else if (individualRatio > cumulativeRatio) {
-            // Cumulative axis needs more negative range
+            // Cumulative axis needs adjustment to match individual ratio
+            // This preserves the 20% buffer on individual axis
             const targetRange = yMaxCumulative / individualRatio
             yMinCumulative = yMaxCumulative - targetRange
             yMinCumulative = Math.floor(yMinCumulative / 1000) * 1000
