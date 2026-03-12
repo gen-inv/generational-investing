@@ -929,7 +929,6 @@ async function loadDailyTradeConfig() {
         // Populate form fields
         document.getElementById('dt-max-contract-limit').value = config.max_contract_limit || 25
         document.getElementById('dt-rolling-profit-window').value = config.rolling_profit_window || 50
-        document.getElementById('dt-enable-profit-sizing-default').checked = config.enable_profit_sizing_default || false
         document.getElementById('dt-target-premium-min').value = config.target_premium_min || 10.00
         document.getElementById('dt-target-premium-max').value = config.target_premium_max || 15.00
         document.getElementById('dt-guideline-delta').value = config.guideline_delta || -0.10
@@ -937,7 +936,7 @@ async function loadDailyTradeConfig() {
         document.getElementById('dt-default-contracts').value = config.default_contracts || 1
         document.getElementById('dt-profit-target-percent').value = config.profit_target_percent || 50
         document.getElementById('dt-atm-proximity-limit').value = config.atm_proximity_limit || 30
-        document.getElementById('dt-time-exit').value = config.time_exit ? config.time_exit.substring(0, 5) : '14:00'
+        document.getElementById('dt-time-exit').value = config.time_exit ? config.time_time.substring(0, 5) : '14:00'
         
         // New position sizing fields
         const enablePositionSizing = document.getElementById('dt-enable-position-sizing')
@@ -1024,7 +1023,6 @@ async function saveDailyTradeConfig() {
         const config = {
             max_contract_limit: parseInt(document.getElementById('dt-max-contract-limit').value),
             rolling_profit_window: parseInt(document.getElementById('dt-rolling-profit-window').value),
-            enable_profit_sizing_default: document.getElementById('dt-enable-profit-sizing-default').checked,
             enable_position_sizing: document.getElementById('dt-enable-position-sizing').checked,
             position_sizing_type: document.querySelector('input[name="dt-position-sizing-type"]:checked').value,
             account_max_loss_percent: parseFloat(document.getElementById('dt-account-max-loss-percent').value),
