@@ -936,7 +936,7 @@ async function loadDailyTradeConfig() {
         document.getElementById('dt-default-contracts').value = config.default_contracts || 1
         document.getElementById('dt-profit-target-percent').value = config.profit_target_percent || 50
         document.getElementById('dt-atm-proximity-limit').value = config.atm_proximity_limit || 30
-        document.getElementById('dt-time-exit').value = config.time_exit ? config.time_time.substring(0, 5) : '14:00'
+        document.getElementById('dt-time-exit').value = config.time_exit ? config.time_exit.substring(0, 5) : '14:00'
         
         // New position sizing fields
         const enablePositionSizing = document.getElementById('dt-enable-position-sizing')
@@ -961,16 +961,6 @@ async function loadDailyTradeConfig() {
         
         // Initialize sizing type UI
         toggleSizingType()
-        
-        // Set the profit-based sizing toggle to match the default configuration
-        const profitSizingToggle = document.getElementById('dt-profit-sizing-toggle')
-        if (profitSizingToggle) {
-            profitSizingToggle.checked = config.enable_profit_sizing_default || false
-            // Trigger the toggle function to update UI
-            if (profitSizingToggle.checked) {
-                toggleProfitSizing()
-            }
-        }
         
         // Load account select
         const accountSelect = document.getElementById('dt-default-account')
