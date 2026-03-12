@@ -7038,22 +7038,34 @@ async function renderPLTrendChart(period) {
         yMaxIndividual = Math.ceil(yMaxIndividual / 100) * 100
         yMinIndividual = Math.floor(yMinIndividual / 100) * 100
         
+        // Store the required minimum (cannot be less negative than this)
+        const requiredMinIndividual = yMinIndividual
+        
         // Normalize both axes so zero appears at the same vertical position
         // The ratio (max / range) should be equal for both axes
         // ratio = max / (max - min)
         const cumulativeRatio = Math.abs(yMaxCumulative) / (yMaxCumulative - yMinCumulative)
         const individualRatio = Math.abs(yMaxIndividual) / (yMaxIndividual - yMinIndividual)
         
-        // Adjust axes to match ratios - prefer expanding range rather than shrinking
-        // to maintain the 20% buffer on individual axis
+        // Adjust axes to match ratios
         if (cumulativeRatio > individualRatio) {
             // Individual axis needs more negative range to match cumulative ratio
             const targetRange = yMaxIndividual / cumulativeRatio
             yMinIndividual = yMaxIndividual - targetRange
             yMinIndividual = Math.floor(yMinIndividual / 100) * 100
+            
+            // Ensure we don't violate the 20% buffer requirement
+            if (yMinIndividual > requiredMinIndividual) {
+                // The normalization made it less negative, so use the required minimum
+                // and adjust the cumulative axis instead to maintain normalization
+                yMinIndividual = requiredMinIndividual
+                const individualRatioFinal = Math.abs(yMaxIndividual) / (yMaxIndividual - yMinIndividual)
+                const targetRangeCumulative = yMaxCumulative / individualRatioFinal
+                yMinCumulative = yMaxCumulative - targetRangeCumulative
+                yMinCumulative = Math.floor(yMinCumulative / 1000) * 1000
+            }
         } else if (individualRatio > cumulativeRatio) {
             // Cumulative axis needs adjustment to match individual ratio
-            // This preserves the 20% buffer on individual axis
             const targetRange = yMaxCumulative / individualRatio
             yMinCumulative = yMaxCumulative - targetRange
             yMinCumulative = Math.floor(yMinCumulative / 1000) * 1000
