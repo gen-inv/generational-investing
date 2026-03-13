@@ -3868,7 +3868,16 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
       WHERE user_id = ? AND is_open = 0 AND strftime('%Y', trade_date) = ?
     `).bind(userId, currentYear.toString()).first() as any
     
-    const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0) + (dailyPL?.total_pl || 0)
+    // Get YTD dividends
+    const dividends = await DB.prepare(`
+      SELECT COALESCE(SUM(cba.amount), 0) as total_dividends
+      FROM cost_basis_adjustments cba
+      WHERE cba.user_id = ?
+      AND cba.adjustment_type = 'DIVIDEND'
+      AND cba.adjustment_date LIKE ?
+    `).bind(userId, `${currentYear}%`).first() as any
+    
+    const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0) + (dailyPL?.total_pl || 0) + (dividends?.total_dividends || 0)
     const ytdPercentage = totalValue > 0 ? (ytdPL / totalValue) * 100 : 0
     
     // Get trade statistics
@@ -3920,7 +3929,13 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
         WHERE user_id = ? AND is_open = 0 AND strftime('%Y-%m', trade_date) = ?
       `).bind(userId, `${year}-${monthStr}`).first() as any
       
-      const totalMonthlyPL = (monthlyStockPL?.pl || 0) + (monthlyOptionPL?.pl || 0) + (monthlyDailyPL?.pl || 0)
+      const monthlyDividends = await DB.prepare(`
+        SELECT COALESCE(SUM(amount), 0) as pl
+        FROM cost_basis_adjustments
+        WHERE user_id = ? AND adjustment_type = 'DIVIDEND' AND adjustment_date LIKE ?
+      `).bind(userId, `${year}-${monthStr}%`).first() as any
+      
+      const totalMonthlyPL = (monthlyStockPL?.pl || 0) + (monthlyOptionPL?.pl || 0) + (monthlyDailyPL?.pl || 0) + (monthlyDividends?.pl || 0)
       
       monthlyPL.push({
         month: monthNames[month - 1],
@@ -4214,11 +4229,30 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     `).bind(userId, startDate).all()
     console.log(`Daily trades fetched: ${dailyTrades.results.length}`)
     
+    // Get dividends
+    console.log('Fetching dividends...')
+    const dividends = await DB.prepare(`
+      SELECT 
+        cba.amount as profit_loss,
+        cba.adjustment_date as close_date,
+        COALESCE(a.account_type, 'Unknown') as account_type,
+        'Dividends' as asset_type
+      FROM cost_basis_adjustments cba
+      INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
+      INNER JOIN accounts a ON sh.account_id = a.id
+      WHERE cba.user_id = ?
+        AND cba.adjustment_type = 'DIVIDEND'
+        AND cba.adjustment_date >= ?
+      ORDER BY cba.adjustment_date DESC
+    `).bind(userId, startDate).all()
+    console.log(`Dividends fetched: ${dividends.results.length}`)
+    
     // Combine all trades
     const allTrades = [
       ...stockTrades,
       ...optionTrades.results,
-      ...dailyTrades.results
+      ...dailyTrades.results,
+      ...dividends.results
     ]
     
     // Calculate overall metrics
@@ -4627,11 +4661,24 @@ app.get('/api/reports/performance', authMiddleware, async (c) => {
       ORDER BY dt.trade_date ASC
     `).bind(userId, startDate).all()
     
+    const dividends = await DB.prepare(`
+      SELECT 
+        cba.amount as profit_loss,
+        cba.adjustment_date as close_date,
+        cba.adjustment_date as trade_date
+      FROM cost_basis_adjustments cba
+      WHERE cba.user_id = ?
+        AND cba.adjustment_type = 'DIVIDEND'
+        AND cba.adjustment_date >= ?
+      ORDER BY cba.adjustment_date ASC
+    `).bind(userId, startDate).all()
+    
     // Combine all trades
     const allTrades = [
       ...stockTrades.results,
       ...optionTrades.results,
-      ...dailyTrades.results
+      ...dailyTrades.results,
+      ...dividends.results
     ].sort((a: any, b: any) => {
       const dateA = a.close_date || a.trade_date
       const dateB = b.close_date || b.trade_date
@@ -5128,6 +5175,100 @@ app.get('/api/reports/export', authMiddleware, async (c) => {
     'Content-Type': 'text/csv',
     'Content-Disposition': `attachment; filename="${type}_${year || 'all'}.csv"`
   })
+})
+
+// Dividends Report - detailed breakdown by account and stock
+app.get('/api/reports/dividends', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const groupBy = c.req.query('groupBy') || 'account' // 'account' or 'stock'
+    const period = c.req.query('period') || 'ytd' // 'mtd', 'ytd', 'all'
+    
+    console.log(`Dividends report request: userId=${userId}, groupBy=${groupBy}, period=${period}`)
+    
+    // Calculate date range
+    const now = new Date()
+    let startDate = ''
+    
+    switch (period) {
+      case 'mtd':
+        startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+        break
+      case 'ytd':
+        startDate = `${now.getFullYear()}-01-01`
+        break
+      case 'all':
+        startDate = '1900-01-01'
+        break
+    }
+    
+    console.log(`Date range: startDate=${startDate}`)
+    
+    if (groupBy === 'account') {
+      // Group dividends by account
+      const dividends = await DB.prepare(`
+        SELECT 
+          a.account_name,
+          a.account_type,
+          a.id as account_id,
+          COUNT(*) as dividend_count,
+          SUM(cba.amount) as total_dividends
+        FROM cost_basis_adjustments cba
+        INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
+        INNER JOIN accounts a ON sh.account_id = a.id
+        WHERE cba.user_id = ?
+          AND cba.adjustment_type = 'DIVIDEND'
+          AND cba.adjustment_date >= ?
+        GROUP BY a.id, a.account_name, a.account_type
+        ORDER BY total_dividends DESC
+      `).bind(userId, startDate).all()
+      
+      console.log(`Dividends by account fetched: ${dividends.results.length} accounts`)
+      
+      return c.json({
+        groupBy: 'account',
+        period,
+        data: dividends.results,
+        total: dividends.results.reduce((sum: number, d: any) => sum + (d.total_dividends || 0), 0)
+      })
+    } else {
+      // Group dividends by stock
+      const dividends = await DB.prepare(`
+        SELECT 
+          sh.ticker,
+          c.company_name,
+          sh.id as holding_id,
+          COUNT(*) as dividend_count,
+          SUM(cba.amount) as total_dividends,
+          MIN(cba.adjustment_date) as first_dividend_date,
+          MAX(cba.adjustment_date) as last_dividend_date
+        FROM cost_basis_adjustments cba
+        INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
+        LEFT JOIN companies c ON sh.company_id = c.id
+        WHERE cba.user_id = ?
+          AND cba.adjustment_type = 'DIVIDEND'
+          AND cba.adjustment_date >= ?
+        GROUP BY sh.id, sh.ticker, c.company_name
+        ORDER BY total_dividends DESC
+      `).bind(userId, startDate).all()
+      
+      console.log(`Dividends by stock fetched: ${dividends.results.length} stocks`)
+      
+      return c.json({
+        groupBy: 'stock',
+        period,
+        data: dividends.results,
+        total: dividends.results.reduce((sum: number, d: any) => sum + (d.total_dividends || 0), 0)
+      })
+    }
+  } catch (error) {
+    console.error('Error generating dividends report:', error)
+    return c.json({
+      error: 'Failed to generate dividends report',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
 })
 
 // ============================================================================
@@ -6548,6 +6689,9 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 <button onclick="showReportTab('positions')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="positions">
                                     <i class="fas fa-sitemap mr-2"></i>Position Analysis
                                 </button>
+                                <button onclick="showReportTab('dividends')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="dividends">
+                                    <i class="fas fa-coins mr-2"></i>Dividends
+                                </button>
                                 <button onclick="showReportTab('closed-trades')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="closed-trades">
                                     <i class="fas fa-history mr-2"></i>Closed Trades
                                 </button>
@@ -7400,6 +7544,92 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                             1500-2500 (Moderate) | 
                                             &gt;2500 (High)
                                         </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Dividends Report Tab -->
+                        <div id="report-tab-dividends" class="report-tab-content hidden">
+                            <div class="mb-6">
+                                <h3 class="text-2xl font-bold text-gray-800 mb-4">
+                                    <i class="fas fa-coins mr-2 text-brand-gold"></i>Dividend Report
+                                </h3>
+                                
+                                <!-- Control Panel -->
+                                <div class="card mb-6">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <!-- Group By Selector -->
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                                <i class="fas fa-layer-group mr-2 text-brand-teal"></i>Group By
+                                            </label>
+                                            <div class="flex gap-2">
+                                                <button onclick="loadDividendsReport('account', getCurrentDividendPeriod())" id="dividends-group-account" class="dividends-group-btn active px-4 py-2 bg-brand-teal text-white rounded-lg font-semibold">
+                                                    <i class="fas fa-building mr-2"></i>Account
+                                                </button>
+                                                <button onclick="loadDividendsReport('stock', getCurrentDividendPeriod())" id="dividends-group-stock" class="dividends-group-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">
+                                                    <i class="fas fa-chart-line mr-2"></i>Stock
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Period Selector -->
+                                        <div>
+                                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                                <i class="fas fa-calendar-alt mr-2 text-brand-teal"></i>Time Period
+                                            </label>
+                                            <div class="flex gap-2">
+                                                <button onclick="loadDividendsReport(getCurrentDividendGroupBy(), 'mtd')" id="dividends-period-mtd" class="dividends-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">
+                                                    MTD
+                                                </button>
+                                                <button onclick="loadDividendsReport(getCurrentDividendGroupBy(), 'ytd')" id="dividends-period-ytd" class="dividends-period-btn active px-4 py-2 bg-brand-teal text-white rounded-lg font-semibold">
+                                                    YTD
+                                                </button>
+                                                <button onclick="loadDividendsReport(getCurrentDividendGroupBy(), 'all')" id="dividends-period-all" class="dividends-period-btn px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">
+                                                    All Time
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Summary Card -->
+                                <div class="card bg-gradient-to-br from-gold-50 to-white mb-6">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <p class="text-sm text-gray-600 font-semibold mb-1">
+                                                <i class="fas fa-coins mr-2 text-brand-gold"></i>Total Dividends
+                                            </p>
+                                            <p class="text-3xl font-bold text-brand-gold" id="dividends-total">$0.00</p>
+                                            <p class="text-xs text-gray-500 mt-1" id="dividends-count">0 payments</p>
+                                        </div>
+                                        <div class="text-5xl text-brand-gold opacity-20">
+                                            <i class="fas fa-coins"></i>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Dividends Table -->
+                                <div class="card">
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full">
+                                            <thead>
+                                                <tr class="border-b border-gray-200">
+                                                    <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase" id="dividends-header-col1">Account</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Count</th>
+                                                    <th class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Total Dividends</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="dividends-table-body">
+                                                <tr>
+                                                    <td colspan="3" class="px-4 py-8 text-center text-gray-400">
+                                                        <i class="fas fa-coins text-4xl mb-2"></i>
+                                                        <p>Loading dividends data...</p>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>

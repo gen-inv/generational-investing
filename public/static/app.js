@@ -8599,6 +8599,9 @@ function showReportTab(tabName) {
         case 'positions':
             loadPositionAnalysis()
             break
+        case 'dividends':
+            loadDividendsReport('account', 'ytd')
+            break
         case 'closed-trades':
             loadClosedTrades()
             break
@@ -10751,6 +10754,126 @@ async function loadPositionAnalysis() {
             showNotification('Failed to load position analysis: ' + (error.response?.data?.error || error.message), 'error')
         }
     }
+}
+
+// Dividends Report Functions
+async function loadDividendsReport(groupBy = 'account', period = 'ytd') {
+    try {
+        const response = await axios.get(`/api/reports/dividends?groupBy=${groupBy}&period=${period}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        })
+        
+        const data = response.data
+        console.log('Dividends report loaded:', data)
+        
+        // Update active buttons
+        document.querySelectorAll('.dividends-group-btn').forEach(btn => {
+            btn.classList.remove('active', 'bg-brand-teal', 'text-white')
+            btn.classList.add('bg-gray-200', 'text-gray-700')
+        })
+        document.getElementById(`dividends-group-${groupBy}`).classList.remove('bg-gray-200', 'text-gray-700')
+        document.getElementById(`dividends-group-${groupBy}`).classList.add('active', 'bg-brand-teal', 'text-white')
+        
+        document.querySelectorAll('.dividends-period-btn').forEach(btn => {
+            btn.classList.remove('active', 'bg-brand-teal', 'text-white')
+            btn.classList.add('bg-gray-200', 'text-gray-700')
+        })
+        document.getElementById(`dividends-period-${period}`).classList.remove('bg-gray-200', 'text-gray-700')
+        document.getElementById(`dividends-period-${period}`).classList.add('active', 'bg-brand-teal', 'text-white')
+        
+        // Update summary
+        document.getElementById('dividends-total').textContent = '$' + (data.total || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        const totalCount = data.data.reduce((sum, item) => sum + (item.dividend_count || 0), 0)
+        document.getElementById('dividends-count').textContent = totalCount + ' payment' + (totalCount !== 1 ? 's' : '')
+        
+        // Update table header
+        const headerCol1 = document.getElementById('dividends-header-col1')
+        if (groupBy === 'account') {
+            headerCol1.innerHTML = '<i class="fas fa-building mr-2"></i>Account'
+        } else {
+            headerCol1.innerHTML = '<i class="fas fa-chart-line mr-2"></i>Stock'
+        }
+        
+        // Update table body
+        const tbody = document.getElementById('dividends-table-body')
+        tbody.innerHTML = ''
+        
+        if (data.data.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="3" class="px-4 py-8 text-center text-gray-400">
+                        <i class="fas fa-coins text-4xl mb-2"></i>
+                        <p>No dividend payments found for this period</p>
+                    </td>
+                </tr>
+            `
+            return
+        }
+        
+        data.data.forEach((item, index) => {
+            const row = document.createElement('tr')
+            row.className = 'border-b border-gray-100 hover:bg-gray-50 transition'
+            
+            if (groupBy === 'account') {
+                row.innerHTML = `
+                    <td class="px-4 py-3">
+                        <div class="flex items-center">
+                            <i class="fas fa-building text-brand-teal mr-3"></i>
+                            <div>
+                                <div class="font-semibold text-gray-800">${item.account_name}</div>
+                                <div class="text-xs text-gray-500">${item.account_type}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">${item.dividend_count}</span>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        <span class="font-bold text-brand-gold">$${(item.total_dividends || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </td>
+                `
+            } else {
+                row.innerHTML = `
+                    <td class="px-4 py-3">
+                        <div class="flex items-center">
+                            <i class="fas fa-chart-line text-brand-teal mr-3"></i>
+                            <div>
+                                <div class="font-semibold text-gray-800">${item.ticker}</div>
+                                ${item.company_name ? `<div class="text-xs text-gray-500">${item.company_name}</div>` : ''}
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">${item.dividend_count}</span>
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        <span class="font-bold text-brand-gold">$${(item.total_dividends || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </td>
+                `
+            }
+            
+            tbody.appendChild(row)
+        })
+        
+    } catch (error) {
+        console.error('Error loading dividends report:', error)
+        if (error.response?.status === 401) {
+            showNotification('Session expired. Please log in again.', 'error')
+            logout()
+        } else {
+            showNotification('Failed to load dividends report: ' + (error.response?.data?.error || error.message), 'error')
+        }
+    }
+}
+
+function getCurrentDividendGroupBy() {
+    const activeBtn = document.querySelector('.dividends-group-btn.active')
+    return activeBtn.id.replace('dividends-group-', '')
+}
+
+function getCurrentDividendPeriod() {
+    const activeBtn = document.querySelector('.dividends-period-btn.active')
+    return activeBtn.id.replace('dividends-period-', '')
 }
 
 function switchHoldingsView(view) {
