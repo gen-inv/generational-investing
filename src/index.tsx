@@ -6,6 +6,22 @@ type Bindings = {
   DB: D1Database;
 }
 
+// Alias for use in scheduled handler
+type CloudflareBindings = Bindings
+
+// Cloudflare scheduled event interface
+interface ScheduledEvent {
+  cron: string;
+  type: 'scheduled';
+  scheduledTime: number;
+}
+
+// Cloudflare execution context interface
+interface ExecutionContext {
+  waitUntil(promise: Promise<any>): void;
+  passThroughOnException(): void;
+}
+
 const app = new Hono<{ Bindings: Bindings }>()
 
 // Enable CORS
@@ -5362,24 +5378,26 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
       return c.json({ error: 'RapidAPI configuration not found. Please configure your API key first.' }, 400)
     }
     
-    // Get all open stock holdings for this user
+    // Get all stock holdings for this user (including closed ones)
+    // We track dividends based on ex_date regardless of position closure
     const holdings = await DB.prepare(`
       SELECT 
         sh.id as holding_id,
         sh.ticker,
         sh.opened_date,
+        sh.closed_date,
         sh.total_shares,
         sh.is_open
       FROM stock_holdings sh
-      WHERE sh.user_id = ? AND sh.is_open = 1
+      WHERE sh.user_id = ?
       ORDER BY sh.ticker
     `).bind(userId).all()
     
     if (!holdings.results || holdings.results.length === 0) {
-      return c.json({ message: 'No open holdings found', dividends_found: 0, dividends_eligible: 0 })
+      return c.json({ message: 'No holdings found', dividends_found: 0, dividends_eligible: 0 })
     }
     
-    console.log(`Found ${holdings.results.length} open holdings`)
+    console.log(`Found ${holdings.results.length} holdings to check`)
     
     // Create fetch log
     const logResult = await DB.prepare(`
@@ -5402,12 +5420,13 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
         tickersProcessed.push(holding.ticker)
         
         // Call RapidAPI Dividend Tracker
-        // Example endpoint: GET /ticker/{ticker}/dividends
-        const response = await fetch(`https://${apiConfig.api_host}/ticker/${holding.ticker}/dividends`, {
+        // Correct endpoint: GET /history/{ticker}
+        const response = await fetch(`https://${apiConfig.api_host}/history/${holding.ticker}`, {
           method: 'GET',
           headers: {
-            'X-RapidAPI-Key': apiConfig.api_key,
-            'X-RapidAPI-Host': apiConfig.api_host
+            'Content-Type': 'application/json',
+            'x-rapidapi-key': apiConfig.api_key,
+            'x-rapidapi-host': apiConfig.api_host
           }
         })
         
@@ -5421,9 +5440,9 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
         
         const dividendData = await response.json() as any
         
-        // Process dividend data (structure may vary by API)
-        // Assuming API returns array of dividends
-        const dividends = dividendData.dividends || dividendData || []
+        // Process dividend data from RapidAPI Dividend Tracker
+        // API returns array of dividend objects directly
+        const dividends = Array.isArray(dividendData) ? dividendData : (dividendData.dividends || dividendData.data || [])
         
         for (const div of dividends) {
           const exDate = div.ex_date || div.exDate || div.ex_dividend_date
@@ -5436,64 +5455,54 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
           }
           
           // Check eligibility: holding must be opened before ex_date
+          // We record ALL dividends regardless of position closure
+          // Application to individual holdings will be done later based on pay_date
           const isEligible = holding.opened_date < exDate
-          const sharesHeld = isEligible ? holding.total_shares : 0
-          const totalDividend = isEligible ? (amount * sharesHeld) : 0
           
           if (isEligible) {
             totalEligible++
           }
           totalDividends++
           
-          // Check if dividend already exists
+          // Check if dividend already exists for this ticker/ex_date combination
+          // Note: We store by ticker, not by holding_id, since multiple holdings may exist
           const existing = await DB.prepare(`
             SELECT id FROM dividend_repository
-            WHERE user_id = ? AND holding_id = ? AND ticker = ? AND ex_date = ?
-          `).bind(userId, holding.holding_id, holding.ticker, exDate).first()
+            WHERE user_id = ? AND ticker = ? AND ex_date = ?
+          `).bind(userId, holding.ticker, exDate).first()
           
           if (existing) {
-            // Update existing record
+            // Update existing record (keep most recent data from API)
             await DB.prepare(`
               UPDATE dividend_repository
               SET amount = ?, pay_date = ?, record_date = ?, declared_date = ?,
-                  frequency = ?, is_eligible = ?, shares_held = ?, total_dividend = ?,
-                  fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP,
-                  status = CASE WHEN ? = 1 THEN 'eligible' ELSE 'not_eligible' END
+                  frequency = ?, fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
               WHERE id = ?
             `).bind(
               amount,
               payDate,
               div.record_date || div.recordDate,
               div.declared_date || div.declaredDate,
-              div.frequency || div.payment_frequency || 'UNKNOWN',
-              isEligible ? 1 : 0,
-              sharesHeld,
-              totalDividend,
-              isEligible ? 1 : 0,
+              div.frequency || div.payment_frequency || 'QUARTERLY',
               (existing as any).id
             ).run()
           } else {
-            // Insert new record
+            // Insert new record - just store dividend info, no shares calculation
+            // Application to individual holdings will be done later
             await DB.prepare(`
               INSERT INTO dividend_repository (
-                user_id, holding_id, ticker, ex_date, pay_date, record_date, declared_date,
-                amount, frequency, is_eligible, shares_held, total_dividend,
-                status, api_source
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rapidapi_dividend_tracker')
+                user_id, ticker, ex_date, pay_date, record_date, declared_date,
+                amount, frequency, status, api_source
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'rapidapi_dividend_tracker')
             `).bind(
               userId,
-              holding.holding_id,
               holding.ticker,
               exDate,
               payDate,
               div.record_date || div.recordDate,
               div.declared_date || div.declaredDate,
               amount,
-              div.frequency || div.payment_frequency || 'UNKNOWN',
-              isEligible ? 1 : 0,
-              sharesHeld,
-              totalDividend,
-              isEligible ? 'eligible' : 'not_eligible'
+              div.frequency || div.payment_frequency || 'QUARTERLY'
             ).run()
           }
         }
@@ -5558,21 +5567,17 @@ app.get('/api/dividend-repository', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
     const { DB } = c.env
-    const status = c.req.query('status') || 'all' // all, eligible, pending, applied
+    const status = c.req.query('status') || 'all' // all, pending, applied
     const ticker = c.req.query('ticker')
+    const fromDate = c.req.query('from_date')
+    const toDate = c.req.query('to_date')
     
     let query = `
       SELECT 
         dr.*,
-        sh.ticker as holding_ticker,
-        sh.opened_date as holding_opened_date,
-        sh.closed_date as holding_closed_date,
-        sh.total_shares as holding_total_shares,
-        a.account_name,
-        a.account_type
+        c.company_name
       FROM dividend_repository dr
-      INNER JOIN stock_holdings sh ON dr.holding_id = sh.id
-      INNER JOIN accounts a ON sh.account_id = a.id
+      LEFT JOIN companies c ON dr.ticker = c.ticker AND c.user_id = dr.user_id
       WHERE dr.user_id = ?
     `
     const params: any[] = [userId]
@@ -5587,7 +5592,17 @@ app.get('/api/dividend-repository', authMiddleware, async (c) => {
       params.push(ticker)
     }
     
-    query += ` ORDER BY dr.ex_date DESC`
+    if (fromDate) {
+      query += ` AND dr.ex_date >= ?`
+      params.push(fromDate)
+    }
+    
+    if (toDate) {
+      query += ` AND dr.ex_date <= ?`
+      params.push(toDate)
+    }
+    
+    query += ` ORDER BY dr.ex_date DESC, dr.ticker ASC`
     
     const results = await DB.prepare(query).bind(...params).all()
     
@@ -8997,5 +9012,180 @@ app.delete('/api/historical-balances/:id', authMiddleware, async (c) => {
     return c.json({ error: 'Failed to delete historical balance' }, 500)
   }
 })
+
+// Cloudflare Scheduled Event Handler (Cron Jobs)
+// Runs every Sunday at midnight: "0 0 * * 0"
+export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, ctx: ExecutionContext) {
+  console.log('Scheduled event triggered:', new Date().toISOString())
+  
+  try {
+    // Fetch dividends for all users with active API configurations
+    const apiConfigs = await env.DB.prepare(`
+      SELECT DISTINCT user_id, api_key, api_host
+      FROM api_configurations
+      WHERE api_name = 'rapidapi_dividend_tracker' AND is_active = 1
+    `).all()
+    
+    console.log(`Found ${apiConfigs.results.length} users with active dividend API config`)
+    
+    for (const config of apiConfigs.results as any[]) {
+      const userId = config.user_id
+      
+      try {
+        console.log(`Fetching dividends for user ${userId}`)
+        
+        // Get all holdings for this user
+        const holdings = await env.DB.prepare(`
+          SELECT DISTINCT ticker
+          FROM stock_holdings
+          WHERE user_id = ?
+          ORDER BY ticker
+        `).bind(userId).all()
+        
+        if (!holdings.results || holdings.results.length === 0) {
+          console.log(`No holdings found for user ${userId}`)
+          continue
+        }
+        
+        // Create fetch log
+        const logResult = await env.DB.prepare(`
+          INSERT INTO dividend_fetch_logs (user_id, fetch_type, status, tickers_processed)
+          VALUES (?, 'scheduled', 'in_progress', '')
+        `).bind(userId).run()
+        
+        const logId = logResult.meta.last_row_id
+        const startTime = Date.now()
+        let totalDividends = 0
+        let apiCalls = 0
+        const tickersProcessed: string[] = []
+        const errors: string[] = []
+        
+        // Process each unique ticker
+        for (const holding of holdings.results as any[]) {
+          try {
+            console.log(`Fetching dividends for ${holding.ticker}`)
+            tickersProcessed.push(holding.ticker)
+            
+            // Call RapidAPI Dividend Tracker
+            const response = await fetch(`https://${config.api_host}/history/${holding.ticker}`, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-rapidapi-key': config.api_key,
+                'x-rapidapi-host': config.api_host
+              }
+            })
+            
+            apiCalls++
+            
+            if (!response.ok) {
+              console.error(`API error for ${holding.ticker}:`, response.status)
+              errors.push(`${holding.ticker}: HTTP ${response.status}`)
+              continue
+            }
+            
+            const dividendData = await response.json() as any
+            const dividends = Array.isArray(dividendData) ? dividendData : (dividendData.dividends || dividendData.data || [])
+            
+            for (const div of dividends) {
+              const exDate = div.ex_date || div.exDate || div.ex_dividend_date
+              const payDate = div.pay_date || div.payDate || div.payment_date
+              const amount = div.amount || div.dividend || div.cash_amount
+              
+              if (!exDate || !amount) {
+                continue
+              }
+              
+              totalDividends++
+              
+              // Check if dividend already exists
+              const existing = await env.DB.prepare(`
+                SELECT id FROM dividend_repository
+                WHERE user_id = ? AND ticker = ? AND ex_date = ?
+              `).bind(userId, holding.ticker, exDate).first()
+              
+              if (existing) {
+                // Update existing record
+                await env.DB.prepare(`
+                  UPDATE dividend_repository
+                  SET amount = ?, pay_date = ?, record_date = ?, declared_date = ?,
+                      frequency = ?, fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ?
+                `).bind(
+                  amount,
+                  payDate,
+                  div.record_date || div.recordDate,
+                  div.declared_date || div.declaredDate,
+                  div.frequency || div.payment_frequency || 'QUARTERLY',
+                  (existing as any).id
+                ).run()
+              } else {
+                // Insert new record
+                await env.DB.prepare(`
+                  INSERT INTO dividend_repository (
+                    user_id, ticker, ex_date, pay_date, record_date, declared_date,
+                    amount, frequency, status, api_source
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'rapidapi_dividend_tracker')
+                `).bind(
+                  userId,
+                  holding.ticker,
+                  exDate,
+                  payDate,
+                  div.record_date || div.recordDate,
+                  div.declared_date || div.declaredDate,
+                  amount,
+                  div.frequency || div.payment_frequency || 'QUARTERLY'
+                ).run()
+              }
+            }
+            
+            // Rate limiting: 500ms delay
+            await new Promise(resolve => setTimeout(resolve, 500))
+            
+          } catch (error) {
+            console.error(`Error processing ${holding.ticker}:`, error)
+            errors.push(`${holding.ticker}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+          }
+        }
+        
+        const duration = Date.now() - startTime
+        
+        // Update fetch log
+        await env.DB.prepare(`
+          UPDATE dividend_fetch_logs
+          SET status = ?, tickers_processed = ?, dividends_found = ?,
+              api_calls_made = ?, completed_at = CURRENT_TIMESTAMP,
+              fetch_duration_ms = ?, error_message = ?
+          WHERE id = ?
+        `).bind(
+          errors.length > 0 ? 'partial' : 'success',
+          tickersProcessed.join(','),
+          totalDividends,
+          apiCalls,
+          duration,
+          errors.length > 0 ? errors.join('; ') : null,
+          logId
+        ).run()
+        
+        // Update API config with last used
+        await env.DB.prepare(`
+          UPDATE api_configurations
+          SET last_used = CURRENT_TIMESTAMP
+          WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker'
+        `).bind(userId).run()
+        
+        console.log(`Completed dividend fetch for user ${userId}: ${totalDividends} dividends, ${apiCalls} API calls`)
+        
+      } catch (userError) {
+        console.error(`Error fetching dividends for user ${userId}:`, userError)
+      }
+    }
+    
+    console.log('Scheduled dividend fetch completed')
+    
+  } catch (error) {
+    console.error('Error in scheduled handler:', error)
+  }
+}
 
 export default app
