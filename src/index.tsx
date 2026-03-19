@@ -7121,7 +7121,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 </div>
                                 <div class="flex-1">
                                     <h3 class="text-xl font-bold text-gray-800 mb-2">Dividend Repository</h3>
-                                    <p class="text-gray-600 mb-4">Automatically fetch and track dividends for all your stock holdings from 2026 onwards. Uses Alpha Vantage API to discover dividends based on ex-dividend dates.</p>
+                                    <p class="text-gray-600 mb-4">Automatically fetch and track dividends for all your stock holdings from 2026 onwards. Uses Massive (Polygon.io) API to discover dividends based on ex-dividend dates.</p>
                                     
                                     <!-- Fetch Dividends Section -->
                                     <div class="bg-gradient-to-br from-gold-50 to-white border border-brand-gold rounded-lg p-4 mb-4">
@@ -7132,10 +7132,10 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                             This will check all your stock holdings for dividend payments since January 1, 2026. The system will:
                                         </p>
                                         <ul class="text-sm text-gray-700 space-y-1 mb-4 ml-4">
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Fetch dividend data from Alpha Vantage</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Fetch dividend data from Massive (Polygon.io)</li>
                                             <li><i class="fas fa-check text-green-600 mr-2"></i>Only include dividends from 2026 onwards</li>
                                             <li><i class="fas fa-check text-green-600 mr-2"></i>Store results in global dividend repository</li>
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Available for all users to reference</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Deduplicates tickers to minimize API calls</li>
                                         </ul>
                                         <button onclick="fetchDividends()" id="fetch-dividends-btn" class="btn-primary w-full">
                                             <i class="fas fa-sync mr-2"></i>Fetch Dividends for All Holdings
@@ -7148,11 +7148,9 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                         <div class="flex-1">
                                             <label class="block text-sm font-semibold text-gray-700 mb-2">Filter by Status</label>
                                             <select id="dividend-status-filter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" onchange="loadDividendRepository()">
-                                                <option value="all">All</option>
-                                                <option value="eligible">Eligible</option>
-                                                <option value="pending">Pending Review</option>
-                                                <option value="applied">Applied</option>
-                                                <option value="not_eligible">Not Eligible</option>
+                                                <option value="all">All Dividends</option>
+                                                <option value="active">Active (Not Applied)</option>
+                                                <option value="deprecated">Deprecated</option>
                                             </select>
                                         </div>
                                         <div class="flex-1">
@@ -7170,18 +7168,21 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                                         <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
                                             <div class="text-2xl font-bold text-blue-600" id="stats-total">0</div>
-                                            <div class="text-xs text-gray-600">Total Found</div>
+                                            <div class="text-xs text-gray-600">Total Dividends</div>
                                         </div>
                                         <div class="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
                                             <div class="text-2xl font-bold text-green-600" id="stats-eligible">0</div>
-                                            <div class="text-xs text-gray-600">Eligible</div>
+                                            <div class="text-xs text-gray-600">Weekly</div>
                                         </div>
                                         <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
                                             <div class="text-2xl font-bold text-yellow-600" id="stats-pending">0</div>
-                                            <div class="text-xs text-gray-600">Pending</div>
+                                            <div class="text-xs text-gray-600">Monthly</div>
                                         </div>
-                                        <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
-                                            <div class="text-2xl font-bold text-brand-gold" id="stats-total-amount">$0.00</div>
+                                        <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                                            <div class="text-2xl font-bold text-purple-600" id="stats-total-amount">0</div>
+                                            <div class="text-xs text-gray-600">Quarterly</div>
+                                        </div>
+                                    </div>
                                             <div class="text-xs text-gray-600">Total Eligible Amount</div>
                                         </div>
                                     </div>
@@ -7196,15 +7197,12 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                                         <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Ex-Date</th>
                                                         <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Pay Date</th>
                                                         <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">Amount/Share</th>
-                                                        <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">Shares</th>
-                                                        <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">Total</th>
-                                                        <th class="px-4 py-2 text-center text-sm font-semibold text-gray-700">Status</th>
-                                                        <th class="px-4 py-2 text-center text-sm font-semibold text-gray-700">Actions</th>
+                                                        <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Frequency</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody id="dividend-repository-table">
                                                     <tr>
-                                                        <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                                                        <td colspan="5" class="px-4 py-8 text-center text-gray-500">
                                                             <i class="fas fa-coins text-3xl mb-2"></i>
                                                             <p>No dividends found yet. Click "Fetch Dividends" to start.</p>
                                                         </td>

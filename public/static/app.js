@@ -9502,21 +9502,23 @@ async function loadDividendRepository() {
             const row = document.createElement('tr')
             row.className = 'border-b border-gray-100 hover:bg-gray-50'
             
-            const statusBadge = getStatusBadge(div.status, div.is_eligible)
-            const actionButtons = getActionButtons(div)
+            // Format frequency
+            let frequencyText = 'Unknown'
+            if (div.frequency === 52) frequencyText = 'Weekly'
+            else if (div.frequency === 12) frequencyText = 'Monthly'
+            else if (div.frequency === 4) frequencyText = 'Quarterly'
+            else if (div.frequency === 2) frequencyText = 'Semi-Annual'
+            else if (div.frequency === 1) frequencyText = 'Annual'
+            else if (div.frequency) frequencyText = `${div.frequency}/year`
             
             row.innerHTML = `
                 <td class="px-4 py-3">
                     <div class="font-semibold text-gray-800">${div.ticker}</div>
-                    <div class="text-xs text-gray-500">${div.account_name} (${div.account_type})</div>
                 </td>
                 <td class="px-4 py-3 text-sm">${div.ex_date}</td>
                 <td class="px-4 py-3 text-sm">${div.pay_date || 'N/A'}</td>
                 <td class="px-4 py-3 text-right font-mono text-sm">$${parseFloat(div.amount).toFixed(4)}</td>
-                <td class="px-4 py-3 text-right text-sm">${div.shares_held || 0}</td>
-                <td class="px-4 py-3 text-right font-bold text-brand-gold">$${parseFloat(div.total_dividend || 0).toFixed(2)}</td>
-                <td class="px-4 py-3 text-center">${statusBadge}</td>
-                <td class="px-4 py-3 text-center">${actionButtons}</td>
+                <td class="px-4 py-3 text-sm text-gray-600">${frequencyText}</td>
             `
             tbody.appendChild(row)
         })
@@ -9529,65 +9531,16 @@ async function loadDividendRepository() {
     }
 }
 
-function getStatusBadge(status, is_eligible) {
-    if (status === 'applied') {
-        return '<span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs"><i class="fas fa-check mr-1"></i>Applied</span>'
-    } else if (is_eligible === 1) {
-        return '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs"><i class="fas fa-check-circle mr-1"></i>Eligible</span>'
-    } else {
-        return '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs"><i class="fas fa-times-circle mr-1"></i>Not Eligible</span>'
-    }
-}
-
-function getActionButtons(div) {
-    if (div.is_applied === 1) {
-        return '<span class="text-xs text-gray-500">Already applied</span>'
-    } else if (div.is_eligible === 1) {
-        return `<button onclick="applyDividend(${div.id})" class="px-3 py-1 bg-brand-teal text-white rounded text-xs hover:bg-teal-700">
-            <i class="fas fa-plus-circle mr-1"></i>Apply
-        </button>`
-    } else {
-        return '<span class="text-xs text-gray-500">-</span>'
-    }
-}
-
-async function applyDividend(dividendId) {
-    if (!confirm('Apply this dividend to cost basis adjustments?')) return
-    
-    try {
-        const token = localStorage.getItem('token')
-        if (!token) return
-        
-        const response = await fetch(`/api/dividend-repository/${dividendId}/apply`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-        
-        if (response.ok) {
-            showNotification('Dividend applied successfully', 'success')
-            loadDividendRepository()
-        } else {
-            const error = await response.json()
-            showNotification(`Failed to apply dividend: ${error.error}`, 'error')
-        }
-    } catch (error) {
-        console.error('Error applying dividend:', error)
-        showNotification('Failed to apply dividend', 'error')
-    }
-}
-
 function updateDividendStats(dividends) {
     const total = dividends.length
-    const eligible = dividends.filter(d => d.is_eligible === 1 && d.is_applied !== 1).length
-    const pending = dividends.filter(d => d.status === 'pending').length
-    const totalAmount = dividends
-        .filter(d => d.is_eligible === 1)
-        .reduce((sum, d) => sum + parseFloat(d.total_dividend || 0), 0)
+    const weekly = dividends.filter(d => d.frequency === 52).length
+    const monthly = dividends.filter(d => d.frequency === 12).length
+    const quarterly = dividends.filter(d => d.frequency === 4).length
     
     document.getElementById('stats-total').textContent = total
-    document.getElementById('stats-eligible').textContent = eligible
-    document.getElementById('stats-pending').textContent = pending
-    document.getElementById('stats-total-amount').textContent = '$' + totalAmount.toFixed(2)
+    document.getElementById('stats-eligible').textContent = weekly
+    document.getElementById('stats-pending').textContent = monthly
+    document.getElementById('stats-total-amount').textContent = quarterly
 }
 
 async function loadDividendFetchLogs() {
