@@ -5409,23 +5409,19 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     
     debugInfo.push(`Starting dividend fetch for ${holdings.results.length} holdings`)
     
-    // TESTING MODE: Only process NVDY ticker
-    // TODO: Remove this filter once testing is complete
-    const allHoldings = holdings.results as any[]
-    const testHoldings = allHoldings.filter(h => h.ticker === 'NVDY')
-    
     // Get unique tickers to avoid duplicate API calls
+    const allHoldings = holdings.results as any[]
     const uniqueTickers = new Set<string>()
     const holdingsToProcess: any[] = []
     
-    for (const holding of testHoldings) {
+    for (const holding of allHoldings) {
       if (!uniqueTickers.has(holding.ticker)) {
         uniqueTickers.add(holding.ticker)
         holdingsToProcess.push(holding)
       }
     }
     
-    debugInfo.push(`Processing ${holdingsToProcess.length} unique tickers (filtered from ${testHoldings.length} holdings)`)
+    debugInfo.push(`Processing ${holdingsToProcess.length} unique tickers (deduplicated from ${allHoldings.length} total holdings)`)
     
     // Process each unique ticker
     for (const holding of holdingsToProcess) {
