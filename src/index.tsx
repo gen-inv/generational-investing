@@ -5371,6 +5371,9 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     // Use system-wide Massive (Polygon.io) API key (admin-managed)
     const MASSIVE_API_KEY = 'x4VbKUBkKwYB10ObRLoRt9eDqfcClxEW'
     
+    // Use EODHD API key for Canadian stocks fallback
+    const EODHD_API_KEY = '69bc75c1788da8.83960172'
+    
     // Get all stock holdings for this user (including closed ones)
     // We track dividends based on ex_date regardless of position closure
     const holdings = await DB.prepare(`
@@ -5460,9 +5463,104 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
         debugInfo.push(`${holding.ticker}: Found ${dividends.length} dividends in API response`)
         console.log(`${holding.ticker}: Found ${dividends.length} dividends in API response`)
         
+        // Fallback to EODHD for Canadian stocks if Massive returns 0 results
+        let eodhd_dividends = []
+        if (dividends.length === 0 && (holding.ticker.endsWith('.TO') || holding.ticker.endsWith('.V'))) {
+          debugInfo.push(`${holding.ticker}: Canadian stock with 0 results, trying EODHD fallback...`)
+          
+          try {
+            const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2026-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
+              method: 'GET'
+            })
+            
+            apiCalls++
+            
+            if (eodhd_response.ok) {
+              eodhd_dividends = await eodhd_response.json() as any[]
+              debugInfo.push(`${holding.ticker}: EODHD returned ${eodhd_dividends.length} dividends`)
+              console.log(`${holding.ticker}: EODHD fallback returned ${eodhd_dividends.length} dividends`)
+            } else {
+              debugInfo.push(`${holding.ticker}: EODHD API failed with ${eodhd_response.status}`)
+            }
+          } catch (eodhd_error) {
+            debugInfo.push(`${holding.ticker}: EODHD error: ${eodhd_error instanceof Error ? eodhd_error.message : 'Unknown'}`)
+            console.error(`EODHD error for ${holding.ticker}:`, eodhd_error)
+          }
+        }
+        
         // Minimum date filter: only fetch dividends from 2026-01-01 onwards
         const MIN_DATE = '2026-01-01'
         
+        // Process EODHD dividends if available
+        for (const div of eodhd_dividends) {
+          const exDate = div.date  // EODHD uses 'date' field for ex-dividend date
+          const payDate = div.payment_date
+          const recordDate = div.record_date || null
+          const declaredDate = div.declarationDate || null
+          const amount = parseFloat(div.value)
+          
+          if (!exDate || !amount) {
+            console.log(`Skipping EODHD dividend with missing data: ${JSON.stringify(div)}`)
+            continue
+          }
+          
+          // Filter: only include dividends from 2026-01-01 onwards
+          if (exDate < MIN_DATE) {
+            debugInfo.push(`${holding.ticker}: Skipping EODHD ${exDate} (before ${MIN_DATE})`)
+            continue
+          }
+          
+          // Check eligibility: holding must be opened before ex_date
+          const isEligible = holding.opened_date < exDate
+          
+          if (isEligible) {
+            totalEligible++
+          }
+          totalDividends++
+          
+          debugInfo.push(`${holding.ticker}: Processing EODHD ${exDate}, amt ${amount}, eligible: ${isEligible}`)
+          console.log(`${holding.ticker}: Processing EODHD dividend ${exDate}, amount ${amount}, eligible: ${isEligible}`)
+          
+          // Check if dividend already exists
+          const existing = await DB.prepare(`
+            SELECT id FROM dividend_repository
+            WHERE ticker = ? AND ex_date = ?
+          `).bind(holding.ticker, exDate).first()
+          
+          if (existing) {
+            // Update existing record
+            await DB.prepare(`
+              UPDATE dividend_repository
+              SET amount = ?, pay_date = ?, record_date = ?, declared_date = ?,
+                  frequency = 12, fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP,
+                  api_source = 'eodhd'
+              WHERE id = ?
+            `).bind(
+              amount,
+              payDate,
+              recordDate,
+              declaredDate,
+              (existing as any).id
+            ).run()
+          } else {
+            // Insert new record - EODHD dividends default to monthly frequency (12)
+            await DB.prepare(`
+              INSERT INTO dividend_repository (
+                ticker, ex_date, pay_date, record_date, declared_date,
+                amount, frequency, status, api_source
+              ) VALUES (?, ?, ?, ?, ?, ?, 12, 'active', 'eodhd')
+            `).bind(
+              holding.ticker,
+              exDate,
+              payDate,
+              recordDate,
+              declaredDate,
+              amount
+            ).run()
+          }
+        }
+        
+        // Process Massive (Polygon.io) dividends
         for (const div of dividends) {
           const exDate = div.ex_dividend_date
           const payDate = div.pay_date
@@ -9069,9 +9167,93 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             const dividendData = await response.json() as any
             const dividends = dividendData.results || []
             
+            // Fallback to EODHD for Canadian stocks if Massive returns 0 results
+            const EODHD_API_KEY = '69bc75c1788da8.83960172'
+            let eodhd_dividends = []
+            
+            if (dividends.length === 0 && (holding.ticker.endsWith('.TO') || holding.ticker.endsWith('.V'))) {
+              console.log(`${holding.ticker}: Canadian stock with 0 results, trying EODHD fallback...`)
+              
+              try {
+                const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2026-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
+                  method: 'GET'
+                })
+                
+                apiCalls++
+                
+                if (eodhd_response.ok) {
+                  eodhd_dividends = await eodhd_response.json() as any[]
+                  console.log(`${holding.ticker}: EODHD fallback returned ${eodhd_dividends.length} dividends`)
+                } else {
+                  console.log(`${holding.ticker}: EODHD API failed with ${eodhd_response.status}`)
+                }
+              } catch (eodhd_error) {
+                console.error(`EODHD error for ${holding.ticker}:`, eodhd_error)
+              }
+            }
+            
             // Minimum date filter: only fetch dividends from 2026-01-01 onwards
             const MIN_DATE = '2026-01-01'
             
+            // Process EODHD dividends if available
+            for (const div of eodhd_dividends) {
+              const exDate = div.date  // EODHD uses 'date' field for ex-dividend date
+              const payDate = div.payment_date
+              const recordDate = div.record_date || null
+              const declaredDate = div.declarationDate || null
+              const amount = parseFloat(div.value)
+              
+              if (!exDate || !amount) {
+                continue
+              }
+              
+              // Filter: only include dividends from 2026-01-01 onwards
+              if (exDate < MIN_DATE) {
+                continue
+              }
+              
+              totalDividends++
+              
+              // Check if dividend already exists (user-agnostic)
+              const existing = await env.DB.prepare(`
+                SELECT id FROM dividend_repository
+                WHERE ticker = ? AND ex_date = ?
+              `).bind(holding.ticker, exDate).first()
+              
+              if (existing) {
+                // Update existing record
+                await env.DB.prepare(`
+                  UPDATE dividend_repository
+                  SET amount = ?, pay_date = ?, record_date = ?, declared_date = ?,
+                      frequency = 12, fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP,
+                      api_source = 'eodhd'
+                  WHERE id = ?
+                `).bind(
+                  amount,
+                  payDate,
+                  recordDate,
+                  declaredDate,
+                  (existing as any).id
+                ).run()
+              } else {
+                // Insert new record - EODHD dividends default to monthly frequency (12)
+                await env.DB.prepare(`
+                  INSERT INTO dividend_repository (
+                    ticker, ex_date, pay_date, record_date, declared_date,
+                    amount, frequency, status, api_source
+                  ) VALUES (?, ?, ?, ?, ?, ?, 12, 'active', 'eodhd')
+                `).bind(
+                  holding.ticker,
+                  exDate,
+                  payDate,
+                  recordDate,
+                  declaredDate,
+                  amount
+                ).run()
+              }
+            }
+            
+            // Process Massive (Polygon.io) dividends
             for (const div of dividends) {
               const exDate = div.ex_dividend_date
               const payDate = div.pay_date
