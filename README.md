@@ -639,11 +639,17 @@ npx wrangler d1 execute webapp-production --local --command="SELECT * FROM compa
 Proprietary - All rights reserved
 
 ## Last Updated
-March 9, 2026
+March 19, 2026
 
 ## Project Status
 - ✅ v1.0 Complete - Core features implemented and tested
-- ✅ v1.2 Complete - Reports Dashboard with P/L Summary and Strategy Analysis ✨ NEW
+- ✅ v1.2 Complete - Reports Dashboard with P/L Summary and Strategy Analysis
+- ✅ v1.3 Complete - Dividend Repository with Dual-API Integration ✨ NEW
+  - **Polygon.io (Massive)**: Primary API for US stocks (250 requests/day)
+  - **EODHD**: Automatic fallback for Canadian stocks (.TO, .V)
+  - **Coverage**: 100% portfolio (14 unique tickers: 13 US + 1 Canadian)
+  - **Automation**: Weekly scheduled fetch every Sunday at midnight
+  - **See**: DUAL_API_IMPLEMENTATION.md, MASSIVE_API_INTEGRATION.md
 - 📋 v1.1 Specification Ready - See COMPLETE_IMPLEMENTATION_SPEC.md
 - 🚀 Ready for multi-session implementation
 
