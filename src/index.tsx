@@ -5443,9 +5443,15 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
         debugInfo.push(`${holding.ticker}: HTTP ${response.status}`)
         
         if (!response.ok) {
-          console.error(`API error for ${holding.ticker}:`, response.status)
-          errors.push(`${holding.ticker}: HTTP ${response.status}`)
-          debugInfo.push(`${holding.ticker}: API call failed with ${response.status}`)
+          if (response.status === 429) {
+            console.error(`Rate limit exceeded for ${holding.ticker}`)
+            errors.push(`${holding.ticker}: Rate limit exceeded (HTTP 429) - please wait before retrying`)
+            debugInfo.push(`${holding.ticker}: Rate limit exceeded - API quota reached`)
+          } else {
+            console.error(`API error for ${holding.ticker}:`, response.status)
+            errors.push(`${holding.ticker}: HTTP ${response.status}`)
+            debugInfo.push(`${holding.ticker}: API call failed with ${response.status}`)
+          }
           continue
         }
         
@@ -5494,7 +5500,7 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
         // Process EODHD dividends if available
         for (const div of eodhd_dividends) {
           const exDate = div.date  // EODHD uses 'date' field for ex-dividend date
-          const payDate = div.payment_date
+          const payDate = div.payment_date || null
           const recordDate = div.record_date || null
           const declaredDate = div.declarationDate || null
           const amount = parseFloat(div.value)
@@ -7255,6 +7261,9 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                         </div>
                                         <p class="text-xs text-gray-600 mt-3">
                                             <i class="fas fa-clock mr-1"></i><strong>Processing Time:</strong> ~4-5 minutes for full portfolio (12.1 second delay between tickers to respect rate limits)
+                                        </p>
+                                        <p class="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                                            <i class="fas fa-exclamation-triangle mr-1"></i><strong>Important:</strong> Do not trigger multiple fetches in quick succession. If you receive rate limit errors (HTTP 429), wait at least 1 minute before retrying.
                                         </p>
                                     </div>
                                     
@@ -9197,8 +9206,13 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             apiCalls++
             
             if (!response.ok) {
-              console.error(`API error for ${holding.ticker}:`, response.status)
-              errors.push(`${holding.ticker}: HTTP ${response.status}`)
+              if (response.status === 429) {
+                console.error(`Rate limit exceeded for ${holding.ticker}`)
+                errors.push(`${holding.ticker}: Rate limit exceeded (HTTP 429) - please wait before retrying`)
+              } else {
+                console.error(`API error for ${holding.ticker}:`, response.status)
+                errors.push(`${holding.ticker}: HTTP ${response.status}`)
+              }
               continue
             }
             
@@ -9236,7 +9250,7 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             // Process EODHD dividends if available
             for (const div of eodhd_dividends) {
               const exDate = div.date  // EODHD uses 'date' field for ex-dividend date
-              const payDate = div.payment_date
+              const payDate = div.payment_date || null
               const recordDate = div.record_date || null
               const declaredDate = div.declarationDate || null
               const amount = parseFloat(div.value)
