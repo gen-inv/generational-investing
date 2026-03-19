@@ -7219,7 +7219,44 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 </div>
                                 <div class="flex-1">
                                     <h3 class="text-xl font-bold text-gray-800 mb-2">Dividend Repository</h3>
-                                    <p class="text-gray-600 mb-4">Automatically fetch and track dividends for all your stock holdings from 2026 onwards. Uses Massive (Polygon.io) API to discover dividends based on ex-dividend dates.</p>
+                                    <p class="text-gray-600 mb-4">
+                                        Automatically fetch and track dividends for all your stock holdings from 2026 onwards. 
+                                        Uses a dual-API approach: <strong>Polygon.io (Massive)</strong> for US stocks and <strong>EODHD</strong> as automatic fallback for Canadian stocks (.TO, .V).
+                                    </p>
+                                    
+                                    <!-- API Information Panel -->
+                                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                        <h4 class="font-semibold text-gray-900 mb-2">
+                                            <i class="fas fa-info-circle mr-2 text-blue-600"></i>API Coverage & Limitations
+                                        </h4>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                            <div>
+                                                <p class="font-semibold text-gray-900 mb-1">
+                                                    <i class="fas fa-flag-usa mr-1 text-blue-600"></i>Polygon.io (Massive) - Primary
+                                                </p>
+                                                <ul class="text-gray-700 space-y-1 ml-4">
+                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>US stocks (NYSE, NASDAQ, AMEX)</li>
+                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>250 requests/day free tier</li>
+                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>Weekly, monthly, quarterly dividends</li>
+                                                    <li><i class="fas fa-times text-red-600 mr-1"></i>No Canadian stock support</li>
+                                                </ul>
+                                            </div>
+                                            <div>
+                                                <p class="font-semibold text-gray-900 mb-1">
+                                                    <i class="fas fa-leaf mr-1 text-green-600"></i>EODHD - Automatic Fallback
+                                                </p>
+                                                <ul class="text-gray-700 space-y-1 ml-4">
+                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>Canadian stocks (TSX, TSXV)</li>
+                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>Tickers ending in .TO or .V</li>
+                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>1 year dividend history</li>
+                                                    <li><i class="fas fa-info text-blue-600 mr-1"></i>Activated when Massive returns 0</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        <p class="text-xs text-gray-600 mt-3">
+                                            <i class="fas fa-clock mr-1"></i><strong>Processing Time:</strong> ~4-5 minutes for full portfolio (12.1 second delay between tickers to respect rate limits)
+                                        </p>
+                                    </div>
                                     
                                     <!-- Fetch Dividends Section -->
                                     <div class="bg-gradient-to-br from-gold-50 to-white border border-brand-gold rounded-lg p-4 mb-4">
@@ -7230,10 +7267,11 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                             This will check all your stock holdings for dividend payments since January 1, 2026. The system will:
                                         </p>
                                         <ul class="text-sm text-gray-700 space-y-1 mb-4 ml-4">
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Fetch dividend data from Massive (Polygon.io)</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Try Polygon.io (Massive) first for all tickers</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Automatically fallback to EODHD for Canadian stocks</li>
                                             <li><i class="fas fa-check text-green-600 mr-2"></i>Only include dividends from 2026 onwards</li>
                                             <li><i class="fas fa-check text-green-600 mr-2"></i>Store results in global dividend repository</li>
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Deduplicates tickers to minimize API calls</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Deduplicate tickers to minimize API calls</li>
                                         </ul>
                                         <button onclick="fetchDividends()" id="fetch-dividends-btn" class="btn-primary w-full">
                                             <i class="fas fa-sync mr-2"></i>Fetch Dividends for All Holdings
