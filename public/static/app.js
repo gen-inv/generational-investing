@@ -9370,6 +9370,319 @@ function showUtilityTab(tabName) {
     if (tabName === 'historical-balances') {
         loadHistoricalBalances()
     }
+    
+    // Load data if switching to dividend repository
+    if (tabName === 'dividend-repository') {
+        loadDividendAPIConfig()
+        loadDividendRepository()
+        loadDividendFetchLogs()
+    }
+}
+
+// ====================================
+// Dividend Repository Functions
+// ====================================
+
+async function loadDividendAPIConfig() {
+    try {
+        const token = localStorage.getItem('token')
+        if (!token) return
+        
+        const response = await fetch('/api/dividend-repository/config', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        
+        if (response.ok) {
+            const data = await response.json()
+            if (data.configured && data.config) {
+                document.getElementById('api-config-status').innerHTML = `
+                    <div class="text-green-600">
+                        <i class="fas fa-check-circle mr-1"></i>
+                        API configured. Last used: ${data.config.last_used || 'Never'}
+                    </div>
+                `
+            } else {
+                document.getElementById('api-config-status').innerHTML = `
+                    <div class="text-yellow-600">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        API not configured. Please enter your RapidAPI key above.
+                    </div>
+                `
+            }
+        }
+    } catch (error) {
+        console.error('Error loading API config:', error)
+    }
+}
+
+async function saveDividendAPIConfig() {
+    try {
+        const token = localStorage.getItem('token')
+        if (!token) {
+            showNotification('Please log in first', 'error')
+            return
+        }
+        
+        const apiKey = document.getElementById('rapidapi-key').value
+        const apiHost = document.getElementById('rapidapi-host').value || 'dividendtracker1.p.rapidapi.com'
+        
+        if (!apiKey) {
+            showNotification('Please enter your RapidAPI key', 'error')
+            return
+        }
+        
+        const response = await fetch('/api/dividend-repository/config', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ api_key: apiKey, api_host: apiHost })
+        })
+        
+        if (response.ok) {
+            showNotification('API configuration saved successfully', 'success')
+            loadDividendAPIConfig()
+            document.getElementById('rapidapi-key').value = ''
+        } else {
+            const error = await response.json()
+            showNotification(`Failed to save configuration: ${error.error}`, 'error')
+        }
+    } catch (error) {
+        console.error('Error saving API config:', error)
+        showNotification('Failed to save API configuration', 'error')
+    }
+}
+
+async function fetchDividends() {
+    try {
+        const token = localStorage.getItem('token')
+        if (!token) {
+            showNotification('Please log in first', 'error')
+            return
+        }
+        
+        const btn = document.getElementById('fetch-dividends-btn')
+        const statusDiv = document.getElementById('fetch-status')
+        
+        btn.disabled = true
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Fetching dividends...'
+        statusDiv.innerHTML = '<div class="text-blue-600"><i class="fas fa-info-circle mr-1"></i>Processing... This may take a few minutes.</div>'
+        
+        const response = await fetch('/api/dividend-repository/fetch', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        })
+        
+        btn.disabled = false
+        btn.innerHTML = '<i class="fas fa-sync mr-2"></i>Fetch Dividends for All Holdings'
+        
+        if (response.ok) {
+            const data = await response.json()
+            statusDiv.innerHTML = `
+                <div class="bg-green-50 border border-green-200 rounded p-3 text-sm">
+                    <div class="font-semibold text-green-900 mb-1">
+                        <i class="fas fa-check-circle mr-1"></i>Fetch completed successfully!
+                    </div>
+                    <div class="text-green-700">
+                        • Found ${data.dividends_found} dividends<br>
+                        • ${data.dividends_eligible} are eligible based on your holding dates<br>
+                        • ${data.api_calls_made} API calls made<br>
+                        • Completed in ${(data.duration_ms / 1000).toFixed(2)} seconds
+                    </div>
+                    ${data.errors ? `<div class="text-orange-600 mt-2">Some errors occurred: ${data.errors.join('; ')}</div>` : ''}
+                </div>
+            `
+            loadDividendRepository()
+            loadDividendFetchLogs()
+        } else {
+            const error = await response.json()
+            statusDiv.innerHTML = `
+                <div class="text-red-600">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    ${error.error || 'Failed to fetch dividends'}
+                </div>
+            `
+        }
+    } catch (error) {
+        console.error('Error fetching dividends:', error)
+        const btn = document.getElementById('fetch-dividends-btn')
+        const statusDiv = document.getElementById('fetch-status')
+        btn.disabled = false
+        btn.innerHTML = '<i class="fas fa-sync mr-2"></i>Fetch Dividends for All Holdings'
+        statusDiv.innerHTML = '<div class="text-red-600"><i class="fas fa-times-circle mr-1"></i>Error: ' + error.message + '</div>'
+    }
+}
+
+async function loadDividendRepository() {
+    try {
+        const token = localStorage.getItem('token')
+        if (!token) return
+        
+        const status = document.getElementById('dividend-status-filter').value
+        const ticker = document.getElementById('dividend-ticker-filter').value
+        
+        let url = `/api/dividend-repository?status=${status}`
+        if (ticker) {
+            url += `&ticker=${ticker.toUpperCase()}`
+        }
+        
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        
+        if (!response.ok) throw new Error('Failed to load dividends')
+        
+        const data = await response.json()
+        const tbody = document.getElementById('dividend-repository-table')
+        
+        if (!data.dividends || data.dividends.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                        <i class="fas fa-coins text-3xl mb-2"></i>
+                        <p>No dividends found matching your filters</p>
+                    </td>
+                </tr>
+            `
+            updateDividendStats([])
+            return
+        }
+        
+        tbody.innerHTML = ''
+        data.dividends.forEach(div => {
+            const row = document.createElement('tr')
+            row.className = 'border-b border-gray-100 hover:bg-gray-50'
+            
+            const statusBadge = getStatusBadge(div.status, div.is_eligible)
+            const actionButtons = getActionButtons(div)
+            
+            row.innerHTML = `
+                <td class="px-4 py-3">
+                    <div class="font-semibold text-gray-800">${div.ticker}</div>
+                    <div class="text-xs text-gray-500">${div.account_name} (${div.account_type})</div>
+                </td>
+                <td class="px-4 py-3 text-sm">${div.ex_date}</td>
+                <td class="px-4 py-3 text-sm">${div.pay_date || 'N/A'}</td>
+                <td class="px-4 py-3 text-right font-mono text-sm">$${parseFloat(div.amount).toFixed(4)}</td>
+                <td class="px-4 py-3 text-right text-sm">${div.shares_held || 0}</td>
+                <td class="px-4 py-3 text-right font-bold text-brand-gold">$${parseFloat(div.total_dividend || 0).toFixed(2)}</td>
+                <td class="px-4 py-3 text-center">${statusBadge}</td>
+                <td class="px-4 py-3 text-center">${actionButtons}</td>
+            `
+            tbody.appendChild(row)
+        })
+        
+        updateDividendStats(data.dividends)
+        
+    } catch (error) {
+        console.error('Error loading dividend repository:', error)
+        showNotification('Failed to load dividend repository', 'error')
+    }
+}
+
+function getStatusBadge(status, is_eligible) {
+    if (status === 'applied') {
+        return '<span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs"><i class="fas fa-check mr-1"></i>Applied</span>'
+    } else if (is_eligible === 1) {
+        return '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs"><i class="fas fa-check-circle mr-1"></i>Eligible</span>'
+    } else {
+        return '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs"><i class="fas fa-times-circle mr-1"></i>Not Eligible</span>'
+    }
+}
+
+function getActionButtons(div) {
+    if (div.is_applied === 1) {
+        return '<span class="text-xs text-gray-500">Already applied</span>'
+    } else if (div.is_eligible === 1) {
+        return `<button onclick="applyDividend(${div.id})" class="px-3 py-1 bg-brand-teal text-white rounded text-xs hover:bg-teal-700">
+            <i class="fas fa-plus-circle mr-1"></i>Apply
+        </button>`
+    } else {
+        return '<span class="text-xs text-gray-500">-</span>'
+    }
+}
+
+async function applyDividend(dividendId) {
+    if (!confirm('Apply this dividend to cost basis adjustments?')) return
+    
+    try {
+        const token = localStorage.getItem('token')
+        if (!token) return
+        
+        const response = await fetch(`/api/dividend-repository/${dividendId}/apply`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        
+        if (response.ok) {
+            showNotification('Dividend applied successfully', 'success')
+            loadDividendRepository()
+        } else {
+            const error = await response.json()
+            showNotification(`Failed to apply dividend: ${error.error}`, 'error')
+        }
+    } catch (error) {
+        console.error('Error applying dividend:', error)
+        showNotification('Failed to apply dividend', 'error')
+    }
+}
+
+function updateDividendStats(dividends) {
+    const total = dividends.length
+    const eligible = dividends.filter(d => d.is_eligible === 1 && d.is_applied !== 1).length
+    const pending = dividends.filter(d => d.status === 'pending').length
+    const totalAmount = dividends
+        .filter(d => d.is_eligible === 1)
+        .reduce((sum, d) => sum + parseFloat(d.total_dividend || 0), 0)
+    
+    document.getElementById('stats-total').textContent = total
+    document.getElementById('stats-eligible').textContent = eligible
+    document.getElementById('stats-pending').textContent = pending
+    document.getElementById('stats-total-amount').textContent = '$' + totalAmount.toFixed(2)
+}
+
+async function loadDividendFetchLogs() {
+    try {
+        const token = localStorage.getItem('token')
+        if (!token) return
+        
+        const response = await fetch('/api/dividend-repository/logs', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        
+        if (!response.ok) return
+        
+        const data = await response.json()
+        const logsDiv = document.getElementById('dividend-fetch-logs')
+        
+        if (!data.logs || data.logs.length === 0) {
+            logsDiv.innerHTML = '<p class="text-sm text-gray-500">No fetch history yet</p>'
+            return
+        }
+        
+        logsDiv.innerHTML = data.logs.map(log => `
+            <div class="bg-white border border-gray-200 rounded p-3">
+                <div class="flex justify-between items-start mb-1">
+                    <span class="font-semibold text-sm">${new Date(log.started_at).toLocaleString()}</span>
+                    <span class="text-xs px-2 py-1 rounded ${log.status === 'success' ? 'bg-green-100 text-green-700' : log.status === 'partial' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}">
+                        ${log.status}
+                    </span>
+                </div>
+                <div class="text-xs text-gray-600">
+                    Tickers: ${log.tickers_processed || 'N/A'}<br>
+                    Found: ${log.dividends_found} | Eligible: ${log.dividends_eligible} | API Calls: ${log.api_calls_made}<br>
+                    Duration: ${log.fetch_duration_ms ? (log.fetch_duration_ms / 1000).toFixed(2) + 's' : 'N/A'}
+                    ${log.error_message ? `<br><span class="text-red-600">Errors: ${log.error_message}</span>` : ''}
+                </div>
+            </div>
+        `).join('')
+    } catch (error) {
+        console.error('Error loading fetch logs:', error)
+    }
 }
 
 // Load historical balances table with optional account filter

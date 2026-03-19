@@ -5272,6 +5272,417 @@ app.get('/api/reports/dividends', authMiddleware, async (c) => {
 })
 
 // ============================================================================
+// DIVIDEND REPOSITORY - Automated Dividend Tracking
+// ============================================================================
+
+// Get API configuration for RapidAPI
+app.get('/api/dividend-repository/config', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    
+    const config = await DB.prepare(`
+      SELECT api_name, api_host, is_active, last_used, rate_limit_remaining, rate_limit_reset
+      FROM api_configurations
+      WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker'
+    `).bind(userId).first()
+    
+    return c.json({
+      configured: !!config,
+      config: config ? {
+        api_name: config.api_name,
+        api_host: config.api_host,
+        is_active: config.is_active === 1,
+        last_used: config.last_used,
+        rate_limit_remaining: config.rate_limit_remaining,
+        rate_limit_reset: config.rate_limit_reset
+      } : null
+    })
+  } catch (error) {
+    console.error('Error fetching API config:', error)
+    return c.json({ error: 'Failed to fetch API configuration' }, 500)
+  }
+})
+
+// Save/Update API configuration
+app.post('/api/dividend-repository/config', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const { api_key, api_host } = await c.req.json()
+    
+    if (!api_key) {
+      return c.json({ error: 'API key is required' }, 400)
+    }
+    
+    // Check if config exists
+    const existing = await DB.prepare(`
+      SELECT id FROM api_configurations
+      WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker'
+    `).bind(userId).first()
+    
+    if (existing) {
+      // Update existing
+      await DB.prepare(`
+        UPDATE api_configurations
+        SET api_key = ?, api_host = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker'
+      `).bind(api_key, api_host || 'dividendtracker1.p.rapidapi.com', userId).run()
+    } else {
+      // Insert new
+      await DB.prepare(`
+        INSERT INTO api_configurations (user_id, api_name, api_key, api_host, is_active)
+        VALUES (?, 'rapidapi_dividend_tracker', ?, ?, 1)
+      `).bind(userId, api_key, api_host || 'dividendtracker1.p.rapidapi.com').run()
+    }
+    
+    return c.json({ success: true, message: 'API configuration saved' })
+  } catch (error) {
+    console.error('Error saving API config:', error)
+    return c.json({ error: 'Failed to save API configuration' }, 500)
+  }
+})
+
+// Fetch dividends for all open holdings
+app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const startTime = Date.now()
+    
+    console.log(`Starting dividend fetch for user ${userId}`)
+    
+    // Get API configuration
+    const apiConfig = await DB.prepare(`
+      SELECT api_key, api_host FROM api_configurations
+      WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker' AND is_active = 1
+    `).bind(userId).first() as any
+    
+    if (!apiConfig) {
+      return c.json({ error: 'RapidAPI configuration not found. Please configure your API key first.' }, 400)
+    }
+    
+    // Get all open stock holdings for this user
+    const holdings = await DB.prepare(`
+      SELECT 
+        sh.id as holding_id,
+        sh.ticker,
+        sh.opened_date,
+        sh.total_shares,
+        sh.is_open
+      FROM stock_holdings sh
+      WHERE sh.user_id = ? AND sh.is_open = 1
+      ORDER BY sh.ticker
+    `).bind(userId).all()
+    
+    if (!holdings.results || holdings.results.length === 0) {
+      return c.json({ message: 'No open holdings found', dividends_found: 0, dividends_eligible: 0 })
+    }
+    
+    console.log(`Found ${holdings.results.length} open holdings`)
+    
+    // Create fetch log
+    const logResult = await DB.prepare(`
+      INSERT INTO dividend_fetch_logs (user_id, fetch_type, status, tickers_processed)
+      VALUES (?, 'manual', 'in_progress', '')
+    `).bind(userId).run()
+    
+    const logId = logResult.meta.last_row_id
+    
+    let totalDividends = 0
+    let totalEligible = 0
+    let apiCalls = 0
+    const tickersProcessed: string[] = []
+    const errors: string[] = []
+    
+    // Process each holding
+    for (const holding of holdings.results as any[]) {
+      try {
+        console.log(`Fetching dividends for ${holding.ticker}`)
+        tickersProcessed.push(holding.ticker)
+        
+        // Call RapidAPI Dividend Tracker
+        // Example endpoint: GET /ticker/{ticker}/dividends
+        const response = await fetch(`https://${apiConfig.api_host}/ticker/${holding.ticker}/dividends`, {
+          method: 'GET',
+          headers: {
+            'X-RapidAPI-Key': apiConfig.api_key,
+            'X-RapidAPI-Host': apiConfig.api_host
+          }
+        })
+        
+        apiCalls++
+        
+        if (!response.ok) {
+          console.error(`API error for ${holding.ticker}:`, response.status)
+          errors.push(`${holding.ticker}: HTTP ${response.status}`)
+          continue
+        }
+        
+        const dividendData = await response.json() as any
+        
+        // Process dividend data (structure may vary by API)
+        // Assuming API returns array of dividends
+        const dividends = dividendData.dividends || dividendData || []
+        
+        for (const div of dividends) {
+          const exDate = div.ex_date || div.exDate || div.ex_dividend_date
+          const payDate = div.pay_date || div.payDate || div.payment_date
+          const amount = div.amount || div.dividend || div.cash_amount
+          
+          if (!exDate || !amount) {
+            console.log(`Skipping dividend with missing data: ${JSON.stringify(div)}`)
+            continue
+          }
+          
+          // Check eligibility: holding must be opened before ex_date
+          const isEligible = holding.opened_date < exDate
+          const sharesHeld = isEligible ? holding.total_shares : 0
+          const totalDividend = isEligible ? (amount * sharesHeld) : 0
+          
+          if (isEligible) {
+            totalEligible++
+          }
+          totalDividends++
+          
+          // Check if dividend already exists
+          const existing = await DB.prepare(`
+            SELECT id FROM dividend_repository
+            WHERE user_id = ? AND holding_id = ? AND ticker = ? AND ex_date = ?
+          `).bind(userId, holding.holding_id, holding.ticker, exDate).first()
+          
+          if (existing) {
+            // Update existing record
+            await DB.prepare(`
+              UPDATE dividend_repository
+              SET amount = ?, pay_date = ?, record_date = ?, declared_date = ?,
+                  frequency = ?, is_eligible = ?, shares_held = ?, total_dividend = ?,
+                  fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP,
+                  status = CASE WHEN ? = 1 THEN 'eligible' ELSE 'not_eligible' END
+              WHERE id = ?
+            `).bind(
+              amount,
+              payDate,
+              div.record_date || div.recordDate,
+              div.declared_date || div.declaredDate,
+              div.frequency || div.payment_frequency || 'UNKNOWN',
+              isEligible ? 1 : 0,
+              sharesHeld,
+              totalDividend,
+              isEligible ? 1 : 0,
+              (existing as any).id
+            ).run()
+          } else {
+            // Insert new record
+            await DB.prepare(`
+              INSERT INTO dividend_repository (
+                user_id, holding_id, ticker, ex_date, pay_date, record_date, declared_date,
+                amount, frequency, is_eligible, shares_held, total_dividend,
+                status, api_source
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'rapidapi_dividend_tracker')
+            `).bind(
+              userId,
+              holding.holding_id,
+              holding.ticker,
+              exDate,
+              payDate,
+              div.record_date || div.recordDate,
+              div.declared_date || div.declaredDate,
+              amount,
+              div.frequency || div.payment_frequency || 'UNKNOWN',
+              isEligible ? 1 : 0,
+              sharesHeld,
+              totalDividend,
+              isEligible ? 'eligible' : 'not_eligible'
+            ).run()
+          }
+        }
+        
+        // Small delay to respect rate limits
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
+      } catch (error) {
+        console.error(`Error processing ${holding.ticker}:`, error)
+        errors.push(`${holding.ticker}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+    
+    const duration = Date.now() - startTime
+    
+    // Update fetch log
+    await DB.prepare(`
+      UPDATE dividend_fetch_logs
+      SET status = ?, tickers_processed = ?, dividends_found = ?,
+          dividends_eligible = ?, api_calls_made = ?, completed_at = CURRENT_TIMESTAMP,
+          fetch_duration_ms = ?, error_message = ?
+      WHERE id = ?
+    `).bind(
+      errors.length > 0 ? 'partial' : 'success',
+      tickersProcessed.join(','),
+      totalDividends,
+      totalEligible,
+      apiCalls,
+      duration,
+      errors.length > 0 ? errors.join('; ') : null,
+      logId
+    ).run()
+    
+    // Update API config with last used
+    await DB.prepare(`
+      UPDATE api_configurations
+      SET last_used = CURRENT_TIMESTAMP
+      WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker'
+    `).bind(userId).run()
+    
+    return c.json({
+      success: true,
+      message: `Processed ${tickersProcessed.length} holdings`,
+      dividends_found: totalDividends,
+      dividends_eligible: totalEligible,
+      api_calls_made: apiCalls,
+      duration_ms: duration,
+      errors: errors.length > 0 ? errors : undefined
+    })
+    
+  } catch (error) {
+    console.error('Error fetching dividends:', error)
+    return c.json({
+      error: 'Failed to fetch dividends',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// Get dividend repository entries
+app.get('/api/dividend-repository', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const status = c.req.query('status') || 'all' // all, eligible, pending, applied
+    const ticker = c.req.query('ticker')
+    
+    let query = `
+      SELECT 
+        dr.*,
+        sh.ticker as holding_ticker,
+        sh.opened_date as holding_opened_date,
+        sh.closed_date as holding_closed_date,
+        sh.total_shares as holding_total_shares,
+        a.account_name,
+        a.account_type
+      FROM dividend_repository dr
+      INNER JOIN stock_holdings sh ON dr.holding_id = sh.id
+      INNER JOIN accounts a ON sh.account_id = a.id
+      WHERE dr.user_id = ?
+    `
+    const params: any[] = [userId]
+    
+    if (status !== 'all') {
+      query += ` AND dr.status = ?`
+      params.push(status)
+    }
+    
+    if (ticker) {
+      query += ` AND dr.ticker = ?`
+      params.push(ticker)
+    }
+    
+    query += ` ORDER BY dr.ex_date DESC`
+    
+    const results = await DB.prepare(query).bind(...params).all()
+    
+    return c.json({
+      dividends: results.results,
+      count: results.results.length
+    })
+  } catch (error) {
+    console.error('Error fetching dividend repository:', error)
+    return c.json({ error: 'Failed to fetch dividend repository' }, 500)
+  }
+})
+
+// Apply dividend to cost_basis_adjustments
+app.post('/api/dividend-repository/:id/apply', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const dividendId = c.req.param('id')
+    
+    // Get dividend record
+    const dividend = await DB.prepare(`
+      SELECT * FROM dividend_repository
+      WHERE id = ? AND user_id = ?
+    `).bind(dividendId, userId).first() as any
+    
+    if (!dividend) {
+      return c.json({ error: 'Dividend not found' }, 404)
+    }
+    
+    if (dividend.is_applied === 1) {
+      return c.json({ error: 'Dividend already applied' }, 400)
+    }
+    
+    if (dividend.is_eligible !== 1) {
+      return c.json({ error: 'Dividend is not eligible for this holding' }, 400)
+    }
+    
+    // Create cost_basis_adjustment entry
+    const result = await DB.prepare(`
+      INSERT INTO cost_basis_adjustments (
+        user_id, holding_id, adjustment_type, amount, adjustment_date, notes
+      ) VALUES (?, ?, 'DIVIDEND', ?, ?, ?)
+    `).bind(
+      userId,
+      dividend.holding_id,
+      dividend.total_dividend,
+      dividend.pay_date || dividend.ex_date,
+      `Auto-applied dividend from repository: ${dividend.ticker} ${dividend.amount}/share * ${dividend.shares_held} shares`
+    ).run()
+    
+    const costBasisId = result.meta.last_row_id
+    
+    // Update dividend repository
+    await DB.prepare(`
+      UPDATE dividend_repository
+      SET is_applied = 1, applied_date = CURRENT_TIMESTAMP,
+          cost_basis_adjustment_id = ?, status = 'applied',
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(costBasisId, dividendId).run()
+    
+    return c.json({
+      success: true,
+      message: 'Dividend applied to cost basis adjustments',
+      cost_basis_adjustment_id: costBasisId
+    })
+  } catch (error) {
+    console.error('Error applying dividend:', error)
+    return c.json({ error: 'Failed to apply dividend' }, 500)
+  }
+})
+
+// Get fetch logs
+app.get('/api/dividend-repository/logs', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const limit = parseInt(c.req.query('limit') || '10')
+    
+    const results = await DB.prepare(`
+      SELECT * FROM dividend_fetch_logs
+      WHERE user_id = ?
+      ORDER BY started_at DESC
+      LIMIT ?
+    `).bind(userId, limit).all()
+    
+    return c.json({ logs: results.results })
+  } catch (error) {
+    console.error('Error fetching logs:', error)
+    return c.json({ error: 'Failed to fetch logs' }, 500)
+  }
+})
+
+// ============================================================================
 // FRONTEND ROUTES
 // ============================================================================
 
@@ -6414,6 +6825,9 @@ app.get('/', (c) => {
                                     <button onclick="showUtilityTab('historical-balances')" data-utility-tab="historical-balances" class="utility-tab px-4 py-3 font-semibold text-gray-600 border-b-2 border-transparent hover:text-brand-teal hover:border-brand-teal transition-colors">
                                         <i class="fas fa-history mr-2"></i>Historical Balances
                                     </button>
+                                    <button onclick="showUtilityTab('dividend-repository')" data-utility-tab="dividend-repository" class="utility-tab px-4 py-3 font-semibold text-gray-600 border-b-2 border-transparent hover:text-brand-teal hover:border-brand-teal transition-colors">
+                                        <i class="fas fa-coins mr-2"></i>Dividend Repository
+                                    </button>
                                 </nav>
                             </div>
                         </div>
@@ -6656,6 +7070,153 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 <input type="hidden" id="edit-hist-balance-id">
                             </div>
                         </div>
+                    </div>
+                    
+                    <!-- Dividend Repository Utility -->
+                    <div id="dividend-repository-utility" class="utility-content hidden">
+                        <div class="card mb-6">
+                            <div class="flex items-start gap-4 mb-4">
+                                <div class="bg-brand-gold text-white p-3 rounded-lg">
+                                    <i class="fas fa-coins text-2xl"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <h3 class="text-xl font-bold text-gray-800 mb-2">Dividend Repository</h3>
+                                    <p class="text-gray-600 mb-4">Automatically fetch and track dividends for all your open stock holdings. Connect to RapidAPI Dividend Tracker to discover dividends you're eligible for based on your holding dates.</p>
+                                    
+                                    <!-- API Configuration Section -->
+                                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                        <h4 class="font-semibold text-blue-900 mb-3">
+                                            <i class="fas fa-key mr-2"></i>RapidAPI Configuration
+                                        </h4>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-semibold text-blue-900 mb-2">API Key</label>
+                                                <input type="password" id="rapidapi-key" placeholder="Enter your RapidAPI key" class="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal">
+                                                <p class="text-xs text-blue-700 mt-1">
+                                                    <i class="fas fa-info-circle mr-1"></i>
+                                                    Get your key from <a href="https://rapidapi.com/matrisian/api/dividendtracker1" target="_blank" class="underline hover:text-brand-teal">RapidAPI Dividend Tracker</a>
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-semibold text-blue-900 mb-2">API Host (Optional)</label>
+                                                <input type="text" id="rapidapi-host" placeholder="dividendtracker1.p.rapidapi.com" class="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal">
+                                            </div>
+                                        </div>
+                                        <div class="mt-3 flex gap-2">
+                                            <button onclick="saveDividendAPIConfig()" class="btn-primary">
+                                                <i class="fas fa-save mr-2"></i>Save Configuration
+                                            </button>
+                                            <button onclick="loadDividendAPIConfig()" class="btn-secondary">
+                                                <i class="fas fa-sync mr-2"></i>Load Saved Config
+                                            </button>
+                                        </div>
+                                        <div id="api-config-status" class="mt-2 text-sm"></div>
+                                    </div>
+                                    
+                                    <!-- Fetch Dividends Section -->
+                                    <div class="bg-gradient-to-br from-gold-50 to-white border border-brand-gold rounded-lg p-4 mb-4">
+                                        <h4 class="font-semibold text-gray-900 mb-3">
+                                            <i class="fas fa-download mr-2 text-brand-gold"></i>Fetch Dividends
+                                        </h4>
+                                        <p class="text-sm text-gray-700 mb-3">
+                                            This will check all your open stock holdings for dividend payments. The system will:
+                                        </p>
+                                        <ul class="text-sm text-gray-700 space-y-1 mb-4 ml-4">
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Fetch dividend data from RapidAPI</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Check eligibility based on holding open date vs ex-dividend date</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Calculate total dividends based on shares held</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Store results in dividend repository for review</li>
+                                        </ul>
+                                        <button onclick="fetchDividends()" id="fetch-dividends-btn" class="btn-primary w-full">
+                                            <i class="fas fa-sync mr-2"></i>Fetch Dividends for All Holdings
+                                        </button>
+                                        <div id="fetch-status" class="mt-3 text-sm"></div>
+                                    </div>
+                                    
+                                    <!-- Filter Section -->
+                                    <div class="flex gap-4 mb-4">
+                                        <div class="flex-1">
+                                            <label class="block text-sm font-semibold text-gray-700 mb-2">Filter by Status</label>
+                                            <select id="dividend-status-filter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" onchange="loadDividendRepository()">
+                                                <option value="all">All</option>
+                                                <option value="eligible">Eligible</option>
+                                                <option value="pending">Pending Review</option>
+                                                <option value="applied">Applied</option>
+                                                <option value="not_eligible">Not Eligible</option>
+                                            </select>
+                                        </div>
+                                        <div class="flex-1">
+                                            <label class="block text-sm font-semibold text-gray-700 mb-2">Filter by Ticker</label>
+                                            <input type="text" id="dividend-ticker-filter" placeholder="e.g., AAPL" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" onkeyup="loadDividendRepository()">
+                                        </div>
+                                        <div class="flex items-end">
+                                            <button onclick="loadDividendRepository()" class="btn-secondary h-[42px]">
+                                                <i class="fas fa-search mr-2"></i>Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Summary Stats -->
+                                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                                            <div class="text-2xl font-bold text-blue-600" id="stats-total">0</div>
+                                            <div class="text-xs text-gray-600">Total Found</div>
+                                        </div>
+                                        <div class="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                                            <div class="text-2xl font-bold text-green-600" id="stats-eligible">0</div>
+                                            <div class="text-xs text-gray-600">Eligible</div>
+                                        </div>
+                                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
+                                            <div class="text-2xl font-bold text-yellow-600" id="stats-pending">0</div>
+                                            <div class="text-xs text-gray-600">Pending</div>
+                                        </div>
+                                        <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+                                            <div class="text-2xl font-bold text-brand-gold" id="stats-total-amount">$0.00</div>
+                                            <div class="text-xs text-gray-600">Total Eligible Amount</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Dividend Repository Table -->
+                                    <div class="border border-gray-200 rounded-lg overflow-hidden">
+                                        <div class="overflow-x-auto">
+                                            <table class="w-full">
+                                                <thead class="bg-gray-100">
+                                                    <tr>
+                                                        <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Ticker</th>
+                                                        <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Ex-Date</th>
+                                                        <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Pay Date</th>
+                                                        <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">Amount/Share</th>
+                                                        <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">Shares</th>
+                                                        <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">Total</th>
+                                                        <th class="px-4 py-2 text-center text-sm font-semibold text-gray-700">Status</th>
+                                                        <th class="px-4 py-2 text-center text-sm font-semibold text-gray-700">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="dividend-repository-table">
+                                                    <tr>
+                                                        <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                                                            <i class="fas fa-coins text-3xl mb-2"></i>
+                                                            <p>No dividends found yet. Click "Fetch Dividends" to start.</p>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Fetch Logs -->
+                                    <details class="mt-4 bg-gray-50 border border-gray-300 rounded-lg p-4">
+                                        <summary class="font-semibold text-gray-800 cursor-pointer hover:text-brand-teal">
+                                            <i class="fas fa-history mr-2"></i>Fetch History Logs
+                                        </summary>
+                                        <div class="mt-3 space-y-2" id="dividend-fetch-logs">
+                                            <p class="text-sm text-gray-500">No fetch history yet</p>
+                                        </div>
+                                    </details>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     </div>
                     
                     <!-- Reports Section -->
