@@ -5465,11 +5465,11 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
           totalDividends++
           
           // Check if dividend already exists for this ticker/ex_date combination
-          // Note: We store by ticker, not by holding_id, since multiple holdings may exist
+          // Dividends are user-agnostic - stored once per ticker/ex_date globally
           const existing = await DB.prepare(`
             SELECT id FROM dividend_repository
-            WHERE user_id = ? AND ticker = ? AND ex_date = ?
-          `).bind(userId, holding.ticker, exDate).first()
+            WHERE ticker = ? AND ex_date = ?
+          `).bind(holding.ticker, exDate).first()
           
           if (existing) {
             // Update existing record (keep most recent data from API)
@@ -5488,14 +5488,14 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
             ).run()
           } else {
             // Insert new record - just store dividend info, no shares calculation
-            // Application to individual holdings will be done later
+            // Dividends are user-agnostic, stored once globally per ticker/ex_date
+            // Application to individual holdings will be done later based on pay_date
             await DB.prepare(`
               INSERT INTO dividend_repository (
-                user_id, ticker, ex_date, pay_date, record_date, declared_date,
+                ticker, ex_date, pay_date, record_date, declared_date,
                 amount, frequency, status, api_source
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'rapidapi_dividend_tracker')
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'rapidapi_dividend_tracker')
             `).bind(
-              userId,
               holding.ticker,
               exDate,
               payDate,
@@ -5562,12 +5562,12 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
   }
 })
 
-// Get dividend repository entries
+// Get dividend repository entries (user-agnostic data)
 app.get('/api/dividend-repository', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
     const { DB } = c.env
-    const status = c.req.query('status') || 'all' // all, pending, applied
+    const status = c.req.query('status') || 'all' // all, active, deprecated
     const ticker = c.req.query('ticker')
     const fromDate = c.req.query('from_date')
     const toDate = c.req.query('to_date')
@@ -5577,8 +5577,8 @@ app.get('/api/dividend-repository', authMiddleware, async (c) => {
         dr.*,
         c.company_name
       FROM dividend_repository dr
-      LEFT JOIN companies c ON dr.ticker = c.ticker AND c.user_id = dr.user_id
-      WHERE dr.user_id = ?
+      LEFT JOIN companies c ON dr.ticker = c.ticker AND c.user_id = ?
+      WHERE 1=1
     `
     const params: any[] = [userId]
     
@@ -9098,11 +9098,11 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
               
               totalDividends++
               
-              // Check if dividend already exists
+              // Check if dividend already exists (user-agnostic)
               const existing = await env.DB.prepare(`
                 SELECT id FROM dividend_repository
-                WHERE user_id = ? AND ticker = ? AND ex_date = ?
-              `).bind(userId, holding.ticker, exDate).first()
+                WHERE ticker = ? AND ex_date = ?
+              `).bind(holding.ticker, exDate).first()
               
               if (existing) {
                 // Update existing record
@@ -9120,14 +9120,13 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
                   (existing as any).id
                 ).run()
               } else {
-                // Insert new record
+                // Insert new record (user-agnostic)
                 await env.DB.prepare(`
                   INSERT INTO dividend_repository (
-                    user_id, ticker, ex_date, pay_date, record_date, declared_date,
+                    ticker, ex_date, pay_date, record_date, declared_date,
                     amount, frequency, status, api_source
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'rapidapi_dividend_tracker')
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'rapidapi_dividend_tracker')
                 `).bind(
-                  userId,
                   holding.ticker,
                   exDate,
                   payDate,
