@@ -5368,15 +5368,8 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     
     console.log(`Starting dividend fetch for user ${userId}`)
     
-    // Get API configuration
-    const apiConfig = await DB.prepare(`
-      SELECT api_key, api_host FROM api_configurations
-      WHERE user_id = ? AND api_name = 'alpha_vantage' AND is_active = 1
-    `).bind(userId).first() as any
-    
-    if (!apiConfig) {
-      return c.json({ error: 'Alpha Vantage API key not configured. Please configure your API key first.' }, 400)
-    }
+    // Use system-wide Alpha Vantage API key (admin-managed)
+    const ALPHA_VANTAGE_API_KEY = '56R77QS4TUYAT5IE'
     
     // Get all stock holdings for this user (including closed ones)
     // We track dividends based on ex_date regardless of position closure
@@ -5421,7 +5414,7 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
         
         // Call Alpha Vantage API
         // Endpoint: GET /query?function=DIVIDENDS&symbol={ticker}&apikey={key}
-        const response = await fetch(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${holding.ticker}&apikey=${apiConfig.api_key}`, {
+        const response = await fetch(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${holding.ticker}&apikey=${ALPHA_VANTAGE_API_KEY}`, {
           method: 'GET'
         })
         
@@ -5539,13 +5532,6 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
       errors.length > 0 ? errors.join('; ') : null,
       logId
     ).run()
-    
-    // Update API config with last used
-    await DB.prepare(`
-      UPDATE api_configurations
-      SET last_used = CURRENT_TIMESTAMP
-      WHERE user_id = ? AND api_name = 'alpha_vantage'
-    `).bind(userId).run()
     
     return c.json({
       success: true,
@@ -7100,37 +7086,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 </div>
                                 <div class="flex-1">
                                     <h3 class="text-xl font-bold text-gray-800 mb-2">Dividend Repository</h3>
-                                    <p class="text-gray-600 mb-4">Automatically fetch and track dividends for all your open stock holdings. Connect to RapidAPI Dividend Tracker to discover dividends you're eligible for based on your holding dates.</p>
-                                    
-                                    <!-- API Configuration Section -->
-                                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                                        <h4 class="font-semibold text-blue-900 mb-3">
-                                            <i class="fas fa-key mr-2"></i>RapidAPI Configuration
-                                        </h4>
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                                <label class="block text-sm font-semibold text-blue-900 mb-2">API Key</label>
-                                                <input type="password" id="rapidapi-key" placeholder="Enter your RapidAPI key" class="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal">
-                                                <p class="text-xs text-blue-700 mt-1">
-                                                    <i class="fas fa-info-circle mr-1"></i>
-                                                    Get your key from <a href="https://rapidapi.com/matrisian/api/dividendtracker1" target="_blank" class="underline hover:text-brand-teal">RapidAPI Dividend Tracker</a>
-                                                </p>
-                                            </div>
-                                            <div>
-                                                <label class="block text-sm font-semibold text-blue-900 mb-2">API Host (Optional)</label>
-                                                <input type="text" id="rapidapi-host" placeholder="dividendtracker1.p.rapidapi.com" class="w-full px-3 py-2 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal">
-                                            </div>
-                                        </div>
-                                        <div class="mt-3 flex gap-2">
-                                            <button onclick="saveDividendAPIConfig()" class="btn-primary">
-                                                <i class="fas fa-save mr-2"></i>Save Configuration
-                                            </button>
-                                            <button onclick="loadDividendAPIConfig()" class="btn-secondary">
-                                                <i class="fas fa-sync mr-2"></i>Load Saved Config
-                                            </button>
-                                        </div>
-                                        <div id="api-config-status" class="mt-2 text-sm"></div>
-                                    </div>
+                                    <p class="text-gray-600 mb-4">Automatically fetch and track dividends for all your stock holdings from 2026 onwards. Uses Alpha Vantage API to discover dividends based on ex-dividend dates.</p>
                                     
                                     <!-- Fetch Dividends Section -->
                                     <div class="bg-gradient-to-br from-gold-50 to-white border border-brand-gold rounded-lg p-4 mb-4">
@@ -7138,13 +7094,13 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                             <i class="fas fa-download mr-2 text-brand-gold"></i>Fetch Dividends
                                         </h4>
                                         <p class="text-sm text-gray-700 mb-3">
-                                            This will check all your open stock holdings for dividend payments. The system will:
+                                            This will check all your stock holdings for dividend payments since January 1, 2026. The system will:
                                         </p>
                                         <ul class="text-sm text-gray-700 space-y-1 mb-4 ml-4">
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Fetch dividend data from RapidAPI</li>
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Check eligibility based on holding open date vs ex-dividend date</li>
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Calculate total dividends based on shares held</li>
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Store results in dividend repository for review</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Fetch dividend data from Alpha Vantage</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Only include dividends from 2026 onwards</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Store results in global dividend repository</li>
+                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Available for all users to reference</li>
                                         </ul>
                                         <button onclick="fetchDividends()" id="fetch-dividends-btn" class="btn-primary w-full">
                                             <i class="fas fa-sync mr-2"></i>Fetch Dividends for All Holdings
@@ -9023,17 +8979,19 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
   console.log('Scheduled event triggered:', new Date().toISOString())
   
   try {
-    // Fetch dividends for all users with active API configurations
-    const apiConfigs = await env.DB.prepare(`
-      SELECT DISTINCT user_id, api_key, api_host
-      FROM api_configurations
-      WHERE api_name = 'alpha_vantage' AND is_active = 1
+    // Fetch dividends for all users (system-wide Alpha Vantage API key)
+    const ALPHA_VANTAGE_API_KEY = '56R77QS4TUYAT5IE'
+    
+    // Get all users with stock holdings
+    const users = await env.DB.prepare(`
+      SELECT DISTINCT user_id
+      FROM stock_holdings
     `).all()
     
-    console.log(`Found ${apiConfigs.results.length} users with active dividend API config`)
+    console.log(`Found ${users.results.length} users with stock holdings`)
     
-    for (const config of apiConfigs.results as any[]) {
-      const userId = config.user_id
+    for (const user of users.results as any[]) {
+      const userId = user.user_id
       
       try {
         console.log(`Fetching dividends for user ${userId}`)
@@ -9071,7 +9029,7 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             tickersProcessed.push(holding.ticker)
             
             // Call Alpha Vantage API
-            const response = await fetch(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${holding.ticker}&apikey=${config.api_key}`, {
+            const response = await fetch(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${holding.ticker}&apikey=${ALPHA_VANTAGE_API_KEY}`, {
               method: 'GET'
             })
             
@@ -9172,13 +9130,6 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
           errors.length > 0 ? errors.join('; ') : null,
           logId
         ).run()
-        
-        // Update API config with last used
-        await env.DB.prepare(`
-          UPDATE api_configurations
-          SET last_used = CURRENT_TIMESTAMP
-          WHERE user_id = ? AND api_name = 'alpha_vantage'
-        `).bind(userId).run()
         
         console.log(`Completed dividend fetch for user ${userId}: ${totalDividends} dividends, ${apiCalls} API calls`)
         

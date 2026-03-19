@@ -9373,7 +9373,6 @@ function showUtilityTab(tabName) {
     
     // Load data if switching to dividend repository
     if (tabName === 'dividend-repository') {
-        loadDividendAPIConfig()
         loadDividendRepository()
         loadDividendFetchLogs()
     }
@@ -9382,77 +9381,6 @@ function showUtilityTab(tabName) {
 // ====================================
 // Dividend Repository Functions
 // ====================================
-
-async function loadDividendAPIConfig() {
-    try {
-        const token = localStorage.getItem('token')
-        if (!token) return
-        
-        const response = await fetch('/api/dividend-repository/config', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-        
-        if (response.ok) {
-            const data = await response.json()
-            if (data.configured && data.config) {
-                document.getElementById('api-config-status').innerHTML = `
-                    <div class="text-green-600">
-                        <i class="fas fa-check-circle mr-1"></i>
-                        API configured. Last used: ${data.config.last_used || 'Never'}
-                    </div>
-                `
-            } else {
-                document.getElementById('api-config-status').innerHTML = `
-                    <div class="text-yellow-600">
-                        <i class="fas fa-exclamation-triangle mr-1"></i>
-                        API not configured. Please enter your RapidAPI key above.
-                    </div>
-                `
-            }
-        }
-    } catch (error) {
-        console.error('Error loading API config:', error)
-    }
-}
-
-async function saveDividendAPIConfig() {
-    try {
-        const token = localStorage.getItem('token')
-        if (!token) {
-            showNotification('Please log in first', 'error')
-            return
-        }
-        
-        const apiKey = document.getElementById('rapidapi-key').value
-        const apiHost = document.getElementById('rapidapi-host').value || 'dividendtracker1.p.rapidapi.com'
-        
-        if (!apiKey) {
-            showNotification('Please enter your RapidAPI key', 'error')
-            return
-        }
-        
-        const response = await fetch('/api/dividend-repository/config', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ api_key: apiKey, api_host: apiHost })
-        })
-        
-        if (response.ok) {
-            showNotification('API configuration saved successfully', 'success')
-            loadDividendAPIConfig()
-            document.getElementById('rapidapi-key').value = ''
-        } else {
-            const error = await response.json()
-            showNotification(`Failed to save configuration: ${error.error}`, 'error')
-        }
-    } catch (error) {
-        console.error('Error saving API config:', error)
-        showNotification('Failed to save API configuration', 'error')
-    }
-}
 
 async function fetchDividends() {
     try {
