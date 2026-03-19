@@ -5368,8 +5368,8 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     
     console.log(`Starting dividend fetch for user ${userId}`)
     
-    // Use system-wide Alpha Vantage API key (admin-managed)
-    const ALPHA_VANTAGE_API_KEY = '56R77QS4TUYAT5IE'
+    // Use system-wide Massive (Polygon.io) API key (admin-managed)
+    const MASSIVE_API_KEY = 'x4VbKUBkKwYB10ObRLoRt9eDqfcClxEW'
     
     // Get all stock holdings for this user (including closed ones)
     // We track dividends based on ex_date regardless of position closure
@@ -5407,31 +5407,59 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     const errors: string[] = []
     const debugInfo: string[] = []
     
-    // Process each holding
-    for (const holding of holdings.results as any[]) {
+    debugInfo.push(`Starting dividend fetch for ${holdings.results.length} holdings`)
+    
+    // TESTING MODE: Only process NVDY ticker
+    // TODO: Remove this filter once testing is complete
+    const allHoldings = holdings.results as any[]
+    const testHoldings = allHoldings.filter(h => h.ticker === 'NVDY')
+    
+    // Get unique tickers to avoid duplicate API calls
+    const uniqueTickers = new Set<string>()
+    const holdingsToProcess: any[] = []
+    
+    for (const holding of testHoldings) {
+      if (!uniqueTickers.has(holding.ticker)) {
+        uniqueTickers.add(holding.ticker)
+        holdingsToProcess.push(holding)
+      }
+    }
+    
+    debugInfo.push(`Processing ${holdingsToProcess.length} unique tickers (filtered from ${testHoldings.length} holdings)`)
+    
+    // Process each unique ticker
+    for (const holding of holdingsToProcess) {
       try {
         console.log(`Fetching dividends for ${holding.ticker}`)
         tickersProcessed.push(holding.ticker)
         
-        // Call Alpha Vantage API
-        // Endpoint: GET /query?function=DIVIDENDS&symbol={ticker}&apikey={key}
-        const response = await fetch(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${holding.ticker}&apikey=${ALPHA_VANTAGE_API_KEY}`, {
+        // Call Massive (Polygon.io) API
+        // Endpoint: GET /v3/reference/dividends?ticker={ticker}&apiKey={key}
+        const response = await fetch(`https://api.polygon.io/v3/reference/dividends?ticker=${holding.ticker}&apiKey=${MASSIVE_API_KEY}`, {
           method: 'GET'
         })
         
         apiCalls++
         
+        debugInfo.push(`${holding.ticker}: HTTP ${response.status}`)
+        
         if (!response.ok) {
           console.error(`API error for ${holding.ticker}:`, response.status)
           errors.push(`${holding.ticker}: HTTP ${response.status}`)
+          debugInfo.push(`${holding.ticker}: API call failed with ${response.status}`)
           continue
         }
         
         const dividendData = await response.json() as any
         
-        // Process dividend data from Alpha Vantage
-        // API returns { symbol, data: [...] }
-        const dividends = dividendData.data || []
+        // Log raw response structure for debugging
+        const responseKeys = Object.keys(dividendData).join(', ')
+        const responsePreview = JSON.stringify(dividendData).substring(0, 200)
+        debugInfo.push(`${holding.ticker}: Keys=[${responseKeys}] Preview=${responsePreview}`)
+        
+        // Process dividend data from Massive (Polygon.io)
+        // API returns { results: [...], status: "OK", count: N }
+        const dividends = dividendData.results || []
         
         debugInfo.push(`${holding.ticker}: Found ${dividends.length} dividends in API response`)
         console.log(`${holding.ticker}: Found ${dividends.length} dividends in API response`)
@@ -5441,10 +5469,10 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
         
         for (const div of dividends) {
           const exDate = div.ex_dividend_date
-          const payDate = div.payment_date
+          const payDate = div.pay_date
           const recordDate = div.record_date
           const declaredDate = div.declaration_date
-          const amount = parseFloat(div.amount)
+          const amount = parseFloat(div.cash_amount)
           
           if (!exDate || !amount) {
             console.log(`Skipping dividend with missing data: ${JSON.stringify(div)}`)
@@ -5482,13 +5510,14 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
             await DB.prepare(`
               UPDATE dividend_repository
               SET amount = ?, pay_date = ?, record_date = ?, declared_date = ?,
-                  frequency = 'QUARTERLY', fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                  frequency = ?, fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
               WHERE id = ?
             `).bind(
               amount,
               payDate,
               recordDate,
               declaredDate,
+              div.frequency || 52,  // Massive provides frequency field
               (existing as any).id
             ).run()
           } else {
@@ -5499,20 +5528,22 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
               INSERT INTO dividend_repository (
                 ticker, ex_date, pay_date, record_date, declared_date,
                 amount, frequency, status, api_source
-              ) VALUES (?, ?, ?, ?, ?, ?, 'QUARTERLY', 'active', 'alpha_vantage')
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'massive')
             `).bind(
               holding.ticker,
               exDate,
               payDate,
               recordDate,
               declaredDate,
-              amount
+              amount,
+              div.frequency || 52  // Massive provides frequency field, default to 52 (weekly)
             ).run()
           }
         }
         
-        // Small delay to respect rate limits
-        await new Promise(resolve => setTimeout(resolve, 500))
+        // Delay to respect Massive API rate limits (5 calls/minute = 12.1 seconds between calls)
+        debugInfo.push(`${holding.ticker}: Waiting 12.1s before next ticker...`)
+        await new Promise(resolve => setTimeout(resolve, 12100))
         
       } catch (error) {
         console.error(`Error processing ${holding.ticker}:`, error)
@@ -8987,8 +9018,8 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
   console.log('Scheduled event triggered:', new Date().toISOString())
   
   try {
-    // Fetch dividends for all users (system-wide Alpha Vantage API key)
-    const ALPHA_VANTAGE_API_KEY = '56R77QS4TUYAT5IE'
+    // Fetch dividends for all users (system-wide Massive API key)
+    const MASSIVE_API_KEY = 'x4VbKUBkKwYB10ObRLoRt9eDqfcClxEW'
     
     // Get all users with stock holdings
     const users = await env.DB.prepare(`
@@ -9036,8 +9067,8 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             console.log(`Fetching dividends for ${holding.ticker}`)
             tickersProcessed.push(holding.ticker)
             
-            // Call Alpha Vantage API
-            const response = await fetch(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${holding.ticker}&apikey=${ALPHA_VANTAGE_API_KEY}`, {
+            // Call Massive (Polygon.io) API
+            const response = await fetch(`https://api.polygon.io/v3/reference/dividends?ticker=${holding.ticker}&apiKey=${MASSIVE_API_KEY}`, {
               method: 'GET'
             })
             
@@ -9050,17 +9081,17 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             }
             
             const dividendData = await response.json() as any
-            const dividends = dividendData.data || []
+            const dividends = dividendData.results || []
             
             // Minimum date filter: only fetch dividends from 2026-01-01 onwards
             const MIN_DATE = '2026-01-01'
             
             for (const div of dividends) {
               const exDate = div.ex_dividend_date
-              const payDate = div.payment_date
+              const payDate = div.pay_date
               const recordDate = div.record_date
               const declaredDate = div.declaration_date
-              const amount = parseFloat(div.amount)
+              const amount = parseFloat(div.cash_amount)
               
               if (!exDate || !amount) {
                 continue
@@ -9084,13 +9115,14 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
                 await env.DB.prepare(`
                   UPDATE dividend_repository
                   SET amount = ?, pay_date = ?, record_date = ?, declared_date = ?,
-                      frequency = 'QUARTERLY', fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                      frequency = ?, fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
                   WHERE id = ?
                 `).bind(
                   amount,
                   payDate,
                   recordDate,
                   declaredDate,
+                  div.frequency || 52,
                   (existing as any).id
                 ).run()
               } else {
@@ -9099,20 +9131,21 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
                   INSERT INTO dividend_repository (
                     ticker, ex_date, pay_date, record_date, declared_date,
                     amount, frequency, status, api_source
-                  ) VALUES (?, ?, ?, ?, ?, ?, 'QUARTERLY', 'active', 'alpha_vantage')
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'massive')
                 `).bind(
                   holding.ticker,
                   exDate,
                   payDate,
                   recordDate,
                   declaredDate,
-                  amount
+                  amount,
+                  div.frequency || 52
                 ).run()
               }
             }
             
-            // Rate limiting: 500ms delay
-            await new Promise(resolve => setTimeout(resolve, 500))
+            // Rate limiting: 12.1s delay for Massive API (5 calls/minute)
+            await new Promise(resolve => setTimeout(resolve, 12100))
             
           } catch (error) {
             console.error(`Error processing ${holding.ticker}:`, error)

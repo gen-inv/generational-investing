@@ -9410,6 +9410,22 @@ async function fetchDividends() {
         
         if (response.ok) {
             const data = await response.json()
+            
+            // Build debug info HTML if available
+            let debugHTML = ''
+            if (data.debug && data.debug.length > 0) {
+                debugHTML = `
+                    <details class="mt-3">
+                        <summary class="cursor-pointer text-gray-700 font-medium">
+                            <i class="fas fa-bug mr-1"></i>Debug Info (${data.debug.length} entries)
+                        </summary>
+                        <div class="mt-2 text-xs text-gray-600 max-h-64 overflow-y-auto bg-gray-50 p-2 rounded">
+                            ${data.debug.map(log => `<div class="mb-1">${log}</div>`).join('')}
+                        </div>
+                    </details>
+                `
+            }
+            
             statusDiv.innerHTML = `
                 <div class="bg-green-50 border border-green-200 rounded p-3 text-sm">
                     <div class="font-semibold text-green-900 mb-1">
@@ -9422,6 +9438,7 @@ async function fetchDividends() {
                         • Completed in ${(data.duration_ms / 1000).toFixed(2)} seconds
                     </div>
                     ${data.errors ? `<div class="text-orange-600 mt-2">Some errors occurred: ${data.errors.join('; ')}</div>` : ''}
+                    ${debugHTML}
                 </div>
             `
             loadDividendRepository()
