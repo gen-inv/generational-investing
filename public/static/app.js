@@ -9467,10 +9467,9 @@ async function loadDividendRepository() {
         const token = localStorage.getItem('token')
         if (!token) return
         
-        const status = document.getElementById('dividend-status-filter').value
         const ticker = document.getElementById('dividend-ticker-filter').value
         
-        let url = `/api/dividend-repository?status=${status}`
+        let url = `/api/dividend-repository?status=all`
         if (ticker) {
             url += `&ticker=${ticker.toUpperCase()}`
         }

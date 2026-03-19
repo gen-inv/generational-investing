@@ -7146,14 +7146,6 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                     <!-- Filter Section -->
                                     <div class="flex gap-4 mb-4">
                                         <div class="flex-1">
-                                            <label class="block text-sm font-semibold text-gray-700 mb-2">Filter by Status</label>
-                                            <select id="dividend-status-filter" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" onchange="loadDividendRepository()">
-                                                <option value="all">All Dividends</option>
-                                                <option value="active">Active (Not Applied)</option>
-                                                <option value="deprecated">Deprecated</option>
-                                            </select>
-                                        </div>
-                                        <div class="flex-1">
                                             <label class="block text-sm font-semibold text-gray-700 mb-2">Filter by Ticker</label>
                                             <input type="text" id="dividend-ticker-filter" placeholder="e.g., AAPL" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" onkeyup="loadDividendRepository()">
                                         </div>
