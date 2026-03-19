@@ -5405,6 +5405,7 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     let apiCalls = 0
     const tickersProcessed: string[] = []
     const errors: string[] = []
+    const debugInfo: string[] = []
     
     // Process each holding
     for (const holding of holdings.results as any[]) {
@@ -5432,6 +5433,9 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
         // API returns { symbol, data: [...] }
         const dividends = dividendData.data || []
         
+        debugInfo.push(`${holding.ticker}: Found ${dividends.length} dividends in API response`)
+        console.log(`${holding.ticker}: Found ${dividends.length} dividends in API response`)
+        
         // Minimum date filter: only fetch dividends from 2026-01-01 onwards
         const MIN_DATE = '2026-01-01'
         
@@ -5449,7 +5453,7 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
           
           // Filter: only include dividends from 2026-01-01 onwards
           if (exDate < MIN_DATE) {
-            console.log(`Skipping dividend before ${MIN_DATE}: ${exDate}`)
+            debugInfo.push(`${holding.ticker}: Skipping ${exDate} (before ${MIN_DATE})`)
             continue
           }
           
@@ -5462,6 +5466,9 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
             totalEligible++
           }
           totalDividends++
+          
+          debugInfo.push(`${holding.ticker}: Processing ${exDate}, amt ${amount}, eligible: ${isEligible}`)
+          console.log(`${holding.ticker}: Processing dividend ${exDate}, amount ${amount}, eligible: ${isEligible}`)
           
           // Check if dividend already exists for this ticker/ex_date combination
           // Dividends are user-agnostic - stored once per ticker/ex_date globally
@@ -5540,7 +5547,8 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
       dividends_eligible: totalEligible,
       api_calls_made: apiCalls,
       duration_ms: duration,
-      errors: errors.length > 0 ? errors : undefined
+      errors: errors.length > 0 ? errors : undefined,
+      debug: debugInfo
     })
     
   } catch (error) {
