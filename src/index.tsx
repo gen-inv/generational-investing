@@ -5300,7 +5300,7 @@ app.get('/api/dividend-repository/config', authMiddleware, async (c) => {
     const config = await DB.prepare(`
       SELECT api_name, api_host, is_active, last_used, rate_limit_remaining, rate_limit_reset
       FROM api_configurations
-      WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker'
+      WHERE user_id = ? AND api_name = 'alpha_vantage'
     `).bind(userId).first()
     
     return c.json({
@@ -5334,7 +5334,7 @@ app.post('/api/dividend-repository/config', authMiddleware, async (c) => {
     // Check if config exists
     const existing = await DB.prepare(`
       SELECT id FROM api_configurations
-      WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker'
+      WHERE user_id = ? AND api_name = 'alpha_vantage'
     `).bind(userId).first()
     
     if (existing) {
@@ -5342,14 +5342,14 @@ app.post('/api/dividend-repository/config', authMiddleware, async (c) => {
       await DB.prepare(`
         UPDATE api_configurations
         SET api_key = ?, api_host = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker'
-      `).bind(api_key, api_host || 'dividendtracker1.p.rapidapi.com', userId).run()
+        WHERE user_id = ? AND api_name = 'alpha_vantage'
+      `).bind(api_key, api_host || 'www.alphavantage.co', userId).run()
     } else {
       // Insert new
       await DB.prepare(`
         INSERT INTO api_configurations (user_id, api_name, api_key, api_host, is_active)
-        VALUES (?, 'rapidapi_dividend_tracker', ?, ?, 1)
-      `).bind(userId, api_key, api_host || 'dividendtracker1.p.rapidapi.com').run()
+        VALUES (?, 'alpha_vantage', ?, ?, 1)
+      `).bind(userId, api_key, api_host || 'www.alphavantage.co').run()
     }
     
     return c.json({ success: true, message: 'API configuration saved' })
@@ -5371,11 +5371,11 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     // Get API configuration
     const apiConfig = await DB.prepare(`
       SELECT api_key, api_host FROM api_configurations
-      WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker' AND is_active = 1
+      WHERE user_id = ? AND api_name = 'alpha_vantage' AND is_active = 1
     `).bind(userId).first() as any
     
     if (!apiConfig) {
-      return c.json({ error: 'RapidAPI configuration not found. Please configure your API key first.' }, 400)
+      return c.json({ error: 'Alpha Vantage API key not configured. Please configure your API key first.' }, 400)
     }
     
     // Get all stock holdings for this user (including closed ones)
@@ -5419,15 +5419,10 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
         console.log(`Fetching dividends for ${holding.ticker}`)
         tickersProcessed.push(holding.ticker)
         
-        // Call RapidAPI Dividend Tracker
-        // Correct endpoint: GET /history/{ticker}
-        const response = await fetch(`https://${apiConfig.api_host}/history/${holding.ticker}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-rapidapi-key': apiConfig.api_key,
-            'x-rapidapi-host': apiConfig.api_host
-          }
+        // Call Alpha Vantage API
+        // Endpoint: GET /query?function=DIVIDENDS&symbol={ticker}&apikey={key}
+        const response = await fetch(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${holding.ticker}&apikey=${apiConfig.api_key}`, {
+          method: 'GET'
         })
         
         apiCalls++
@@ -5440,17 +5435,28 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
         
         const dividendData = await response.json() as any
         
-        // Process dividend data from RapidAPI Dividend Tracker
-        // API returns array of dividend objects directly
-        const dividends = Array.isArray(dividendData) ? dividendData : (dividendData.dividends || dividendData.data || [])
+        // Process dividend data from Alpha Vantage
+        // API returns { symbol, data: [...] }
+        const dividends = dividendData.data || []
+        
+        // Minimum date filter: only fetch dividends from 2026-01-01 onwards
+        const MIN_DATE = '2026-01-01'
         
         for (const div of dividends) {
-          const exDate = div.ex_date || div.exDate || div.ex_dividend_date
-          const payDate = div.pay_date || div.payDate || div.payment_date
-          const amount = div.amount || div.dividend || div.cash_amount
+          const exDate = div.ex_dividend_date
+          const payDate = div.payment_date
+          const recordDate = div.record_date
+          const declaredDate = div.declaration_date
+          const amount = parseFloat(div.amount)
           
           if (!exDate || !amount) {
             console.log(`Skipping dividend with missing data: ${JSON.stringify(div)}`)
+            continue
+          }
+          
+          // Filter: only include dividends from 2026-01-01 onwards
+          if (exDate < MIN_DATE) {
+            console.log(`Skipping dividend before ${MIN_DATE}: ${exDate}`)
             continue
           }
           
@@ -5476,14 +5482,13 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
             await DB.prepare(`
               UPDATE dividend_repository
               SET amount = ?, pay_date = ?, record_date = ?, declared_date = ?,
-                  frequency = ?, fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                  frequency = 'QUARTERLY', fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
               WHERE id = ?
             `).bind(
               amount,
               payDate,
-              div.record_date || div.recordDate,
-              div.declared_date || div.declaredDate,
-              div.frequency || div.payment_frequency || 'QUARTERLY',
+              recordDate,
+              declaredDate,
               (existing as any).id
             ).run()
           } else {
@@ -5494,15 +5499,14 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
               INSERT INTO dividend_repository (
                 ticker, ex_date, pay_date, record_date, declared_date,
                 amount, frequency, status, api_source
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'rapidapi_dividend_tracker')
+              ) VALUES (?, ?, ?, ?, ?, ?, 'QUARTERLY', 'active', 'alpha_vantage')
             `).bind(
               holding.ticker,
               exDate,
               payDate,
-              div.record_date || div.recordDate,
-              div.declared_date || div.declaredDate,
-              amount,
-              div.frequency || div.payment_frequency || 'QUARTERLY'
+              recordDate,
+              declaredDate,
+              amount
             ).run()
           }
         }
@@ -5540,7 +5544,7 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     await DB.prepare(`
       UPDATE api_configurations
       SET last_used = CURRENT_TIMESTAMP
-      WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker'
+      WHERE user_id = ? AND api_name = 'alpha_vantage'
     `).bind(userId).run()
     
     return c.json({
@@ -9023,7 +9027,7 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
     const apiConfigs = await env.DB.prepare(`
       SELECT DISTINCT user_id, api_key, api_host
       FROM api_configurations
-      WHERE api_name = 'rapidapi_dividend_tracker' AND is_active = 1
+      WHERE api_name = 'alpha_vantage' AND is_active = 1
     `).all()
     
     console.log(`Found ${apiConfigs.results.length} users with active dividend API config`)
@@ -9066,14 +9070,9 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             console.log(`Fetching dividends for ${holding.ticker}`)
             tickersProcessed.push(holding.ticker)
             
-            // Call RapidAPI Dividend Tracker
-            const response = await fetch(`https://${config.api_host}/history/${holding.ticker}`, {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-rapidapi-key': config.api_key,
-                'x-rapidapi-host': config.api_host
-              }
+            // Call Alpha Vantage API
+            const response = await fetch(`https://www.alphavantage.co/query?function=DIVIDENDS&symbol=${holding.ticker}&apikey=${config.api_key}`, {
+              method: 'GET'
             })
             
             apiCalls++
@@ -9085,14 +9084,24 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             }
             
             const dividendData = await response.json() as any
-            const dividends = Array.isArray(dividendData) ? dividendData : (dividendData.dividends || dividendData.data || [])
+            const dividends = dividendData.data || []
+            
+            // Minimum date filter: only fetch dividends from 2026-01-01 onwards
+            const MIN_DATE = '2026-01-01'
             
             for (const div of dividends) {
-              const exDate = div.ex_date || div.exDate || div.ex_dividend_date
-              const payDate = div.pay_date || div.payDate || div.payment_date
-              const amount = div.amount || div.dividend || div.cash_amount
+              const exDate = div.ex_dividend_date
+              const payDate = div.payment_date
+              const recordDate = div.record_date
+              const declaredDate = div.declaration_date
+              const amount = parseFloat(div.amount)
               
               if (!exDate || !amount) {
+                continue
+              }
+              
+              // Filter: only include dividends from 2026-01-01 onwards
+              if (exDate < MIN_DATE) {
                 continue
               }
               
@@ -9109,14 +9118,13 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
                 await env.DB.prepare(`
                   UPDATE dividend_repository
                   SET amount = ?, pay_date = ?, record_date = ?, declared_date = ?,
-                      frequency = ?, fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                      frequency = 'QUARTERLY', fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
                   WHERE id = ?
                 `).bind(
                   amount,
                   payDate,
-                  div.record_date || div.recordDate,
-                  div.declared_date || div.declaredDate,
-                  div.frequency || div.payment_frequency || 'QUARTERLY',
+                  recordDate,
+                  declaredDate,
                   (existing as any).id
                 ).run()
               } else {
@@ -9125,15 +9133,14 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
                   INSERT INTO dividend_repository (
                     ticker, ex_date, pay_date, record_date, declared_date,
                     amount, frequency, status, api_source
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'rapidapi_dividend_tracker')
+                  ) VALUES (?, ?, ?, ?, ?, ?, 'QUARTERLY', 'active', 'alpha_vantage')
                 `).bind(
                   holding.ticker,
                   exDate,
                   payDate,
-                  div.record_date || div.recordDate,
-                  div.declared_date || div.declaredDate,
-                  amount,
-                  div.frequency || div.payment_frequency || 'QUARTERLY'
+                  recordDate,
+                  declaredDate,
+                  amount
                 ).run()
               }
             }
@@ -9170,7 +9177,7 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
         await env.DB.prepare(`
           UPDATE api_configurations
           SET last_used = CURRENT_TIMESTAMP
-          WHERE user_id = ? AND api_name = 'rapidapi_dividend_tracker'
+          WHERE user_id = ? AND api_name = 'alpha_vantage'
         `).bind(userId).run()
         
         console.log(`Completed dividend fetch for user ${userId}: ${totalDividends} dividends, ${apiCalls} API calls`)
