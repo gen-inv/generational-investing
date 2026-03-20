@@ -5475,7 +5475,7 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
           debugInfo.push(`${holding.ticker}: Canadian stock with 0 results, trying EODHD fallback...`)
           
           try {
-            const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2026-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
+            const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2000-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
               method: 'GET'
             })
             
@@ -5641,9 +5641,9 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
           }
         }
         
-        // Delay to respect Massive API rate limits (5 calls/minute = 12.1 seconds between calls)
-        debugInfo.push(`${holding.ticker}: Waiting 12.1s before next ticker...`)
-        await new Promise(resolve => setTimeout(resolve, 12100))
+        // Delay to respect Massive API rate limits (5 calls/minute = 12.5 seconds between calls for extra buffer)
+        debugInfo.push(`${holding.ticker}: Waiting 12.5s before next ticker...`)
+        await new Promise(resolve => setTimeout(resolve, 12500))
         
       } catch (error) {
         console.error(`Error processing ${holding.ticker}:`, error)
@@ -7260,7 +7260,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                             </div>
                                         </div>
                                         <p class="text-xs text-gray-600 mt-3">
-                                            <i class="fas fa-clock mr-1"></i><strong>Processing Time:</strong> ~4-5 minutes for full portfolio (12.1 second delay between tickers to respect rate limits)
+                                            <i class="fas fa-clock mr-1"></i><strong>Processing Time:</strong> ~4-5 minutes for full portfolio (12.5 second delay between tickers to respect rate limits)
                                         </p>
                                         <p class="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded px-2 py-1">
                                             <i class="fas fa-exclamation-triangle mr-1"></i><strong>Important:</strong> Do not trigger multiple fetches in quick succession. If you receive rate limit errors (HTTP 429), wait at least 1 minute before retrying.
@@ -9227,7 +9227,7 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
               console.log(`${holding.ticker}: Canadian stock with 0 results, trying EODHD fallback...`)
               
               try {
-                const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2026-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
+                const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2000-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
                   method: 'GET'
                 })
                 
@@ -9364,8 +9364,8 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
               }
             }
             
-            // Rate limiting: 12.1s delay for Massive API (5 calls/minute)
-            await new Promise(resolve => setTimeout(resolve, 12100))
+            // Rate limiting: 12.5s delay for Massive API (5 calls/minute with extra buffer)
+            await new Promise(resolve => setTimeout(resolve, 12500))
             
           } catch (error) {
             console.error(`Error processing ${holding.ticker}:`, error)
