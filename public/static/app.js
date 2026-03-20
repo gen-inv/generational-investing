@@ -2887,6 +2887,15 @@ async function showStockDetails(id) {
         const coveredCalls = coveredCallHistory.data || []
         const purchaseHistoryData = purchaseHistory.data || []
         
+        console.log('=== DIVIDEND DEBUG ===')
+        console.log('Stock ID:', id)
+        console.log('Stock ticker:', stock.ticker)
+        console.log('Recorded dividends count:', dividends.length)
+        console.log('Missing dividends response:', missingDividendsResponse)
+        console.log('Missing dividends count:', missingDividends.length)
+        console.log('Missing dividends data:', missingDividends)
+        console.log('========================')
+        
         const avgPrice = stock.avg_price || stock.price
         const costBasis = stock.cost_basis || stock.price
         const adjustments = stock.total_adjustments || 0

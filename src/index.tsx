@@ -2374,9 +2374,19 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
       return c.json({ error: 'Holding not found' }, 404)
     }
     
+    console.log('[DEBUG] Missing dividends request:', {
+      holdingId,
+      ticker: holding.ticker,
+      accountType: holding.account_type,
+      openedDate: holding.opened_date,
+      closedDate: holding.closed_date
+    })
+    
     // Determine date range for dividend matching
     const startDate = holding.opened_date
     const endDate = holding.closed_date || new Date().toISOString().split('T')[0]
+    
+    console.log('[DEBUG] Date range for dividends:', { startDate, endDate })
     
     // Get all dividends from repository for this ticker in date range
     const repositoryDividends = await DB.prepare(`
@@ -2388,11 +2398,15 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
       ORDER BY ex_date DESC
     `).bind(holding.ticker, startDate, endDate).all()
     
+    console.log('[DEBUG] Repository dividends found:', repositoryDividends.results?.length || 0)
+    
     // Get already recorded dividends (by ex_date to match)
     const recordedDividends = await DB.prepare(`
       SELECT notes FROM cost_basis_adjustments
       WHERE holding_id = ? AND adjustment_type = 'DIVIDEND'
     `).bind(holdingId).all()
+    
+    console.log('[DEBUG] Already recorded dividends:', recordedDividends.results?.length || 0)
     
     // Extract ex_dates from recorded dividends (stored in notes as "Ex-date: YYYY-MM-DD")
     const recordedExDates = new Set(
@@ -2406,10 +2420,10 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
     
     // Get all stock transactions to calculate shares held on each ex_date
     const transactions = await DB.prepare(`
-      SELECT trade_date, trade_type, quantity
+      SELECT transaction_date, transaction_type, shares
       FROM stock_transactions
       WHERE holding_id = ?
-      ORDER BY trade_date ASC
+      ORDER BY transaction_date ASC
     `).bind(holdingId).all()
     
     // Calculate shares held on a given date
@@ -2417,11 +2431,11 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
       let sharesHeld = 0
       for (const tx of (transactions.results || [])) {
         const txData = tx as any
-        if (txData.trade_date <= targetDate) {
-          if (txData.trade_type === 'BUY') {
-            sharesHeld += txData.quantity
-          } else if (txData.trade_type === 'SELL') {
-            sharesHeld -= txData.quantity
+        if (txData.transaction_date <= targetDate) {
+          if (txData.transaction_type === 'BUY') {
+            sharesHeld += txData.shares
+          } else if (txData.transaction_type === 'SELL') {
+            sharesHeld -= txData.shares
           }
         }
       }
@@ -2469,6 +2483,9 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
         account_type: holding.account_type
       })
     }
+    
+    console.log('[DEBUG] Missing dividends to return:', missingDividends.length)
+    console.log('[DEBUG] Missing dividends detail:', missingDividends)
     
     return c.json(missingDividends)
   } catch (error) {
