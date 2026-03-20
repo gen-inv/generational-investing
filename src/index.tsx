@@ -7453,18 +7453,18 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                     </div>
                     
                     <!-- Edit Dividend Modal -->
-                    <div id="edit-dividend-modal" class="modal hidden">
-                        <div class="modal-content max-w-2xl">
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="text-xl font-bold text-gray-800">
-                                    <i class="fas fa-edit text-brand-teal mr-2"></i>Edit Dividend Entry
+                    <div id="edit-dividend-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+                        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                            <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                                <h3 class="text-2xl font-bold text-brand-teal">
+                                    <i class="fas fa-edit mr-2"></i>Edit Dividend Entry
                                 </h3>
                                 <button onclick="closeEditDividendModal()" class="text-gray-500 hover:text-gray-700">
-                                    <i class="fas fa-times text-xl"></i>
+                                    <i class="fas fa-times text-2xl"></i>
                                 </button>
                             </div>
                             
-                            <div class="space-y-4">
+                            <div class="p-6 space-y-4">
                                 <!-- Ticker (read-only) -->
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-2">Ticker</label>
