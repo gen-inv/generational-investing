@@ -7220,12 +7220,6 @@ function formatDate(dateStr) {
 }
 
 // Format currency helper
-function formatCurrency(value) {
-    if (value === null || value === undefined) return '-'
-    const absValue = Math.abs(value)
-    return '$' + absValue.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-}
-
 // Global chart instance
 let plTrendChart = null
 
@@ -7674,12 +7668,6 @@ function calculateWeeklyPL(allTrades) {
 }
 
 // Helper function to format date as MMM DD
-function formatDate(dateStr) {
-    const date = new Date(dateStr)
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    return `${months[date.getMonth()]} ${date.getDate()}`
-}
-
 // Load day of week statistics
 async function loadDayOfWeekStats() {
     try {
