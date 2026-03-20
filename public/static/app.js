@@ -2871,16 +2871,19 @@ async function showStockDetails(id) {
         
         // Fetch dividend history, covered call history, and purchase history for this position
         const dividendHistoryPromise = api.get(`/api/stocks/${id}/dividends`).catch(() => ({ data: [] }))
+        const missingDividendsPromise = api.get(`/api/stocks/${id}/missing-dividends`).catch(() => ({ data: [] }))
         const coveredCallHistoryPromise = api.get(`/api/stocks/${id}/covered-calls`).catch(() => ({ data: [] }))
         const purchaseHistoryPromise = api.get(`/api/stocks/${id}/purchase-history`).catch(() => ({ data: [] }))
         
-        const [dividendHistory, coveredCallHistory, purchaseHistory] = await Promise.all([
+        const [dividendHistory, missingDividendsResponse, coveredCallHistory, purchaseHistory] = await Promise.all([
             dividendHistoryPromise,
+            missingDividendsPromise,
             coveredCallHistoryPromise,
             purchaseHistoryPromise
         ])
         
         const dividends = dividendHistory.data || []
+        const missingDividends = missingDividendsResponse.data || []
         const coveredCalls = coveredCallHistory.data || []
         const purchaseHistoryData = purchaseHistory.data || []
         
@@ -3144,6 +3147,82 @@ async function showStockDetails(id) {
                                 <i class="fas fa-dollar-sign text-brand-gold mr-2"></i>
                                 Dividend History
                             </h4>
+                            
+                            <!-- Missing Dividends from Repository -->
+                            ${missingDividends.length > 0 ? `
+                                <div class="mb-4 bg-amber-50 border-2 border-amber-300 rounded-lg p-4">
+                                    <div class="flex items-center justify-between mb-3">
+                                        <h5 class="text-md font-semibold text-amber-900 flex items-center">
+                                            <i class="fas fa-exclamation-triangle text-amber-600 mr-2"></i>
+                                            Missing Dividends from Repository
+                                        </h5>
+                                        <span class="text-xs bg-amber-200 text-amber-900 px-2 py-1 rounded font-semibold">
+                                            ${missingDividends.length} found
+                                        </span>
+                                    </div>
+                                    <p class="text-sm text-amber-800 mb-3">
+                                        The following dividends were found in the dividend repository but not recorded for this position. 
+                                        Click ADD to record them automatically.
+                                    </p>
+                                    <div class="overflow-x-auto">
+                                        <table class="w-full text-sm bg-white rounded border border-amber-200">
+                                            <thead class="bg-amber-100">
+                                                <tr>
+                                                    <th class="px-4 py-2 text-left">Ex-Date</th>
+                                                    <th class="px-4 py-2 text-left">Pay Date</th>
+                                                    <th class="px-4 py-2 text-right">Per Share</th>
+                                                    <th class="px-4 py-2 text-center">Shares</th>
+                                                    <th class="px-4 py-2 text-right">Total Amount</th>
+                                                    <th class="px-4 py-2 text-left">Frequency</th>
+                                                    <th class="px-4 py-2 text-center">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-amber-100">
+                                                ${missingDividends.map(div => {
+                                                    const frequencyText = div.frequency === 52 ? 'Weekly' : 
+                                                                         div.frequency === 12 ? 'Monthly' : 
+                                                                         div.frequency === 4 ? 'Quarterly' : 
+                                                                         div.frequency === 2 ? 'Semi-Annual' : 
+                                                                         div.frequency === 1 ? 'Annual' : 
+                                                                         div.frequency ? `${div.frequency}/year` : 'Unknown'
+                                                    return `
+                                                        <tr class="hover:bg-amber-50" id="missing-div-${div.id}">
+                                                            <td class="px-4 py-2 font-semibold">${div.ex_date}</td>
+                                                            <td class="px-4 py-2">${div.pay_date || 'N/A'}</td>
+                                                            <td class="px-4 py-2 text-right">$${div.amount_per_share.toFixed(4)}</td>
+                                                            <td class="px-4 py-2 text-center font-semibold">${div.shares_held}</td>
+                                                            <td class="px-4 py-2 text-right font-semibold text-green-700">$${div.total_amount.toFixed(4)}</td>
+                                                            <td class="px-4 py-2 text-gray-600">${frequencyText}</td>
+                                                            <td class="px-4 py-2 text-center">
+                                                                <button 
+                                                                    onclick="addMissingDividend(${id}, ${JSON.stringify(div).replace(/"/g, '&quot;')})" 
+                                                                    class="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs font-semibold mr-1"
+                                                                    title="Add this dividend">
+                                                                    <i class="fas fa-plus mr-1"></i>ADD
+                                                                </button>
+                                                                <button 
+                                                                    onclick="editMissingDividend(${id}, ${JSON.stringify(div).replace(/"/g, '&quot;')})" 
+                                                                    class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-xs font-semibold"
+                                                                    title="Edit before adding">
+                                                                    <i class="fas fa-edit mr-1"></i>EDIT
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    `
+                                                }).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    ${missingDividends.some(d => d.withholding_note) ? `
+                                        <p class="text-xs text-amber-700 mt-3 flex items-start">
+                                            <i class="fas fa-info-circle mr-1 mt-0.5"></i>
+                                            <span>Amounts for CASH and TFSA accounts are shown after 20% withholding tax deduction.</span>
+                                        </p>
+                                    ` : ''}
+                                </div>
+                            ` : ''}
+                            
+                            <!-- Recorded Dividends -->
                             ${dividends.length > 0 ? `
                                 <div class="overflow-x-auto">
                                     <table class="w-full text-sm">
@@ -3170,13 +3249,15 @@ async function showStockDetails(id) {
                                     </table>
                                 </div>
                             ` : `
-                                <div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-                                    <i class="fas fa-inbox text-3xl mb-2"></i>
-                                    <p>No dividend payments recorded yet</p>
-                                    <button onclick="recordDividend(${id})" class="mt-3 text-brand-teal hover:underline">
-                                        <i class="fas fa-plus mr-1"></i>Record Dividend
-                                    </button>
-                                </div>
+                                ${missingDividends.length === 0 ? `
+                                    <div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                                        <i class="fas fa-inbox text-3xl mb-2"></i>
+                                        <p>No dividend payments recorded yet</p>
+                                        <button onclick="recordDividend(${id})" class="mt-3 text-brand-teal hover:underline">
+                                            <i class="fas fa-plus mr-1"></i>Record Dividend
+                                        </button>
+                                    </div>
+                                ` : ''}
                             `}
                         </div>
                     </div>
@@ -3188,6 +3269,185 @@ async function showStockDetails(id) {
     } catch (error) {
         console.error('Error loading stock details:', error)
         alert('Failed to load stock details')
+    }
+}
+
+// ============================================================================
+// MISSING DIVIDEND FUNCTIONS
+// ============================================================================
+
+// Add a missing dividend immediately
+async function addMissingDividend(holdingId, dividend) {
+    try {
+        const confirmed = confirm(
+            `Add dividend for ${dividend.ticker}?\n\n` +
+            `Ex-Date: ${dividend.ex_date}\n` +
+            `Pay Date: ${dividend.pay_date || 'N/A'}\n` +
+            `Shares: ${dividend.shares_held}\n` +
+            `Amount: $${dividend.total_amount.toFixed(4)}${dividend.withholding_note}`
+        )
+        
+        if (!confirmed) return
+        
+        const payload = {
+            dividend_repo_id: dividend.id,
+            ex_date: dividend.ex_date,
+            pay_date: dividend.pay_date,
+            total_amount: dividend.total_amount,
+            withholding_note: dividend.withholding_note
+        }
+        
+        await api.post(`/api/stocks/${holdingId}/add-missing-dividend`, payload)
+        
+        showNotification('Dividend added successfully!', 'success')
+        
+        // Remove the row from missing dividends table
+        const row = document.getElementById(`missing-div-${dividend.id}`)
+        if (row) {
+            row.style.backgroundColor = '#d4edda'
+            setTimeout(() => {
+                row.remove()
+                // Check if there are no more missing dividends
+                const tbody = row.closest('tbody')
+                if (tbody && tbody.children.length === 0) {
+                    // Reload the modal to update the view
+                    const modal = document.getElementById('stock-details-modal')
+                    if (modal) modal.remove()
+                    showStockDetails(holdingId)
+                }
+            }, 500)
+        }
+    } catch (error) {
+        console.error('Error adding missing dividend:', error)
+        showNotification(error.response?.data?.error || 'Failed to add dividend', 'error')
+    }
+}
+
+// Edit a missing dividend before adding
+async function editMissingDividend(holdingId, dividend) {
+    // Close the stock details modal
+    const detailsModal = document.getElementById('stock-details-modal')
+    if (detailsModal) detailsModal.remove()
+    
+    // Create edit modal
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+    modal.id = 'edit-missing-dividend-modal'
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 border-b border-blue-800 px-6 py-4 flex justify-between items-center">
+                <h3 class="text-2xl font-bold text-white">
+                    <i class="fas fa-edit mr-2"></i>Edit Dividend Before Adding
+                </h3>
+                <button onclick="this.closest('.fixed').remove(); showStockDetails(${holdingId})" class="text-white hover:text-blue-200">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 space-y-4">
+                <!-- Ticker (read-only) -->
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 class="font-semibold text-blue-900 mb-2">Stock Information</h4>
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                            <span class="text-gray-600">Ticker:</span>
+                            <span class="font-semibold text-gray-900 ml-2">${dividend.ticker}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Shares Held:</span>
+                            <span class="font-semibold text-gray-900 ml-2">${dividend.shares_held}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Per Share:</span>
+                            <span class="font-semibold text-gray-900 ml-2">$${dividend.amount_per_share.toFixed(4)}</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-600">Account:</span>
+                            <span class="font-semibold text-gray-900 ml-2">${dividend.account_type}</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Ex-Date -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        Ex-Dividend Date <span class="text-red-500">*</span>
+                    </label>
+                    <input type="date" id="edit-missing-ex-date" value="${dividend.ex_date}" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" />
+                    <p class="text-xs text-gray-500 mt-1">Date when stock trades without dividend</p>
+                </div>
+                
+                <!-- Pay Date -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Pay Date</label>
+                    <input type="date" id="edit-missing-pay-date" value="${dividend.pay_date || ''}" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" />
+                    <p class="text-xs text-gray-500 mt-1">Date when dividend is paid (optional)</p>
+                </div>
+                
+                <!-- Total Amount -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        Total Amount <span class="text-red-500">*</span>
+                    </label>
+                    <input type="number" id="edit-missing-total-amount" value="${dividend.total_amount.toFixed(4)}" step="0.0001" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600" />
+                    <p class="text-xs text-gray-500 mt-1">
+                        Calculated: ${dividend.shares_held} shares × $${dividend.amount_per_share.toFixed(4)}${dividend.withholding_note ? dividend.withholding_note : ''}
+                    </p>
+                </div>
+                
+                <!-- Buttons -->
+                <div class="flex gap-3 justify-end pt-4 border-t">
+                    <button onclick="this.closest('.fixed').remove(); showStockDetails(${holdingId})" 
+                            class="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-400">
+                        <i class="fas fa-times mr-2"></i>Cancel
+                    </button>
+                    <button onclick="saveEditedMissingDividend(${holdingId}, ${dividend.id}, '${dividend.withholding_note}')" 
+                            class="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700">
+                        <i class="fas fa-save mr-2"></i>Save & Add
+                    </button>
+                </div>
+            </div>
+        </div>
+    `
+    
+    document.body.appendChild(modal)
+}
+
+// Save edited missing dividend
+async function saveEditedMissingDividend(holdingId, dividendId, withholdingNote) {
+    try {
+        const exDate = document.getElementById('edit-missing-ex-date').value
+        const payDate = document.getElementById('edit-missing-pay-date').value
+        const totalAmount = parseFloat(document.getElementById('edit-missing-total-amount').value)
+        
+        if (!exDate || !totalAmount) {
+            showNotification('Ex-date and total amount are required', 'error')
+            return
+        }
+        
+        const payload = {
+            dividend_repo_id: dividendId,
+            ex_date: exDate,
+            pay_date: payDate || null,
+            total_amount: totalAmount,
+            withholding_note: withholdingNote
+        }
+        
+        await api.post(`/api/stocks/${holdingId}/add-missing-dividend`, payload)
+        
+        showNotification('Dividend added successfully!', 'success')
+        
+        // Close modal and reopen stock details
+        const modal = document.getElementById('edit-missing-dividend-modal')
+        if (modal) modal.remove()
+        
+        showStockDetails(holdingId)
+    } catch (error) {
+        console.error('Error saving edited dividend:', error)
+        showNotification(error.response?.data?.error || 'Failed to add dividend', 'error')
     }
 }
 

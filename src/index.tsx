@@ -2352,6 +2352,131 @@ app.get('/api/stocks/:id/dividends', authMiddleware, async (c) => {
   }
 })
 
+// Get missing dividends from dividend repository
+app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const holdingId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Get holding details including ticker, account, opened/closed dates
+    const holding = await DB.prepare(`
+      SELECT 
+        sh.id, sh.user_id, sh.opened_date, sh.closed_date,
+        c.ticker, a.account_type
+      FROM stock_holdings sh
+      JOIN companies c ON sh.company_id = c.id
+      JOIN accounts a ON sh.account_id = a.id
+      WHERE sh.id = ? AND sh.user_id = ?
+    `).bind(holdingId, userId).first() as any
+    
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
+    }
+    
+    // Determine date range for dividend matching
+    const startDate = holding.opened_date
+    const endDate = holding.closed_date || new Date().toISOString().split('T')[0]
+    
+    // Get all dividends from repository for this ticker in date range
+    const repositoryDividends = await DB.prepare(`
+      SELECT * FROM dividend_repository
+      WHERE ticker = ? 
+        AND ex_date >= ? 
+        AND ex_date <= ?
+        AND status = 'active'
+      ORDER BY ex_date DESC
+    `).bind(holding.ticker, startDate, endDate).all()
+    
+    // Get already recorded dividends (by ex_date to match)
+    const recordedDividends = await DB.prepare(`
+      SELECT notes FROM cost_basis_adjustments
+      WHERE holding_id = ? AND adjustment_type = 'DIVIDEND'
+    `).bind(holdingId).all()
+    
+    // Extract ex_dates from recorded dividends (stored in notes as "Ex-date: YYYY-MM-DD")
+    const recordedExDates = new Set(
+      (recordedDividends.results || [])
+        .map((d: any) => {
+          const match = d.notes?.match(/Ex-date: (\d{4}-\d{2}-\d{2})/)
+          return match ? match[1] : null
+        })
+        .filter((d: any) => d !== null)
+    )
+    
+    // Get all stock transactions to calculate shares held on each ex_date
+    const transactions = await DB.prepare(`
+      SELECT trade_date, trade_type, quantity
+      FROM stock_transactions
+      WHERE holding_id = ?
+      ORDER BY trade_date ASC
+    `).bind(holdingId).all()
+    
+    // Calculate shares held on a given date
+    const getSharesHeldOnDate = (targetDate: string) => {
+      let sharesHeld = 0
+      for (const tx of (transactions.results || [])) {
+        const txData = tx as any
+        if (txData.trade_date <= targetDate) {
+          if (txData.trade_type === 'BUY') {
+            sharesHeld += txData.quantity
+          } else if (txData.trade_type === 'SELL') {
+            sharesHeld -= txData.quantity
+          }
+        }
+      }
+      return sharesHeld
+    }
+    
+    // Filter out already recorded dividends and calculate missing ones
+    const missingDividends = []
+    for (const div of (repositoryDividends.results || [])) {
+      const dividend = div as any
+      
+      // Skip if already recorded
+      if (recordedExDates.has(dividend.ex_date)) {
+        continue
+      }
+      
+      // Calculate shares held on ex_date
+      const sharesHeld = getSharesHeldOnDate(dividend.ex_date)
+      
+      // Skip if no shares held on that date
+      if (sharesHeld <= 0) {
+        continue
+      }
+      
+      // Calculate total amount
+      let totalAmount = dividend.amount * sharesHeld
+      
+      // Apply withholding tax for CASH and TFSA accounts
+      let withholdingNote = ''
+      if (holding.account_type === 'Cash' || holding.account_type === 'TFSA') {
+        totalAmount = totalAmount * 0.8 // Reduce by 20%
+        withholdingNote = ' (20% withholding tax applied)'
+      }
+      
+      missingDividends.push({
+        id: dividend.id,
+        ticker: dividend.ticker,
+        ex_date: dividend.ex_date,
+        pay_date: dividend.pay_date,
+        amount_per_share: dividend.amount,
+        shares_held: sharesHeld,
+        total_amount: totalAmount,
+        frequency: dividend.frequency,
+        withholding_note: withholdingNote,
+        account_type: holding.account_type
+      })
+    }
+    
+    return c.json(missingDividends)
+  } catch (error) {
+    console.error('Get missing dividends error:', error)
+    return c.json({ error: 'Failed to fetch missing dividends' }, 500)
+  }
+})
+
 // Record a dividend payment
 app.post('/api/stocks/:id/dividends', authMiddleware, async (c) => {
   try {
@@ -2394,6 +2519,76 @@ app.post('/api/stocks/:id/dividends', authMiddleware, async (c) => {
   } catch (error) {
     console.error('Record dividend error:', error)
     return c.json({ error: 'Failed to record dividend' }, 500)
+  }
+})
+
+// Add a missing dividend from repository
+app.post('/api/stocks/:id/add-missing-dividend', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const holdingId = c.req.param('id')
+    const data = await c.req.json()
+    const { DB } = c.env
+    
+    // Validation
+    if (!data.dividend_repo_id || !data.total_amount || !data.ex_date) {
+      return c.json({ error: 'Missing required fields' }, 400)
+    }
+    
+    // Verify holding belongs to user
+    const holding = await DB.prepare(`
+      SELECT sh.id, c.ticker 
+      FROM stock_holdings sh
+      JOIN companies c ON sh.company_id = c.id
+      WHERE sh.id = ? AND sh.user_id = ?
+    `).bind(holdingId, userId).first() as any
+    
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
+    }
+    
+    // Get dividend details from repository
+    const dividend = await DB.prepare(`
+      SELECT * FROM dividend_repository WHERE id = ?
+    `).bind(data.dividend_repo_id).first() as any
+    
+    if (!dividend) {
+      return c.json({ error: 'Dividend not found in repository' }, 404)
+    }
+    
+    // Verify ticker matches
+    if (dividend.ticker !== holding.ticker) {
+      return c.json({ error: 'Dividend ticker does not match holding' }, 400)
+    }
+    
+    // Build notes with ex_date for tracking
+    const payDateNote = data.pay_date ? `Pay date: ${data.pay_date}` : ''
+    const withholdingNote = data.withholding_note || ''
+    const notes = `Ex-date: ${data.ex_date}. ${payDateNote}${withholdingNote ? ' ' + withholdingNote : ''}`
+    
+    // Use pay_date if provided, otherwise use ex_date
+    const adjustmentDate = data.pay_date || data.ex_date
+    
+    // Insert dividend adjustment
+    const result = await DB.prepare(`
+      INSERT INTO cost_basis_adjustments (
+        user_id, holding_id, adjustment_type, amount, adjustment_date, notes
+      ) VALUES (?, ?, 'DIVIDEND', ?, ?, ?)
+    `).bind(
+      userId,
+      holdingId,
+      data.total_amount,
+      adjustmentDate,
+      notes
+    ).run()
+    
+    return c.json({
+      id: result.meta.last_row_id,
+      message: 'Dividend added successfully'
+    })
+  } catch (error) {
+    console.error('Add missing dividend error:', error)
+    return c.json({ error: 'Failed to add dividend' }, 500)
   }
 })
 
