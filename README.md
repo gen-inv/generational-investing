@@ -644,7 +644,13 @@ March 20, 2026
 ## Project Status
 - ✅ v1.0 Complete - Core features implemented and tested
 - ✅ v1.2 Complete - Reports Dashboard with P/L Summary and Strategy Analysis
-- ✅ v1.3 Complete - Dividend Repository with Dual-API Integration ✨ NEW
+- ✅ v1.4 Complete - Dividend Repository Edit Feature ✨ NEW
+  - **Edit Modal**: Comprehensive dividend entry editing with validation
+  - **Editable Fields**: Ex-date, pay date, record date, declared date, amount, frequency
+  - **API Endpoints**: GET and PUT /api/dividend-repository/:id
+  - **Use Cases**: Fix missing pay dates, correct amounts, adjust frequency
+  - **See**: DIVIDEND_EDIT_FEATURE.md
+- ✅ v1.3 Complete - Dividend Repository with Dual-API Integration
   - **Polygon.io (Massive)**: Primary API for US stocks (250 requests/day)
   - **EODHD**: Automatic fallback for Canadian stocks (.TO, .V)
   - **Coverage**: 100% portfolio (14 unique tickers: 13 US + 1 Canadian)
