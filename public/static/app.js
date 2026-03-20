@@ -3321,22 +3321,18 @@ async function addMissingDividend(holdingId, dividend) {
         
         showNotification('Dividend added successfully!', 'success')
         
-        // Remove the row from missing dividends table
+        // Flash the row green before reloading
         const row = document.getElementById(`missing-div-${dividend.id}`)
         if (row) {
             row.style.backgroundColor = '#d4edda'
-            setTimeout(() => {
-                row.remove()
-                // Check if there are no more missing dividends
-                const tbody = row.closest('tbody')
-                if (tbody && tbody.children.length === 0) {
-                    // Reload the modal to update the view
-                    const modal = document.getElementById('stock-details-modal')
-                    if (modal) modal.remove()
-                    showStockDetails(holdingId)
-                }
-            }, 500)
         }
+        
+        // Reload the entire modal after a brief delay to show the update
+        setTimeout(() => {
+            const modal = document.getElementById('stock-details-modal')
+            if (modal) modal.remove()
+            showStockDetails(holdingId)
+        }, 500)
     } catch (error) {
         console.error('Error adding missing dividend:', error)
         showNotification(error.response?.data?.error || 'Failed to add dividend', 'error')
