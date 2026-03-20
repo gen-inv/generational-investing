@@ -2707,10 +2707,13 @@ app.post('/api/stocks/:id/add-missing-dividend', authMiddleware, async (c) => {
       return c.json({ error: 'Dividend ticker does not match holding' }, 400)
     }
     
-    // Build notes with ex_date for tracking
-    const payDateNote = data.pay_date ? `Pay date: ${data.pay_date}` : ''
-    const withholdingNote = data.withholding_note || ''
-    const notes = `Ex-date: ${data.ex_date}. ${payDateNote}${withholdingNote ? ' ' + withholdingNote : ''}`
+    // Build notes with ex_date for tracking (stored for matching logic)
+    // Format today's date as MM/DD/YYYY
+    const today = new Date()
+    const addedDate = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`
+    
+    // Simple note for display, but include ex_date for duplicate detection
+    const notes = `Added ${addedDate}. Ex-date: ${data.ex_date}`
     
     // Use pay_date if provided, otherwise use ex_date
     const adjustmentDate = data.pay_date || data.ex_date

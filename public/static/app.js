@@ -2864,6 +2864,18 @@ async function closeStock(id) {
     }
 }
 
+// Close stock details modal and refresh stock trades view
+function closeStockDetailsModal() {
+    const modal = document.getElementById('stock-details-modal')
+    if (modal) modal.remove()
+    
+    // Refresh stock trades view to update CC/DIV badges
+    const stocksSection = document.getElementById('stocks-section')
+    if (stocksSection && !stocksSection.classList.contains('hidden')) {
+        loadStocks()
+    }
+}
+
 async function showStockDetails(id) {
     try {
         const response = await api.get('/api/stocks')
@@ -2921,7 +2933,7 @@ async function showStockDetails(id) {
                     <h3 class="text-2xl font-bold text-white">
                         <i class="fas fa-chart-line mr-2"></i>${stock.ticker} - Position Management
                     </h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-teal-200">
+                    <button onclick="closeStockDetailsModal()" class="text-white hover:text-teal-200">
                         <i class="fas fa-times text-2xl"></i>
                     </button>
                 </div>
@@ -3286,6 +3298,13 @@ async function showStockDetails(id) {
         `
         
         document.body.appendChild(modal)
+        
+        // Close modal when clicking the backdrop (not the content)
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeStockDetailsModal()
+            }
+        })
     } catch (error) {
         console.error('Error loading stock details:', error)
         alert('Failed to load stock details')
