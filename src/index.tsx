@@ -5745,6 +5745,86 @@ app.get('/api/dividend-repository', authMiddleware, async (c) => {
   }
 })
 
+// Get single dividend by ID
+app.get('/api/dividend-repository/:id', authMiddleware, async (c) => {
+  try {
+    const { DB } = c.env
+    const dividendId = c.req.param('id')
+    
+    const dividend = await DB.prepare(`
+      SELECT * FROM dividend_repository
+      WHERE id = ?
+    `).bind(dividendId).first() as any
+    
+    if (!dividend) {
+      return c.json({ error: 'Dividend not found' }, 404)
+    }
+    
+    return c.json(dividend)
+  } catch (error) {
+    console.error('Error fetching dividend:', error)
+    return c.json({ error: 'Failed to fetch dividend' }, 500)
+  }
+})
+
+// Update dividend by ID
+app.put('/api/dividend-repository/:id', authMiddleware, async (c) => {
+  try {
+    const { DB } = c.env
+    const dividendId = c.req.param('id')
+    const body = await c.req.json()
+    
+    // Validate required fields
+    if (!body.ex_date || !body.amount) {
+      return c.json({ error: 'ex_date and amount are required' }, 400)
+    }
+    
+    // Check if dividend exists
+    const existing = await DB.prepare(`
+      SELECT * FROM dividend_repository WHERE id = ?
+    `).bind(dividendId).first() as any
+    
+    if (!existing) {
+      return c.json({ error: 'Dividend not found' }, 404)
+    }
+    
+    // Update dividend
+    await DB.prepare(`
+      UPDATE dividend_repository
+      SET 
+        ex_date = ?,
+        pay_date = ?,
+        record_date = ?,
+        declared_date = ?,
+        amount = ?,
+        frequency = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(
+      body.ex_date,
+      body.pay_date || null,
+      body.record_date || null,
+      body.declared_date || null,
+      body.amount,
+      body.frequency || null,
+      dividendId
+    ).run()
+    
+    // Fetch updated record
+    const updated = await DB.prepare(`
+      SELECT * FROM dividend_repository WHERE id = ?
+    `).bind(dividendId).first() as any
+    
+    return c.json({ 
+      success: true, 
+      dividend: updated 
+    })
+  } catch (error) {
+    console.error('Error updating dividend:', error)
+    return c.json({ error: 'Failed to update dividend' }, 500)
+  }
+})
+
 // Apply dividend to cost_basis_adjustments
 app.post('/api/dividend-repository/:id/apply', authMiddleware, async (c) => {
   try {
@@ -7230,63 +7310,71 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                         Uses a dual-API approach: <strong>Polygon.io (Massive)</strong> for US stocks and <strong>EODHD</strong> as automatic fallback for Canadian stocks (.TO, .V).
                                     </p>
                                     
-                                    <!-- API Information Panel -->
-                                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                                        <h4 class="font-semibold text-gray-900 mb-2">
-                                            <i class="fas fa-info-circle mr-2 text-blue-600"></i>API Coverage & Limitations
-                                        </h4>
-                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                            <div>
-                                                <p class="font-semibold text-gray-900 mb-1">
-                                                    <i class="fas fa-flag-usa mr-1 text-blue-600"></i>Polygon.io (Massive) - Primary
-                                                </p>
-                                                <ul class="text-gray-700 space-y-1 ml-4">
-                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>US stocks (NYSE, NASDAQ, AMEX)</li>
-                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>250 requests/day free tier</li>
-                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>Weekly, monthly, quarterly dividends</li>
-                                                    <li><i class="fas fa-times text-red-600 mr-1"></i>No Canadian stock support</li>
-                                                </ul>
+                                    <!-- API Information Panel (Collapsible) -->
+                                    <details class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                        <summary class="font-semibold text-gray-900 cursor-pointer hover:text-blue-700 flex items-center">
+                                            <i class="fas fa-info-circle mr-2 text-blue-600"></i>
+                                            <span>API Coverage & Limitations</span>
+                                            <i class="fas fa-chevron-down ml-2 text-xs text-blue-600"></i>
+                                        </summary>
+                                        <div class="mt-3">
+                                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                                <div>
+                                                    <p class="font-semibold text-gray-900 mb-1">
+                                                        <i class="fas fa-flag-usa mr-1 text-blue-600"></i>Polygon.io (Massive) - Primary
+                                                    </p>
+                                                    <ul class="text-gray-700 space-y-1 ml-4">
+                                                        <li><i class="fas fa-check text-green-600 mr-1"></i>US stocks (NYSE, NASDAQ, AMEX)</li>
+                                                        <li><i class="fas fa-check text-green-600 mr-1"></i>250 requests/day free tier</li>
+                                                        <li><i class="fas fa-check text-green-600 mr-1"></i>Weekly, monthly, quarterly dividends</li>
+                                                        <li><i class="fas fa-times text-red-600 mr-1"></i>No Canadian stock support</li>
+                                                    </ul>
+                                                </div>
+                                                <div>
+                                                    <p class="font-semibold text-gray-900 mb-1">
+                                                        <i class="fas fa-leaf mr-1 text-green-600"></i>EODHD - Automatic Fallback
+                                                    </p>
+                                                    <ul class="text-gray-700 space-y-1 ml-4">
+                                                        <li><i class="fas fa-check text-green-600 mr-1"></i>Canadian stocks (TSX, TSXV)</li>
+                                                        <li><i class="fas fa-check text-green-600 mr-1"></i>Tickers ending in .TO or .V</li>
+                                                        <li><i class="fas fa-check text-green-600 mr-1"></i>1 year dividend history</li>
+                                                        <li><i class="fas fa-info text-blue-600 mr-1"></i>Activated when Massive returns 0</li>
+                                                    </ul>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <p class="font-semibold text-gray-900 mb-1">
-                                                    <i class="fas fa-leaf mr-1 text-green-600"></i>EODHD - Automatic Fallback
-                                                </p>
-                                                <ul class="text-gray-700 space-y-1 ml-4">
-                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>Canadian stocks (TSX, TSXV)</li>
-                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>Tickers ending in .TO or .V</li>
-                                                    <li><i class="fas fa-check text-green-600 mr-1"></i>1 year dividend history</li>
-                                                    <li><i class="fas fa-info text-blue-600 mr-1"></i>Activated when Massive returns 0</li>
-                                                </ul>
-                                            </div>
+                                            <p class="text-xs text-gray-600 mt-3">
+                                                <i class="fas fa-clock mr-1"></i><strong>Processing Time:</strong> ~4-5 minutes for full portfolio (12.5 second delay between tickers to respect rate limits)
+                                            </p>
+                                            <p class="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                                                <i class="fas fa-exclamation-triangle mr-1"></i><strong>Important:</strong> Do not trigger multiple fetches in quick succession. If you receive rate limit errors (HTTP 429), wait at least 1 minute before retrying.
+                                            </p>
                                         </div>
-                                        <p class="text-xs text-gray-600 mt-3">
-                                            <i class="fas fa-clock mr-1"></i><strong>Processing Time:</strong> ~4-5 minutes for full portfolio (12.5 second delay between tickers to respect rate limits)
-                                        </p>
-                                        <p class="text-xs text-amber-700 mt-2 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                                            <i class="fas fa-exclamation-triangle mr-1"></i><strong>Important:</strong> Do not trigger multiple fetches in quick succession. If you receive rate limit errors (HTTP 429), wait at least 1 minute before retrying.
-                                        </p>
-                                    </div>
+                                    </details>
                                     
-                                    <!-- Fetch Dividends Section -->
-                                    <div class="bg-gradient-to-br from-gold-50 to-white border border-brand-gold rounded-lg p-4 mb-4">
-                                        <h4 class="font-semibold text-gray-900 mb-3">
-                                            <i class="fas fa-download mr-2 text-brand-gold"></i>Fetch Dividends
-                                        </h4>
-                                        <p class="text-sm text-gray-700 mb-3">
-                                            This will check all your stock holdings for dividend payments since January 1, 2026. The system will:
-                                        </p>
-                                        <ul class="text-sm text-gray-700 space-y-1 mb-4 ml-4">
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Try Polygon.io (Massive) first for all tickers</li>
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Automatically fallback to EODHD for Canadian stocks</li>
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Only include dividends from 2026 onwards</li>
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Store results in global dividend repository</li>
-                                            <li><i class="fas fa-check text-green-600 mr-2"></i>Deduplicate tickers to minimize API calls</li>
-                                        </ul>
-                                        <button onclick="fetchDividends()" id="fetch-dividends-btn" class="btn-primary w-full">
-                                            <i class="fas fa-sync mr-2"></i>Fetch Dividends for All Holdings
-                                        </button>
-                                        <div id="fetch-status" class="mt-3 text-sm"></div>
-                                    </div>
+                                    <!-- Fetch Dividends Section (Collapsible) -->
+                                    <details class="bg-gradient-to-br from-gold-50 to-white border border-brand-gold rounded-lg p-4 mb-4">
+                                        <summary class="font-semibold text-gray-900 cursor-pointer hover:text-brand-gold flex items-center">
+                                            <i class="fas fa-download mr-2 text-brand-gold"></i>
+                                            <span>Fetch Dividends</span>
+                                            <i class="fas fa-chevron-down ml-2 text-xs text-brand-gold"></i>
+                                        </summary>
+                                        <div class="mt-3">
+                                            <p class="text-sm text-gray-700 mb-3">
+                                                This will check all your stock holdings for dividend payments since January 1, 2026. The system will:
+                                            </p>
+                                            <ul class="text-sm text-gray-700 space-y-1 mb-4 ml-4">
+                                                <li><i class="fas fa-check text-green-600 mr-2"></i>Try Polygon.io (Massive) first for all tickers</li>
+                                                <li><i class="fas fa-check text-green-600 mr-2"></i>Automatically fallback to EODHD for Canadian stocks</li>
+                                                <li><i class="fas fa-check text-green-600 mr-2"></i>Only include dividends from 2026 onwards</li>
+                                                <li><i class="fas fa-check text-green-600 mr-2"></i>Store results in global dividend repository</li>
+                                                <li><i class="fas fa-check text-green-600 mr-2"></i>Deduplicate tickers to minimize API calls</li>
+                                            </ul>
+                                            <button onclick="fetchDividends()" id="fetch-dividends-btn" class="btn-primary w-full">
+                                                <i class="fas fa-sync mr-2"></i>Fetch Dividends for All Holdings
+                                            </button>
+                                            <div id="fetch-status" class="mt-3 text-sm"></div>
+                                        </div>
+                                    </details>
                                     
                                     <!-- Filter Section -->
                                     <div class="flex gap-4 mb-4">
@@ -7335,11 +7423,12 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                                         <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Pay Date</th>
                                                         <th class="px-4 py-2 text-right text-sm font-semibold text-gray-700">Amount/Share</th>
                                                         <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Frequency</th>
+                                                        <th class="px-4 py-2 text-center text-sm font-semibold text-gray-700">Actions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody id="dividend-repository-table">
                                                     <tr>
-                                                        <td colspan="5" class="px-4 py-8 text-center text-gray-500">
+                                                        <td colspan="6" class="px-4 py-8 text-center text-gray-500">
                                                             <i class="fas fa-coins text-3xl mb-2"></i>
                                                             <p>No dividends found yet. Click "Fetch Dividends" to start.</p>
                                                         </td>
@@ -7360,6 +7449,94 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                     </details>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Edit Dividend Modal -->
+                    <div id="edit-dividend-modal" class="modal hidden">
+                        <div class="modal-content max-w-2xl">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-xl font-bold text-gray-800">
+                                    <i class="fas fa-edit text-brand-teal mr-2"></i>Edit Dividend Entry
+                                </h3>
+                                <button onclick="closeEditDividendModal()" class="text-gray-500 hover:text-gray-700">
+                                    <i class="fas fa-times text-xl"></i>
+                                </button>
+                            </div>
+                            
+                            <div class="space-y-4">
+                                <!-- Ticker (read-only) -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Ticker</label>
+                                    <input type="text" id="edit-dividend-ticker" readonly class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50" />
+                                </div>
+                                
+                                <!-- Ex-Dividend Date -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                        Ex-Dividend Date <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="date" id="edit-dividend-ex-date" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" />
+                                    <p class="text-xs text-gray-500 mt-1">Date when stock trades without dividend</p>
+                                </div>
+                                
+                                <!-- Pay Date -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Pay Date</label>
+                                    <input type="date" id="edit-dividend-pay-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" />
+                                    <p class="text-xs text-gray-500 mt-1">Date when dividend is paid (optional)</p>
+                                </div>
+                                
+                                <!-- Record Date -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Record Date</label>
+                                    <input type="date" id="edit-dividend-record-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" />
+                                    <p class="text-xs text-gray-500 mt-1">Date of record for dividend eligibility (optional)</p>
+                                </div>
+                                
+                                <!-- Declaration Date -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Declaration Date</label>
+                                    <input type="date" id="edit-dividend-declared-date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" />
+                                    <p class="text-xs text-gray-500 mt-1">Date when dividend was declared (optional)</p>
+                                </div>
+                                
+                                <!-- Amount per Share -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                        Amount per Share <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="number" id="edit-dividend-amount" step="0.0001" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal" />
+                                    <p class="text-xs text-gray-500 mt-1">Dividend amount in dollars (e.g., 0.1234)</p>
+                                </div>
+                                
+                                <!-- Frequency -->
+                                <div>
+                                    <label class="block text-sm font-semibold text-gray-700 mb-2">Frequency</label>
+                                    <select id="edit-dividend-frequency" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-teal">
+                                        <option value="52">Weekly (52)</option>
+                                        <option value="12">Monthly (12)</option>
+                                        <option value="4">Quarterly (4)</option>
+                                        <option value="2">Semi-Annual (2)</option>
+                                        <option value="1">Annual (1)</option>
+                                    </select>
+                                    <p class="text-xs text-gray-500 mt-1">Expected number of dividend payments per year</p>
+                                </div>
+                                
+                                <!-- Buttons -->
+                                <div class="flex gap-3 justify-end pt-4 border-t">
+                                    <button onclick="closeEditDividendModal()" class="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-400">
+                                        <i class="fas fa-times mr-2"></i>Cancel
+                                    </button>
+                                    <button onclick="saveEditDividend()" class="px-6 py-2 bg-brand-teal text-white rounded-lg font-semibold hover:bg-teal-700">
+                                        <i class="fas fa-save mr-2"></i>Save Changes
+                                    </button>
+                                </div>
+                                
+                                <input type="hidden" id="edit-dividend-id">
+                            </div>
+                        </div>
+                    </div>
                         </div>
                     </div>
                     </div>

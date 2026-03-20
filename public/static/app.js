@@ -9486,7 +9486,7 @@ async function loadDividendRepository() {
         if (!data.dividends || data.dividends.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">
+                    <td colspan="6" class="px-4 py-8 text-center text-gray-500">
                         <i class="fas fa-coins text-3xl mb-2"></i>
                         <p>No dividends found matching your filters</p>
                     </td>
@@ -9518,6 +9518,11 @@ async function loadDividendRepository() {
                 <td class="px-4 py-3 text-sm">${div.pay_date || 'N/A'}</td>
                 <td class="px-4 py-3 text-right font-mono text-sm">$${parseFloat(div.amount).toFixed(4)}</td>
                 <td class="px-4 py-3 text-sm text-gray-600">${frequencyText}</td>
+                <td class="px-4 py-3 text-center">
+                    <button onclick="openEditDividendModal(${div.id})" class="text-brand-teal hover:text-teal-700" title="Edit dividend">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                </td>
             `
             tbody.appendChild(row)
         })
@@ -9579,6 +9584,88 @@ async function loadDividendFetchLogs() {
         `).join('')
     } catch (error) {
         console.error('Error loading fetch logs:', error)
+    }
+}
+
+async function openEditDividendModal(dividendId) {
+    try {
+        const token = localStorage.getItem('token')
+        if (!token) return
+        
+        // Fetch dividend details
+        const response = await fetch(`/api/dividend-repository/${dividendId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        
+        if (!response.ok) throw new Error('Failed to load dividend details')
+        
+        const dividend = await response.json()
+        
+        // Populate form fields
+        document.getElementById('edit-dividend-id').value = dividend.id
+        document.getElementById('edit-dividend-ticker').value = dividend.ticker
+        document.getElementById('edit-dividend-ex-date').value = dividend.ex_date
+        document.getElementById('edit-dividend-pay-date').value = dividend.pay_date || ''
+        document.getElementById('edit-dividend-record-date').value = dividend.record_date || ''
+        document.getElementById('edit-dividend-declared-date').value = dividend.declared_date || ''
+        document.getElementById('edit-dividend-amount').value = dividend.amount
+        document.getElementById('edit-dividend-frequency').value = dividend.frequency || '12'
+        
+        // Show modal
+        document.getElementById('edit-dividend-modal').classList.remove('hidden')
+    } catch (error) {
+        console.error('Error opening edit modal:', error)
+        showNotification('Failed to load dividend details', 'error')
+    }
+}
+
+function closeEditDividendModal() {
+    document.getElementById('edit-dividend-modal').classList.add('hidden')
+}
+
+async function saveEditDividend() {
+    try {
+        const token = localStorage.getItem('token')
+        if (!token) return
+        
+        const dividendId = document.getElementById('edit-dividend-id').value
+        const exDate = document.getElementById('edit-dividend-ex-date').value
+        const amount = document.getElementById('edit-dividend-amount').value
+        
+        // Validate required fields
+        if (!exDate || !amount) {
+            showNotification('Ex-Date and Amount are required', 'error')
+            return
+        }
+        
+        // Build update payload
+        const payload = {
+            ex_date: exDate,
+            pay_date: document.getElementById('edit-dividend-pay-date').value || null,
+            record_date: document.getElementById('edit-dividend-record-date').value || null,
+            declared_date: document.getElementById('edit-dividend-declared-date').value || null,
+            amount: parseFloat(amount),
+            frequency: parseInt(document.getElementById('edit-dividend-frequency').value)
+        }
+        
+        const response = await fetch(`/api/dividend-repository/${dividendId}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        
+        if (!response.ok) throw new Error('Failed to update dividend')
+        
+        showNotification('Dividend updated successfully', 'success')
+        closeEditDividendModal()
+        loadDividendRepository()
+        
+    } catch (error) {
+        console.error('Error saving dividend:', error)
+        showNotification('Failed to save dividend changes', 'error')
     }
 }
 
