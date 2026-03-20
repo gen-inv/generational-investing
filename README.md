@@ -639,7 +639,7 @@ npx wrangler d1 execute webapp-production --local --command="SELECT * FROM compa
 Proprietary - All rights reserved
 
 ## Last Updated
-March 19, 2026
+March 20, 2026
 
 ## Project Status
 - ✅ v1.0 Complete - Core features implemented and tested
@@ -648,8 +648,9 @@ March 19, 2026
   - **Polygon.io (Massive)**: Primary API for US stocks (250 requests/day)
   - **EODHD**: Automatic fallback for Canadian stocks (.TO, .V)
   - **Coverage**: 100% portfolio (14 unique tickers: 13 US + 1 Canadian)
-  - **Automation**: Weekly scheduled fetch every Sunday at midnight
-  - **See**: DUAL_API_IMPLEMENTATION.md, MASSIVE_API_INTEGRATION.md
+  - **Automation**: ✅ **Weekly via cron-job.org every Sunday 10:30 PM MST**
+  - **Rate Limiting**: 12.5 second delay between tickers (optimized buffer)
+  - **See**: DUAL_API_IMPLEMENTATION.md, CRON_PRODUCTION_CONFIG.md
 - 📋 v1.1 Specification Ready - See COMPLETE_IMPLEMENTATION_SPEC.md
 - 🚀 Ready for multi-session implementation
 
