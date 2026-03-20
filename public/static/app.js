@@ -2187,24 +2187,35 @@ async function loadStocks() {
             const costBasis = stock.cost_basis || stock.price
             const accountName = stock.account_name || 'N/A'
             
-            // Determine row color based on covered call status
+            // Determine row color and indicators based on both CC and dividend status
             let rowClass = 'border-b border-gray-200 hover:bg-gray-50'
-            let ccIndicator = ''
+            let indicators = ''
             
+            // Covered Call indicator
             if (stock.cc_status === 'urgent') {
                 // Red highlight for covered calls expiring within 14 days
                 rowClass = 'border-b border-gray-200 bg-red-50 hover:bg-red-100'
-                ccIndicator = `<i class="fas fa-exclamation-triangle text-red-600 mr-2" title="Covered call expires in ${stock.days_until_cc_expiration} days"></i>`
+                indicators += `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-600 text-white mr-1" title="Covered call expires in ${stock.days_until_cc_expiration} days">CC</span>`
             } else if (stock.cc_status === 'active') {
                 // Orange highlight for covered calls expiring beyond 14 days
                 rowClass = 'border-b border-gray-200 bg-orange-50 hover:bg-orange-100'
-                ccIndicator = `<i class="fas fa-shield-alt text-orange-600 mr-2" title="Covered call expires in ${stock.days_until_cc_expiration} days"></i>`
+                indicators += `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-orange-600 text-white mr-1" title="Covered call expires in ${stock.days_until_cc_expiration} days">CC</span>`
+            }
+            
+            // Missing Dividends indicator (purple/blue badge)
+            if (stock.has_missing_dividends) {
+                indicators += `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-600 text-white mr-1" title="${stock.missing_dividend_count} missing dividend(s) to record">DIV</span>`
+                
+                // If no CC status, set row to light blue background
+                if (!stock.cc_status) {
+                    rowClass = 'border-b border-gray-200 bg-blue-50 hover:bg-blue-100'
+                }
             }
             
             table.innerHTML += `
                 <tr class="${rowClass}">
                     <td class="px-4 py-3">${accountName}</td>
-                    <td class="px-4 py-3 font-semibold text-brand-teal">${ccIndicator}${stock.ticker}</td>
+                    <td class="px-4 py-3 font-semibold text-brand-teal">${indicators}${stock.ticker}</td>
                     <td class="px-4 py-3">${stock.trade_date}</td>
                     <td class="px-4 py-3 text-right">${stock.quantity}</td>
                     <td class="px-4 py-3 text-right">$${parseFloat(avgPrice).toFixed(3)}</td>

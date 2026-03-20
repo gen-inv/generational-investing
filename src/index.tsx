@@ -1891,6 +1891,86 @@ app.get('/api/stocks', authMiddleware, async (c) => {
       }
     }
     
+    // Check for missing dividends using the same logic as the missing-dividends endpoint
+    let hasMissingDividends = false
+    let missingDividendCount = 0
+    
+    if (stock.is_open === 1) {
+      // Get date range
+      const startDate = stock.opened_date
+      const endDate = new Date().toISOString().split('T')[0]
+      
+      // Get repository dividends for this ticker in date range
+      const repoDivs = await DB.prepare(`
+        SELECT id, ex_date, pay_date, amount FROM dividend_repository
+        WHERE ticker = ? AND ex_date >= ? AND ex_date <= ? AND status = 'active'
+      `).bind(stock.ticker, startDate, endDate).all()
+      
+      if (repoDivs.results && repoDivs.results.length > 0) {
+        // Get recorded dividends
+        const recordedDivs = await DB.prepare(`
+          SELECT amount, adjustment_date, notes FROM cost_basis_adjustments
+          WHERE holding_id = ? AND adjustment_type = 'DIVIDEND'
+        `).bind(stock.id).all()
+        
+        // Get transactions to calculate shares
+        const txns = await DB.prepare(`
+          SELECT transaction_date, transaction_type, shares
+          FROM stock_transactions
+          WHERE holding_id = ?
+          ORDER BY transaction_date ASC
+        `).bind(stock.id).all()
+        
+        const getSharesOnDate = (targetDate: string) => {
+          let shares = 0
+          for (const tx of (txns.results || [])) {
+            const t = tx as any
+            if (t.transaction_date <= targetDate) {
+              shares += t.transaction_type === 'BUY' ? t.shares : -t.shares
+            }
+          }
+          return shares
+        }
+        
+        const datesWithinDays = (d1: string, d2: string, days: number) => {
+          const diff = Math.abs(new Date(d1).getTime() - new Date(d2).getTime())
+          return Math.ceil(diff / (1000 * 60 * 60 * 24)) <= days
+        }
+        
+        const isDivRecorded = (repoDiv: any, sharesHeld: number) => {
+          for (const rec of (recordedDivs.results || [])) {
+            const r = rec as any
+            const exMatch = r.notes?.match(/Ex-date: (\d{4}-\d{2}-\d{2})/)
+            if (exMatch && exMatch[1] === repoDiv.ex_date) return true
+            
+            let perShareRec = r.amount / sharesHeld
+            const accountType = stock.account_type || 'RRSP'
+            if (accountType === 'Cash' || accountType === 'TFSA') {
+              perShareRec = perShareRec / 0.8
+            }
+            const perShareRepo = repoDiv.amount
+            const amtMatch = Math.abs(perShareRec - perShareRepo) < 0.0001
+            const payMatch = repoDiv.pay_date && datesWithinDays(r.adjustment_date, repoDiv.pay_date, 3)
+            const exMatch2 = datesWithinDays(r.adjustment_date, repoDiv.ex_date, 3)
+            
+            if (amtMatch && (payMatch || exMatch2)) return true
+          }
+          return false
+        }
+        
+        // Count missing dividends
+        for (const div of repoDivs.results) {
+          const d = div as any
+          const sharesHeld = getSharesOnDate(d.ex_date)
+          if (sharesHeld > 0 && !isDivRecorded(d, sharesHeld)) {
+            missingDividendCount++
+          }
+        }
+        
+        hasMissingDividends = missingDividendCount > 0
+      }
+    }
+    
     return {
       ...stock,
       // Map new field names to old field names for backwards compatibility
@@ -1902,7 +1982,9 @@ app.get('/api/stocks', authMiddleware, async (c) => {
       profit_loss: profitLoss,
       cc_status: ccStatus,
       cc_expiration: stock.nearest_cc_expiration,
-      days_until_cc_expiration: daysUntilExpiration
+      days_until_cc_expiration: daysUntilExpiration,
+      has_missing_dividends: hasMissingDividends,
+      missing_dividend_count: missingDividendCount
     }
   }))
   
