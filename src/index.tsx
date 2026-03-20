@@ -2400,23 +2400,70 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
     
     console.log('[DEBUG] Repository dividends found:', repositoryDividends.results?.length || 0)
     
-    // Get already recorded dividends (by ex_date to match)
+    // Get already recorded dividends with amount and date for smarter matching
     const recordedDividends = await DB.prepare(`
-      SELECT notes FROM cost_basis_adjustments
+      SELECT amount, adjustment_date, notes FROM cost_basis_adjustments
       WHERE holding_id = ? AND adjustment_type = 'DIVIDEND'
     `).bind(holdingId).all()
     
     console.log('[DEBUG] Already recorded dividends:', recordedDividends.results?.length || 0)
     
-    // Extract ex_dates from recorded dividends (stored in notes as "Ex-date: YYYY-MM-DD")
-    const recordedExDates = new Set(
-      (recordedDividends.results || [])
-        .map((d: any) => {
-          const match = d.notes?.match(/Ex-date: (\d{4}-\d{2}-\d{2})/)
-          return match ? match[1] : null
-        })
-        .filter((d: any) => d !== null)
-    )
+    // Helper function to check if dates are within N days of each other
+    const datesWithinDays = (date1: string, date2: string, days: number): boolean => {
+      const d1 = new Date(date1)
+      const d2 = new Date(date2)
+      const diffTime = Math.abs(d2.getTime() - d1.getTime())
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      return diffDays <= days
+    }
+    
+    // Helper function to check if a dividend is already recorded
+    const isDividendRecorded = (repoDiv: any, sharesHeld: number): boolean => {
+      // Calculate what the total amount would be (with withholding if applicable)
+      let expectedAmount = repoDiv.amount * sharesHeld
+      if (holding.account_type === 'Cash' || holding.account_type === 'TFSA') {
+        expectedAmount = expectedAmount * 0.8 // Apply 20% withholding
+      }
+      
+      for (const recorded of (recordedDividends.results || [])) {
+        const rec = recorded as any
+        
+        // Extract ex_date from notes
+        const exDateMatch = rec.notes?.match(/Ex-date: (\d{4}-\d{2}-\d{2})/)
+        const recordedExDate = exDateMatch ? exDateMatch[1] : null
+        
+        // Match 1: Exact ex_date match
+        if (recordedExDate && recordedExDate === repoDiv.ex_date) {
+          return true
+        }
+        
+        // Match 2: Per-share amount match + pay date within 3 days
+        // Need to reverse withholding tax to get original per-share amount
+        let perShareRecorded = rec.amount / sharesHeld
+        if (holding.account_type === 'Cash' || holding.account_type === 'TFSA') {
+          perShareRecorded = perShareRecorded / 0.8 // Reverse the 20% withholding
+        }
+        const perShareRepo = repoDiv.amount
+        
+        // Check if per-share amounts are very close (within 0.0001)
+        const amountMatch = Math.abs(perShareRecorded - perShareRepo) < 0.0001
+        
+        // Check if adjustment_date is close to pay_date or ex_date
+        const payDateMatch = repoDiv.pay_date && datesWithinDays(rec.adjustment_date, repoDiv.pay_date, 3)
+        const exDateMatch2 = datesWithinDays(rec.adjustment_date, repoDiv.ex_date, 3)
+        
+        if (amountMatch && (payDateMatch || exDateMatch2)) {
+          console.log('[DEBUG] Found match via amount+date:', {
+            repoExDate: repoDiv.ex_date,
+            recordedAdjDate: rec.adjustment_date,
+            perShareMatch: perShareRecorded.toFixed(4) + ' ≈ ' + perShareRepo.toFixed(4)
+          })
+          return true
+        }
+      }
+      
+      return false
+    }
     
     // Get all stock transactions to calculate shares held on each ex_date
     const transactions = await DB.prepare(`
@@ -2447,16 +2494,16 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
     for (const div of (repositoryDividends.results || [])) {
       const dividend = div as any
       
-      // Skip if already recorded
-      if (recordedExDates.has(dividend.ex_date)) {
-        continue
-      }
-      
-      // Calculate shares held on ex_date
+      // Calculate shares held on ex_date first (needed for matching)
       const sharesHeld = getSharesHeldOnDate(dividend.ex_date)
       
       // Skip if no shares held on that date
       if (sharesHeld <= 0) {
+        continue
+      }
+      
+      // Skip if already recorded (using smart matching)
+      if (isDividendRecorded(dividend, sharesHeld)) {
         continue
       }
       
