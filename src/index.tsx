@@ -2987,35 +2987,82 @@ app.put('/api/covered-calls/:id', authMiddleware, async (c) => {
       return c.json({ error: 'Covered call not found' }, 404)
     }
     
-    // Update the covered call
-    await DB.prepare(`
-      UPDATE option_trades SET
-        strike_price = ?,
-        premium = ?,
-        quantity = ?,
-        expiration_date = ?,
-        trade_date = ?,
-        commission = ?,
-        close_date = ?,
-        close_price = ?,
-        close_commission = ?,
-        notes = ?,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `).bind(
-      data.strike_price,
-      data.premium,
-      data.quantity,
-      data.expiration_date,
-      data.trade_date,
-      data.commission || 0,
-      data.close_date || null,
-      data.close_price || null,
-      data.close_commission || null,
-      data.notes || null,
-      ccId,
-      userId
-    ).run()
+    // If holding_id is provided, update account_id to match the holding's account
+    // This fixes any existing covered calls with incorrect or NULL account_id
+    let accountIdToSet = null
+    if (data.holding_id) {
+      const holding = await DB.prepare(`
+        SELECT account_id FROM stock_holdings WHERE id = ? AND user_id = ?
+      `).bind(data.holding_id, userId).first()
+      
+      if (holding) {
+        accountIdToSet = holding.account_id
+      }
+    }
+    
+    // Update the covered call (including account_id if we have it)
+    if (accountIdToSet !== null) {
+      await DB.prepare(`
+        UPDATE option_trades SET
+          strike_price = ?,
+          premium = ?,
+          quantity = ?,
+          expiration_date = ?,
+          trade_date = ?,
+          commission = ?,
+          close_date = ?,
+          close_price = ?,
+          close_commission = ?,
+          notes = ?,
+          account_id = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `).bind(
+        data.strike_price,
+        data.premium,
+        data.quantity,
+        data.expiration_date,
+        data.trade_date,
+        data.commission || 0,
+        data.close_date || null,
+        data.close_price || null,
+        data.close_commission || null,
+        data.notes || null,
+        accountIdToSet,
+        ccId,
+        userId
+      ).run()
+    } else {
+      // No holding_id provided, update without changing account_id
+      await DB.prepare(`
+        UPDATE option_trades SET
+          strike_price = ?,
+          premium = ?,
+          quantity = ?,
+          expiration_date = ?,
+          trade_date = ?,
+          commission = ?,
+          close_date = ?,
+          close_price = ?,
+          close_commission = ?,
+          notes = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `).bind(
+        data.strike_price,
+        data.premium,
+        data.quantity,
+        data.expiration_date,
+        data.trade_date,
+        data.commission || 0,
+        data.close_date || null,
+        data.close_price || null,
+        data.close_commission || null,
+        data.notes || null,
+        ccId,
+        userId
+      ).run()
+    }
     
     // Recalculate profit_loss and is_open if close fields are provided
     if (data.close_date && data.close_price !== null && data.close_price !== undefined) {

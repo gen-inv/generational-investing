@@ -4604,7 +4604,8 @@ async function editCoveredCall(ccId) {
                     expiration_date: formData.get('expiration_date'),
                     trade_date: formData.get('trade_date'),
                     commission: parseFloat(formData.get('commission')) || 0,
-                    notes: formData.get('notes') || null
+                    notes: formData.get('notes') || null,
+                    holding_id: stockId  // Pass holding_id to ensure correct account_id is set
                 }
                 
                 // Add close fields if present
