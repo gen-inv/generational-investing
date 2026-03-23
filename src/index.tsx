@@ -1942,9 +1942,18 @@ app.get('/api/stocks', authMiddleware, async (c) => {
         const isDivRecorded = (repoDiv: any, sharesHeld: number) => {
           for (const rec of (recordedDivs.results || [])) {
             const r = rec as any
+            
+            // Match 1: Exact ex_date from notes
             const exMatch = r.notes?.match(/Ex-date: (\d{4}-\d{2}-\d{2})/)
             if (exMatch && exMatch[1] === repoDiv.ex_date) return true
             
+            // Match 2: Exact pay_date match (user entered accurate dividend)
+            // Don't require amount match since user may have entered actual amount
+            if (repoDiv.pay_date && r.adjustment_date === repoDiv.pay_date) {
+              return true
+            }
+            
+            // Match 3: Amount + date proximity
             let perShareRec = r.amount / sharesHeld
             const accountType = stock.account_type || 'RRSP'
             if (accountType === 'Cash' || accountType === 'TFSA') {
@@ -2529,7 +2538,19 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
           return true
         }
         
-        // Match 2: Per-share amount match + date proximity
+        // Match 2: Exact pay_date match (user entered accurate dividend)
+        // Don't require amount match since user may have entered actual amount
+        // vs our estimated withholding calculation
+        if (repoDiv.pay_date && rec.adjustment_date === repoDiv.pay_date) {
+          console.log('[DEBUG] Match via exact pay_date:', {
+            adjustmentDate: rec.adjustment_date,
+            payDate: repoDiv.pay_date,
+            note: 'Ignoring amount mismatch - user may have accurate amount'
+          })
+          return true
+        }
+        
+        // Match 3: Per-share amount match + date proximity
         // Need to reverse withholding tax to get original per-share amount
         let perShareRecorded = rec.amount / sharesHeld
         if (holding.account_type === 'Cash' || holding.account_type === 'TFSA') {
@@ -2543,11 +2564,11 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
         // Check if adjustment_date is close to pay_date OR ex_date (within 3 days)
         let dateMatch = false
         
-        // Check against pay_date if it exists
+        // Check against pay_date if it exists (within 3 days, not exact)
         if (repoDiv.pay_date) {
           dateMatch = datesWithinDays(rec.adjustment_date, repoDiv.pay_date, 3)
           if (dateMatch) {
-            console.log('[DEBUG] Date match via pay_date:', {
+            console.log('[DEBUG] Date match via pay_date (within 3 days):', {
               adjustmentDate: rec.adjustment_date,
               payDate: repoDiv.pay_date
             })
@@ -2558,7 +2579,7 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
         if (!dateMatch) {
           dateMatch = datesWithinDays(rec.adjustment_date, repoDiv.ex_date, 3)
           if (dateMatch) {
-            console.log('[DEBUG] Date match via ex_date:', {
+            console.log('[DEBUG] Date match via ex_date (within 3 days):', {
               adjustmentDate: rec.adjustment_date,
               exDate: repoDiv.ex_date
             })
@@ -2566,7 +2587,7 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
         }
         
         if (amountMatch && dateMatch) {
-          console.log('[DEBUG] Found match via amount+date:', {
+          console.log('[DEBUG] Found match via amount+date proximity:', {
             repoExDate: repoDiv.ex_date,
             recordedAdjDate: rec.adjustment_date,
             perShareMatch: perShareRecorded.toFixed(4) + ' ≈ ' + perShareRepo.toFixed(4)
