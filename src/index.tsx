@@ -6035,6 +6035,252 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
   }
 })
 
+// Cron-specific dividend fetch endpoint (secret key authentication)
+app.post('/api/cron/dividend-repository/fetch', async (c) => {
+  try {
+    const { DB } = c.env
+    const body = await c.req.json().catch(() => ({}))
+    
+    // Check for secret key in header or body
+    const secretKey = c.req.header('X-Cron-Secret') || body.secret
+    const CRON_SECRET = c.env.CRON_SECRET || 'dividend-fetch-cron-2026-secret-key'
+    
+    if (secretKey !== CRON_SECRET) {
+      console.error('Unauthorized cron attempt - invalid secret')
+      return c.json({ error: 'Unauthorized' }, 401)
+    }
+    
+    // Get user ID from body or default to first user (admin)
+    const targetUserId = body.user_id || 1
+    
+    console.log(`Starting automated dividend fetch for user ${targetUserId} (cron job)`)
+    
+    const startTime = Date.now()
+    
+    // Use system-wide Massive (Polygon.io) API key
+    const MASSIVE_API_KEY = 'x4VbKUBkKwYB10ObRLoRt9eDqfcClxEW'
+    
+    // Use EODHD API key for Canadian stocks fallback
+    const EODHD_API_KEY = '69bc75c1788da8.83960172'
+    
+    // Get all stock holdings for this user
+    const holdings = await DB.prepare(`
+      SELECT 
+        sh.id as holding_id,
+        sh.ticker,
+        sh.opened_date,
+        sh.closed_date,
+        sh.total_shares,
+        sh.is_open
+      FROM stock_holdings sh
+      WHERE sh.user_id = ?
+      ORDER BY sh.ticker
+    `).bind(targetUserId).all()
+    
+    if (!holdings.results || holdings.results.length === 0) {
+      return c.json({ message: 'No holdings found', dividends_found: 0, dividends_eligible: 0 })
+    }
+    
+    console.log(`[CRON] Found ${holdings.results.length} holdings to check`)
+    
+    // Create fetch log
+    const logResult = await DB.prepare(`
+      INSERT INTO dividend_fetch_logs (user_id, fetch_type, status, tickers_processed)
+      VALUES (?, 'automated', 'in_progress', '')
+    `).bind(targetUserId).run()
+    
+    const logId = logResult.meta.last_row_id
+    
+    // Get unique tickers
+    const uniqueTickers = [...new Set(holdings.results.map((h: any) => h.ticker))]
+    
+    let totalDividends = 0
+    let totalEligible = 0
+    let apiCalls = 0
+    const tickersProcessed: string[] = []
+    const errors: string[] = []
+    const debugInfo: string[] = []
+    
+    const MIN_DATE = '2026-01-01'
+    
+    // Process each unique ticker
+    for (const ticker of uniqueTickers) {
+      try {
+        const holding = holdings.results.find((h: any) => h.ticker === ticker) as any
+        
+        debugInfo.push(`${ticker}: Starting fetch...`)
+        console.log(`[CRON] Processing ${ticker}`)
+        
+        // Determine if this is a Canadian stock
+        const isCanadian = ticker.endsWith('.TO') || ticker.endsWith('.V')
+        
+        let dividends: any[] = []
+        
+        // Fetch from Massive (Polygon.io) for US stocks
+        if (!isCanadian) {
+          const massiveUrl = `https://api.polygon.io/v3/reference/dividends?ticker=${ticker}&limit=100&apiKey=${MASSIVE_API_KEY}`
+          
+          try {
+            const massiveResponse = await fetch(massiveUrl)
+            apiCalls++
+            
+            if (massiveResponse.ok) {
+              const massiveData = await massiveResponse.json()
+              dividends = massiveData.results || []
+              debugInfo.push(`${ticker}: Massive returned ${dividends.length} dividends`)
+            } else {
+              debugInfo.push(`${ticker}: Massive error ${massiveResponse.status}`)
+            }
+          } catch (e) {
+            debugInfo.push(`${ticker}: Massive fetch failed`)
+          }
+        }
+        
+        // Fallback to EODHD for Canadian stocks or if Massive returned nothing
+        if (isCanadian || dividends.length === 0) {
+          const eodhd_ticker = ticker.replace('.TO', '.TSX').replace('.V', '.TSXV')
+          const eodhdUrl = `https://eodhd.com/api/div/${eodhd_ticker}?api_token=${EODHD_API_KEY}&fmt=json`
+          
+          try {
+            const eodhdResponse = await fetch(eodhdUrl)
+            apiCalls++
+            
+            if (eodhdResponse.ok) {
+              const eodhdData = await eodhdResponse.json()
+              
+              if (Array.isArray(eodhdData) && eodhdData.length > 0) {
+                debugInfo.push(`${ticker}: EODHD returned ${eodhdData.length} dividends`)
+                
+                for (const eodhd_div of eodhdData) {
+                  const exDate = eodhd_div.date
+                  const payDate = eodhd_div.paymentDate || null
+                  const recordDate = eodhd_div.recordDate || null
+                  const declaredDate = eodhd_div.declarationDate || null
+                  const amount = parseFloat(eodhd_div.value)
+                  
+                  if (!exDate || !amount || exDate < MIN_DATE) continue
+                  
+                  const isEligible = holding.opened_date < exDate
+                  if (isEligible) totalEligible++
+                  totalDividends++
+                  
+                  const existing = await DB.prepare(`
+                    SELECT id FROM dividend_repository
+                    WHERE ticker = ? AND ex_date = ?
+                  `).bind(ticker, exDate).first()
+                  
+                  if (!existing) {
+                    await DB.prepare(`
+                      INSERT INTO dividend_repository (
+                        ticker, ex_date, pay_date, record_date, declared_date,
+                        amount, frequency, status, api_source
+                      ) VALUES (?, ?, ?, ?, ?, ?, 12, 'active', 'eodhd')
+                    `).bind(ticker, exDate, payDate, recordDate, declaredDate, amount).run()
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            debugInfo.push(`${ticker}: EODHD fetch failed`)
+          }
+        }
+        
+        // Process Massive dividends
+        for (const div of dividends) {
+          const exDate = div.ex_dividend_date
+          const payDate = div.pay_date
+          const recordDate = div.record_date
+          const declaredDate = div.declaration_date
+          const amount = parseFloat(div.cash_amount)
+          
+          if (!exDate || !amount || exDate < MIN_DATE) continue
+          
+          const isEligible = holding.opened_date < exDate
+          if (isEligible) totalEligible++
+          totalDividends++
+          
+          const existing = await DB.prepare(`
+            SELECT id FROM dividend_repository
+            WHERE ticker = ? AND ex_date = ?
+          `).bind(ticker, exDate).first()
+          
+          if (existing) {
+            await DB.prepare(`
+              UPDATE dividend_repository
+              SET amount = ?, pay_date = ?, record_date = ?, declared_date = ?,
+                  frequency = ?, fetch_date = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).bind(amount, payDate, recordDate, declaredDate, div.frequency || 52, (existing as any).id).run()
+          } else {
+            await DB.prepare(`
+              INSERT INTO dividend_repository (
+                ticker, ex_date, pay_date, record_date, declared_date,
+                amount, frequency, status, api_source
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'massive')
+            `).bind(ticker, exDate, payDate, recordDate, declaredDate, amount, div.frequency || 52).run()
+          }
+        }
+        
+        tickersProcessed.push(ticker)
+        debugInfo.push(`${ticker}: Completed`)
+        
+        // Rate limiting delay
+        if (uniqueTickers.indexOf(ticker) < uniqueTickers.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 12500))
+        }
+        
+      } catch (error) {
+        console.error(`[CRON] Error processing ${ticker}:`, error)
+        errors.push(`${ticker}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+    
+    const duration = Date.now() - startTime
+    
+    // Update log
+    await DB.prepare(`
+      UPDATE dividend_fetch_logs
+      SET 
+        status = ?,
+        completed_at = CURRENT_TIMESTAMP,
+        tickers_processed = ?,
+        dividends_found = ?,
+        api_calls_made = ?,
+        duration_ms = ?,
+        error_message = ?
+      WHERE id = ?
+    `).bind(
+      errors.length > 0 ? 'partial' : 'success',
+      tickersProcessed.join(', '),
+      totalDividends,
+      apiCalls,
+      duration,
+      errors.length > 0 ? errors.join('; ') : null,
+      logId
+    ).run()
+    
+    console.log(`[CRON] Dividend fetch completed: ${totalDividends} dividends, ${apiCalls} API calls, ${duration}ms`)
+    
+    return c.json({
+      success: true,
+      message: `Automated fetch completed for ${tickersProcessed.length} tickers`,
+      dividends_found: totalDividends,
+      dividends_eligible: totalEligible,
+      api_calls_made: apiCalls,
+      duration_ms: duration,
+      tickers: tickersProcessed,
+      errors: errors.length > 0 ? errors : undefined
+    })
+    
+  } catch (error) {
+    console.error('[CRON] Error in automated dividend fetch:', error)
+    return c.json({
+      error: 'Failed to fetch dividends',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
 // Get dividend repository entries (user-agnostic data)
 app.get('/api/dividend-repository', authMiddleware, async (c) => {
   try {
