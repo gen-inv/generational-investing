@@ -1819,7 +1819,7 @@ app.get('/api/stocks', authMiddleware, async (c) => {
        FROM option_trades
        WHERE user_id = sh.user_id 
          AND ticker = sh.ticker 
-         AND account_type = a.account_type
+         AND account_id = sh.account_id
          AND strategy_type = 'COVERED_CALL' 
          AND is_open = 1) as nearest_cc_expiration
     FROM stock_holdings sh
@@ -2752,9 +2752,8 @@ app.get('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
     
     // Verify holding belongs to user and get account info
     const holding = await DB.prepare(`
-      SELECT sh.id, sh.ticker, sh.account_id, a.account_type 
+      SELECT sh.id, sh.ticker, sh.account_id
       FROM stock_holdings sh
-      JOIN accounts a ON sh.account_id = a.id
       WHERE sh.id = ? AND sh.user_id = ?
     `).bind(holdingId, userId).first()
     
@@ -2762,13 +2761,13 @@ app.get('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
       return c.json({ error: 'Holding not found' }, 404)
     }
     
-    // Get covered calls for this ticker AND account only
-    // Filter by both ticker and account_type to prevent cross-account showing
+    // Get covered calls for this ticker AND specific account_id only
+    // Filter by account_id to prevent cross-account showing (important for multiple Cash/RRSP accounts)
     const coveredCalls = await DB.prepare(`
       SELECT * FROM option_trades
-      WHERE user_id = ? AND ticker = ? AND account_type = ? AND strategy_type = 'COVERED_CALL'
+      WHERE user_id = ? AND ticker = ? AND account_id = ? AND strategy_type = 'COVERED_CALL'
       ORDER BY trade_date DESC
-    `).bind(userId, holding.ticker, holding.account_type).all()
+    `).bind(userId, holding.ticker, holding.account_id).all()
     
     return c.json(coveredCalls.results || [])
   } catch (error) {
@@ -2812,12 +2811,12 @@ app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
       SELECT account_type FROM accounts WHERE id = ?
     `).bind(holding.account_id).first()
     
-    // Insert covered call as an option trade
+    // Insert covered call as an option trade with account_id for proper association
     const optionResult = await DB.prepare(`
       INSERT INTO option_trades (
         user_id, company_id, ticker, strategy_type, strike_price, premium, quantity,
-        expiration_date, account_type, trade_date, is_open, commission, notes
-      ) VALUES (?, ?, ?, 'COVERED_CALL', ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        expiration_date, account_type, account_id, trade_date, is_open, commission, notes
+      ) VALUES (?, ?, ?, 'COVERED_CALL', ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
     `).bind(
       userId,
       holding.company_id,
@@ -2827,6 +2826,7 @@ app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
       data.quantity,
       data.expiration_date,
       account?.account_type,
+      holding.account_id,  // Store account_id for proper association
       data.trade_date,
       data.commission || 0,
       data.notes || null
