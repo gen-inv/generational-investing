@@ -6067,6 +6067,24 @@ app.post('/api/cron/test', async (c) => {
   }
 })
 
+// Simple GET endpoint for cron - just triggers the existing fetch logic
+app.get('/api/cron/dividend-repository/fetch/:secret', authMiddleware, async (c) => {
+  const urlSecret = c.req.param('secret')
+  const CRON_SECRET = c.env.CRON_SECRET || 'dividend-fetch-cron-2026-secret-key'
+  
+  if (urlSecret !== CRON_SECRET) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  
+  // This will execute synchronously and complete before returning
+  // It's the same as clicking the button in the UI
+  const userId = c.get('userId')
+  
+  // Forward to the regular fetch endpoint logic
+  // This is exactly what happens when you click the button in the UI
+  return c.redirect('/api/dividend-repository/fetch', 307) // Temporary redirect with POST method preserved
+})
+
 app.post('/api/cron/dividend-repository/fetch', async (c) => {
   try {
     const { DB } = c.env

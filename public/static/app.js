@@ -23,6 +23,45 @@ api.interceptors.request.use(config => {
     return config
 })
 
+// Auto-trigger dividend fetch on Monday mornings
+async function checkAndTriggerWeeklyDividendFetch() {
+    try {
+        const now = new Date()
+        const dayOfWeek = now.getDay() // 0 = Sunday, 1 = Monday, etc.
+        
+        // Only run on Mondays (1)
+        if (dayOfWeek !== 1) {
+            return
+        }
+        
+        // Check if we've already run today
+        const lastFetchDate = localStorage.getItem('lastDividendAutoFetch')
+        const today = now.toISOString().split('T')[0] // YYYY-MM-DD
+        
+        if (lastFetchDate === today) {
+            console.log('[AUTO-FETCH] Already ran dividend fetch today')
+            return
+        }
+        
+        console.log('[AUTO-FETCH] Monday detected - triggering weekly dividend fetch')
+        
+        // Trigger the fetch in the background (don't wait for response)
+        api.post('/api/dividend-repository/fetch')
+            .then(response => {
+                console.log('[AUTO-FETCH] Dividend fetch started successfully')
+                localStorage.setItem('lastDividendAutoFetch', today)
+                // Optional: show subtle notification
+                // showNotification('Weekly dividend fetch started', 'info')
+            })
+            .catch(error => {
+                console.error('[AUTO-FETCH] Failed to trigger dividend fetch:', error)
+            })
+        
+    } catch (error) {
+        console.error('[AUTO-FETCH] Error in auto-trigger check:', error)
+    }
+}
+
 // Notification function for user feedback
 function showNotification(message, type = 'success') {
     const notification = document.createElement('div')
@@ -1124,6 +1163,9 @@ async function loadAccountsList() {
 
 async function loadDashboard() {
     try {
+        // Auto-trigger weekly dividend fetch on Monday mornings
+        checkAndTriggerWeeklyDividendFetch()
+        
         // Load account totals with currency conversion
         const totalsRes = await api.get('/api/dashboard/totals')
         const totals = totalsRes.data
