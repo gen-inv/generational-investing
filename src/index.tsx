@@ -1809,6 +1809,7 @@ app.get('/api/stocks', authMiddleware, async (c) => {
     SELECT 
       sh.*,
       a.account_name,
+      a.account_type,
       c.ticker as company_ticker,
       c.company_name,
       (SELECT COALESCE(SUM(amount), 0) 
@@ -1818,6 +1819,7 @@ app.get('/api/stocks', authMiddleware, async (c) => {
        FROM option_trades
        WHERE user_id = sh.user_id 
          AND ticker = sh.ticker 
+         AND account_type = a.account_type
          AND strategy_type = 'COVERED_CALL' 
          AND is_open = 1) as nearest_cc_expiration
     FROM stock_holdings sh
@@ -2748,22 +2750,25 @@ app.get('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
     const holdingId = c.req.param('id')
     const { DB } = c.env
     
-    // Verify holding belongs to user
+    // Verify holding belongs to user and get account info
     const holding = await DB.prepare(`
-      SELECT id, ticker FROM stock_holdings WHERE id = ? AND user_id = ?
+      SELECT sh.id, sh.ticker, sh.account_id, a.account_type 
+      FROM stock_holdings sh
+      JOIN accounts a ON sh.account_id = a.id
+      WHERE sh.id = ? AND sh.user_id = ?
     `).bind(holdingId, userId).first()
     
     if (!holding) {
       return c.json({ error: 'Holding not found' }, 404)
     }
     
-    // Get covered calls for this ticker in the same account
-    // We link by ticker since covered calls are separate option trades
+    // Get covered calls for this ticker AND account only
+    // Filter by both ticker and account_type to prevent cross-account showing
     const coveredCalls = await DB.prepare(`
       SELECT * FROM option_trades
-      WHERE user_id = ? AND ticker = ? AND strategy_type = 'COVERED_CALL'
+      WHERE user_id = ? AND ticker = ? AND account_type = ? AND strategy_type = 'COVERED_CALL'
       ORDER BY trade_date DESC
-    `).bind(userId, holding.ticker).all()
+    `).bind(userId, holding.ticker, holding.account_type).all()
     
     return c.json(coveredCalls.results || [])
   } catch (error) {
