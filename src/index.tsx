@@ -3958,6 +3958,46 @@ app.delete('/api/daily-trades/:id', authMiddleware, async (c) => {
   }
 })
 
+// Reopen a closed daily trade (clears exit information)
+app.put('/api/daily-trades/:id/reopen', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { env } = c
+    const tradeId = c.req.param('id')
+
+    // Verify trade belongs to user and is currently closed
+    const trade = await env.DB.prepare(`
+      SELECT id, is_open FROM daily_trades WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+
+    if (!trade) {
+      return c.json({ error: 'Trade not found' }, 404)
+    }
+
+    if ((trade as any).is_open === 1) {
+      return c.json({ error: 'Trade is already open' }, 400)
+    }
+
+    // Reopen the trade by clearing exit information
+    await env.DB.prepare(`
+      UPDATE daily_trades SET
+        is_open = 1,
+        exit_time = NULL,
+        exit_reason = NULL,
+        total_debit = NULL,
+        profit_loss = NULL,
+        close_commission = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).run()
+
+    return c.json({ success: true, message: 'Trade reopened successfully' })
+  } catch (error) {
+    console.error('Error reopening daily trade:', error)
+    return c.json({ error: 'Failed to reopen trade' }, 500)
+  }
+})
+
 // Get performance statistics
 app.get('/api/daily-trades/stats', authMiddleware, async (c) => {
   try {

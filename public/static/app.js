@@ -8133,6 +8133,7 @@ async function loadClosedPositionsToday() {
                         <th class="px-4 py-3 text-center">Contracts</th>
                         <th class="px-4 py-3 text-right">P/L</th>
                         <th class="px-4 py-3 text-center">Result</th>
+                        <th class="px-4 py-3 text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -8167,6 +8168,11 @@ async function loadClosedPositionsToday() {
                         <div class="text-xs text-gray-500">(${profitPercent}%)</div>
                     </td>
                     <td class="px-4 py-3 text-center text-xl">${statusIcon}</td>
+                    <td class="px-4 py-3 text-center">
+                        <button onclick="reopenDailyTrade(${trade.id})" class="px-3 py-1 bg-amber-500 text-white text-xs rounded hover:bg-amber-600 transition" title="Reopen this trade">
+                            <i class="fas fa-undo mr-1"></i>Reopen
+                        </button>
+                    </td>
                 </tr>
             `
         })
@@ -9034,6 +9040,33 @@ async function deleteTrade(tradeId) {
     } catch (error) {
         console.error('Error deleting trade:', error)
         alert(`Failed to delete trade: ${error.response?.data?.error || error.message}`)
+    }
+}
+
+// Reopen a closed daily trade
+async function reopenDailyTrade(tradeId) {
+    if (!confirm('Reopen this closed trade? This will clear the exit information and mark it as open.')) {
+        return
+    }
+    
+    try {
+        await api.put(`/api/daily-trades/${tradeId}/reopen`)
+        
+        showNotification('Trade reopened successfully!', 'success')
+        
+        // Reload views
+        loadActiveTrades()
+        loadClosedPositionsToday()
+        
+        // Reload other views if visible
+        if (document.getElementById('dt-performance-tab').classList.contains('hidden') === false) {
+            loadRecentTrades()
+            loadDayOfWeekStats()
+        }
+        
+    } catch (error) {
+        console.error('Error reopening trade:', error)
+        alert(`Failed to reopen trade: ${error.response?.data?.error || error.message}`)
     }
 }
 
