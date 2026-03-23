@@ -8266,6 +8266,8 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                             </div>
                         </div>
                     </div>
+                    </div>
+                    <!-- End Utilities Section -->
                     
                     <!-- Reports Section -->
                     <!-- NEW REPORTS SECTION WITH TABS -->
