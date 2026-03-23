@@ -1952,10 +1952,17 @@ app.get('/api/stocks', authMiddleware, async (c) => {
             }
             const perShareRepo = repoDiv.amount
             const amtMatch = Math.abs(perShareRec - perShareRepo) < 0.0001
-            const payMatch = repoDiv.pay_date && datesWithinDays(r.adjustment_date, repoDiv.pay_date, 3)
-            const exMatch2 = datesWithinDays(r.adjustment_date, repoDiv.ex_date, 3)
             
-            if (amtMatch && (payMatch || exMatch2)) return true
+            // Check if adjustment_date is within 3 days of pay_date OR ex_date
+            let dateMatch = false
+            if (repoDiv.pay_date) {
+              dateMatch = datesWithinDays(r.adjustment_date, repoDiv.pay_date, 3)
+            }
+            if (!dateMatch) {
+              dateMatch = datesWithinDays(r.adjustment_date, repoDiv.ex_date, 3)
+            }
+            
+            if (amtMatch && dateMatch) return true
           }
           return false
         }
@@ -2516,12 +2523,13 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
         const exDateMatch = rec.notes?.match(/Ex-date: (\d{4}-\d{2}-\d{2})/)
         const recordedExDate = exDateMatch ? exDateMatch[1] : null
         
-        // Match 1: Exact ex_date match
+        // Match 1: Exact ex_date match from notes
         if (recordedExDate && recordedExDate === repoDiv.ex_date) {
+          console.log('[DEBUG] Match via exact ex_date:', repoDiv.ex_date)
           return true
         }
         
-        // Match 2: Per-share amount match + pay date within 3 days
+        // Match 2: Per-share amount match + date proximity
         // Need to reverse withholding tax to get original per-share amount
         let perShareRecorded = rec.amount / sharesHeld
         if (holding.account_type === 'Cash' || holding.account_type === 'TFSA') {
@@ -2532,17 +2540,49 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
         // Check if per-share amounts are very close (within 0.0001)
         const amountMatch = Math.abs(perShareRecorded - perShareRepo) < 0.0001
         
-        // Check if adjustment_date is close to pay_date or ex_date
-        const payDateMatch = repoDiv.pay_date && datesWithinDays(rec.adjustment_date, repoDiv.pay_date, 3)
-        const exDateMatch2 = datesWithinDays(rec.adjustment_date, repoDiv.ex_date, 3)
+        // Check if adjustment_date is close to pay_date OR ex_date (within 3 days)
+        let dateMatch = false
         
-        if (amountMatch && (payDateMatch || exDateMatch2)) {
+        // Check against pay_date if it exists
+        if (repoDiv.pay_date) {
+          dateMatch = datesWithinDays(rec.adjustment_date, repoDiv.pay_date, 3)
+          if (dateMatch) {
+            console.log('[DEBUG] Date match via pay_date:', {
+              adjustmentDate: rec.adjustment_date,
+              payDate: repoDiv.pay_date
+            })
+          }
+        }
+        
+        // Also check against ex_date if pay_date didn't match
+        if (!dateMatch) {
+          dateMatch = datesWithinDays(rec.adjustment_date, repoDiv.ex_date, 3)
+          if (dateMatch) {
+            console.log('[DEBUG] Date match via ex_date:', {
+              adjustmentDate: rec.adjustment_date,
+              exDate: repoDiv.ex_date
+            })
+          }
+        }
+        
+        if (amountMatch && dateMatch) {
           console.log('[DEBUG] Found match via amount+date:', {
             repoExDate: repoDiv.ex_date,
             recordedAdjDate: rec.adjustment_date,
             perShareMatch: perShareRecorded.toFixed(4) + ' ≈ ' + perShareRepo.toFixed(4)
           })
           return true
+        } else if (amountMatch || dateMatch) {
+          // Log near-misses for debugging
+          console.log('[DEBUG] Near miss:', {
+            amountMatch,
+            dateMatch,
+            perShareRecorded: perShareRecorded.toFixed(4),
+            perShareRepo: perShareRepo.toFixed(4),
+            adjustmentDate: rec.adjustment_date,
+            exDate: repoDiv.ex_date,
+            payDate: repoDiv.pay_date
+          })
         }
       }
       
