@@ -6036,6 +6036,37 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
 })
 
 // Cron-specific dividend fetch endpoint (secret key authentication)
+// Test endpoint to verify secret key
+app.post('/api/cron/test', async (c) => {
+  try {
+    const contentType = c.req.header('Content-Type') || 'not-set'
+    let body = {}
+    let rawBody = ''
+    
+    try {
+      rawBody = await c.req.text()
+      body = JSON.parse(rawBody)
+    } catch (e) {
+      // Couldn't parse as JSON
+    }
+    
+    const secretKey = c.req.header('X-Cron-Secret') || body.secret
+    const CRON_SECRET = c.env.CRON_SECRET || 'dividend-fetch-cron-2026-secret-key'
+    
+    return c.json({
+      content_type: contentType,
+      raw_body: rawBody,
+      parsed_body: body,
+      received_secret: secretKey,
+      expected_secret: CRON_SECRET,
+      matches: secretKey === CRON_SECRET,
+      all_headers: Object.fromEntries(c.req.raw.headers.entries())
+    })
+  } catch (error) {
+    return c.json({ error: String(error) }, 500)
+  }
+})
+
 app.post('/api/cron/dividend-repository/fetch', async (c) => {
   try {
     const { DB } = c.env
@@ -6053,9 +6084,56 @@ app.post('/api/cron/dividend-repository/fetch', async (c) => {
     // Get user ID from body or default to first user (admin)
     const targetUserId = body.user_id || 1
     
-    console.log(`Starting automated dividend fetch for user ${targetUserId} (cron job)`)
+    console.log(`[CRON] Starting automated dividend fetch for user ${targetUserId}`)
     
     const startTime = Date.now()
+    
+    // Use waitUntil to extend worker lifetime for background processing
+    const executionContext = c.executionCtx
+    
+    // Start the fetch process in the background
+    const fetchPromise = (async () => {
+      try {
+        await performDividendFetch(DB, targetUserId, startTime)
+      } catch (error) {
+        console.error('[CRON] Background fetch error:', error)
+      }
+    })()
+    
+    // Tell Cloudflare to keep the worker alive until fetchPromise completes
+    if (executionContext && executionContext.waitUntil) {
+      executionContext.waitUntil(fetchPromise)
+    }
+    
+    // Return immediately with 202 Accepted
+    return c.json({
+      status: 'accepted',
+      message: 'Dividend fetch started in background',
+      user_id: targetUserId,
+      started_at: new Date().toISOString()
+    }, 202)
+    
+  } catch (error) {
+    console.error('[CRON] Error in automated dividend fetch:', error)
+    return c.json({
+      error: 'Failed to start dividend fetch',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// Extract fetch logic into separate function for background execution
+async function performDividendFetch(DB: any, targetUserId: number, startTime: number) {
+  let logId: any = null
+  let totalDividends = 0
+  let totalEligible = 0
+  let apiCalls = 0
+  const tickersProcessed: string[] = []
+  const errors: string[] = []
+  const debugInfo: string[] = []
+  
+  try {
+    console.log(`[CRON] Background processing started for user ${targetUserId}`)
     
     // Use system-wide Massive (Polygon.io) API key
     const MASSIVE_API_KEY = 'x4VbKUBkKwYB10ObRLoRt9eDqfcClxEW'
@@ -6078,7 +6156,8 @@ app.post('/api/cron/dividend-repository/fetch', async (c) => {
     `).bind(targetUserId).all()
     
     if (!holdings.results || holdings.results.length === 0) {
-      return c.json({ message: 'No holdings found', dividends_found: 0, dividends_eligible: 0 })
+      console.log('[CRON] No holdings found for user')
+      return // Early return, no data to process
     }
     
     console.log(`[CRON] Found ${holdings.results.length} holdings to check`)
@@ -6089,17 +6168,10 @@ app.post('/api/cron/dividend-repository/fetch', async (c) => {
       VALUES (?, 'automated', 'in_progress', '')
     `).bind(targetUserId).run()
     
-    const logId = logResult.meta.last_row_id
+    logId = logResult.meta.last_row_id
     
     // Get unique tickers
     const uniqueTickers = [...new Set(holdings.results.map((h: any) => h.ticker))]
-    
-    let totalDividends = 0
-    let totalEligible = 0
-    let apiCalls = 0
-    const tickersProcessed: string[] = []
-    const errors: string[] = []
-    const debugInfo: string[] = []
     
     const MIN_DATE = '2026-01-01'
     
@@ -6261,25 +6333,22 @@ app.post('/api/cron/dividend-repository/fetch', async (c) => {
     
     console.log(`[CRON] Dividend fetch completed: ${totalDividends} dividends, ${apiCalls} API calls, ${duration}ms`)
     
-    return c.json({
-      success: true,
-      message: `Automated fetch completed for ${tickersProcessed.length} tickers`,
-      dividends_found: totalDividends,
-      dividends_eligible: totalEligible,
-      api_calls_made: apiCalls,
-      duration_ms: duration,
-      tickers: tickersProcessed,
-      errors: errors.length > 0 ? errors : undefined
-    })
-    
+    // Function completes successfully - no return value needed
   } catch (error) {
-    console.error('[CRON] Error in automated dividend fetch:', error)
-    return c.json({
-      error: 'Failed to fetch dividends',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, 500)
+    console.error('[CRON] Error in background dividend fetch:', error)
+    
+    // Try to update log with error
+    try {
+      await DB.prepare(`
+        UPDATE dividend_fetch_logs
+        SET status = 'error', error_message = ?, completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(error instanceof Error ? error.message : 'Unknown error', logId).run()
+    } catch (logError) {
+      console.error('[CRON] Failed to update error log:', logError)
+    }
   }
-})
+}
 
 // Get dividend repository entries (user-agnostic data)
 app.get('/api/dividend-repository', authMiddleware, async (c) => {
