@@ -5757,9 +5757,11 @@ app.post('/api/dividend-repository/config', authMiddleware, async (c) => {
 
 // Fetch dividends for all open holdings
 app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
+  const userId = c.get('userId')
+  const { DB } = c.env
+  let logId: number | null = null  // Declare outside try block for error handler access
+  
   try {
-    const userId = c.get('userId')
-    const { DB } = c.env
     const startTime = Date.now()
     
     console.log(`Starting dividend fetch for user ${userId}`)
@@ -5797,7 +5799,7 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
       VALUES (?, 'manual', 'in_progress', '')
     `).bind(userId).run()
     
-    const logId = logResult.meta.last_row_id
+    logId = logResult.meta.last_row_id as number
     
     let totalDividends = 0
     let totalEligible = 0
@@ -5925,11 +5927,19 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
           
           // Check if dividend already exists
           const existing = await DB.prepare(`
-            SELECT id FROM dividend_repository
+            SELECT id, manually_edited FROM dividend_repository
             WHERE ticker = ? AND ex_date = ?
           `).bind(holding.ticker, exDate).first()
           
           if (existing) {
+            // Skip update if dividend was manually edited by user
+            const ex = existing as any
+            if (ex.manually_edited === 1) {
+              debugInfo.push(`${holding.ticker}: Skipping EODHD ${exDate} (manually edited)`)
+              console.log(`${holding.ticker}: Skipping EODHD dividend ${exDate} - manually edited`)
+              continue
+            }
+            
             // Update existing record
             await DB.prepare(`
               UPDATE dividend_repository
@@ -5942,7 +5952,7 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
               payDate,
               recordDate,
               declaredDate,
-              (existing as any).id
+              ex.id
             ).run()
           } else {
             // Insert new record - EODHD dividends default to monthly frequency (12)
@@ -5997,11 +6007,19 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
           // Check if dividend already exists for this ticker/ex_date combination
           // Dividends are user-agnostic - stored once per ticker/ex_date globally
           const existing = await DB.prepare(`
-            SELECT id FROM dividend_repository
+            SELECT id, manually_edited FROM dividend_repository
             WHERE ticker = ? AND ex_date = ?
           `).bind(holding.ticker, exDate).first()
           
           if (existing) {
+            // Skip update if dividend was manually edited by user
+            const ex = existing as any
+            if (ex.manually_edited === 1) {
+              debugInfo.push(`${holding.ticker}: Skipping ${exDate} (manually edited)`)
+              console.log(`${holding.ticker}: Skipping dividend ${exDate} - manually edited`)
+              continue
+            }
+            
             // Update existing record (keep most recent data from API)
             await DB.prepare(`
               UPDATE dividend_repository
@@ -6014,7 +6032,7 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
               recordDate,
               declaredDate,
               div.frequency || 52,  // Massive provides frequency field
-              (existing as any).id
+              ex.id
             ).run()
           } else {
             // Insert new record - just store dividend info, no shares calculation
@@ -6080,6 +6098,23 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     
   } catch (error) {
     console.error('Error fetching dividends:', error)
+    
+    // Try to update log with error status
+    try {
+      if (logId) {
+        await DB.prepare(`
+          UPDATE dividend_fetch_logs
+          SET status = 'failed', error_message = ?, completed_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(
+          error instanceof Error ? error.message : 'Unknown error',
+          logId
+        ).run()
+      }
+    } catch (logError) {
+      console.error('Failed to update error log:', logError)
+    }
+    
     return c.json({
       error: 'Failed to fetch dividends',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -6517,7 +6552,7 @@ app.put('/api/dividend-repository/:id', authMiddleware, async (c) => {
       return c.json({ error: 'Dividend not found' }, 404)
     }
     
-    // Update dividend
+    // Update dividend and mark as manually edited
     await DB.prepare(`
       UPDATE dividend_repository
       SET 
@@ -6527,6 +6562,7 @@ app.put('/api/dividend-repository/:id', authMiddleware, async (c) => {
         declared_date = ?,
         amount = ?,
         frequency = ?,
+        manually_edited = 1,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(
