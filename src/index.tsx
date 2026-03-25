@@ -5860,12 +5860,84 @@ app.post('/api/dividend-repository/config', authMiddleware, async (c) => {
 app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
   const userId = c.get('userId')
   const { DB } = c.env
-  let logId: number | null = null  // Declare outside try block for error handler access
   
   try {
     const startTime = Date.now()
     
-    console.log(`Starting dividend fetch for user ${userId}`)
+    console.log(`[DIVIDEND-FETCH] Starting dividend fetch for user ${userId}`)
+    
+    // Quick validation: check if user has any holdings
+    const holdingsCheck = await DB.prepare(`
+      SELECT COUNT(*) as count
+      FROM stock_holdings sh
+      WHERE sh.user_id = ?
+    `).bind(userId).first()
+    
+    if (!holdingsCheck || (holdingsCheck as any).count === 0) {
+      return c.json({ message: 'No holdings found', dividends_found: 0, dividends_eligible: 0 })
+    }
+    
+    // Create fetch log immediately
+    const logResult = await DB.prepare(`
+      INSERT INTO dividend_fetch_logs (user_id, fetch_type, status, tickers_processed, started_at)
+      VALUES (?, 'manual', 'in_progress', '', CURRENT_TIMESTAMP)
+    `).bind(userId).run()
+    
+    const logId = logResult.meta.last_row_id as number
+    
+    console.log(`[DIVIDEND-FETCH] Created log entry ${logId}, starting background processing`)
+    
+    // Use waitUntil to keep worker alive for background processing
+    // This respects Cloudflare's CPU time limits by returning 202 immediately
+    const executionContext = c.executionCtx
+    
+    // Start the fetch process in the background
+    const fetchPromise = performDividendFetchInternal(DB, userId, logId, startTime)
+    
+    // Tell Cloudflare to keep the worker alive until fetchPromise completes
+    if (executionContext && executionContext.waitUntil) {
+      executionContext.waitUntil(fetchPromise)
+      console.log(`[DIVIDEND-FETCH] Background processing queued with waitUntil`)
+    } else {
+      console.warn(`[DIVIDEND-FETCH] executionContext.waitUntil not available, processing may be interrupted`)
+      // Still start the promise but it might get cut off
+      fetchPromise.catch(err => console.error('[DIVIDEND-FETCH] Background error:', err))
+    }
+    
+    // Return immediately with 202 Accepted
+    return c.json({
+      status: 'accepted',
+      message: 'Dividend fetch started in background. Check fetch history for results.',
+      log_id: logId,
+      started_at: new Date().toISOString()
+    }, 202)
+    
+  } catch (error) {
+    console.error('[DIVIDEND-FETCH] Error starting dividend fetch:', error)
+    return c.json({
+      error: 'Failed to start dividend fetch',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
+// Internal function that performs the actual dividend fetching
+// This runs in the background via waitUntil
+async function performDividendFetchInternal(
+  DB: any,
+  userId: number,
+  logId: number,
+  startTime: number
+): Promise<void> {
+  let totalDividends = 0
+  let totalEligible = 0
+  let apiCalls = 0
+  const tickersProcessed: string[] = []
+  const errors: string[] = []
+  const debugInfo: string[] = []
+  
+  try {
+    console.log(`[DIVIDEND-FETCH-BG] Background processing started for user ${userId}, log ${logId}`)
     
     // Use system-wide Massive (Polygon.io) API key (admin-managed)
     const MASSIVE_API_KEY = 'x4VbKUBkKwYB10ObRLoRt9eDqfcClxEW'
@@ -5873,8 +5945,10 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     // Use EODHD API key for Canadian stocks fallback
     const EODHD_API_KEY = '69bc75c1788da8.83960172'
     
+    // Minimum date filter: only fetch dividends from 2026-01-01 onwards
+    const MIN_DATE = '2026-01-01'
+    
     // Get all stock holdings for this user (including closed ones)
-    // We track dividends based on ex_date regardless of position closure
     const holdings = await DB.prepare(`
       SELECT 
         sh.id as holding_id,
@@ -5889,26 +5963,17 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     `).bind(userId).all()
     
     if (!holdings.results || holdings.results.length === 0) {
-      return c.json({ message: 'No holdings found', dividends_found: 0, dividends_eligible: 0 })
+      console.log(`[DIVIDEND-FETCH-BG] No holdings found for user ${userId}`)
+      await DB.prepare(`
+        UPDATE dividend_fetch_logs
+        SET status = 'completed', error_message = 'No holdings found',
+            completed_at = CURRENT_TIMESTAMP, fetch_duration_ms = ?
+        WHERE id = ?
+      `).bind(Date.now() - startTime, logId).run()
+      return
     }
     
-    console.log(`Found ${holdings.results.length} holdings to check`)
-    
-    // Create fetch log
-    const logResult = await DB.prepare(`
-      INSERT INTO dividend_fetch_logs (user_id, fetch_type, status, tickers_processed)
-      VALUES (?, 'manual', 'in_progress', '')
-    `).bind(userId).run()
-    
-    logId = logResult.meta.last_row_id as number
-    
-    let totalDividends = 0
-    let totalEligible = 0
-    let apiCalls = 0
-    const tickersProcessed: string[] = []
-    const errors: string[] = []
-    const debugInfo: string[] = []
-    
+    console.log(`[DIVIDEND-FETCH-BG] Found ${holdings.results.length} holdings to check`)
     debugInfo.push(`Starting dividend fetch for ${holdings.results.length} holdings`)
     
     // Get unique tickers to avoid duplicate API calls
@@ -5924,11 +5989,12 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     }
     
     debugInfo.push(`Processing ${holdingsToProcess.length} unique tickers (deduplicated from ${allHoldings.length} total holdings)`)
+    console.log(`[DIVIDEND-FETCH-BG] Processing ${holdingsToProcess.length} unique tickers`)
     
     // Process each unique ticker
     for (const holding of holdingsToProcess) {
       try {
-        console.log(`Fetching dividends for ${holding.ticker}`)
+        console.log(`[DIVIDEND-FETCH-BG] Fetching dividends for ${holding.ticker}`)
         tickersProcessed.push(holding.ticker)
         
         // Call Massive (Polygon.io) API
@@ -6168,7 +6234,9 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     
     const duration = Date.now() - startTime
     
-    // Update fetch log
+    console.log(`[DIVIDEND-FETCH-BG] Completed processing for user ${userId} in ${duration}ms`)
+    
+    // Update fetch log with success/partial status
     await DB.prepare(`
       UPDATE dividend_fetch_logs
       SET status = ?, tickers_processed = ?, dividends_found = ?,
@@ -6186,42 +6254,27 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
       logId
     ).run()
     
-    return c.json({
-      success: true,
-      message: `Processed ${tickersProcessed.length} holdings`,
-      dividends_found: totalDividends,
-      dividends_eligible: totalEligible,
-      api_calls_made: apiCalls,
-      duration_ms: duration,
-      errors: errors.length > 0 ? errors : undefined,
-      debug: debugInfo
-    })
+    console.log(`[DIVIDEND-FETCH-BG] Updated log ${logId}: ${errors.length > 0 ? 'partial' : 'success'}`)
     
   } catch (error) {
-    console.error('Error fetching dividends:', error)
+    console.error('[DIVIDEND-FETCH-BG] Error in background fetch:', error)
     
     // Try to update log with error status
     try {
-      if (logId) {
-        await DB.prepare(`
-          UPDATE dividend_fetch_logs
-          SET status = 'failed', error_message = ?, completed_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(
-          error instanceof Error ? error.message : 'Unknown error',
-          logId
-        ).run()
-      }
+      await DB.prepare(`
+        UPDATE dividend_fetch_logs
+        SET status = 'failed', error_message = ?, completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).bind(
+        error instanceof Error ? error.message : 'Unknown error',
+        logId
+      ).run()
+      console.log(`[DIVIDEND-FETCH-BG] Updated log ${logId} with error status`)
     } catch (logError) {
-      console.error('Failed to update error log:', logError)
+      console.error('[DIVIDEND-FETCH-BG] Failed to update error log:', logError)
     }
-    
-    return c.json({
-      error: 'Failed to fetch dividends',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, 500)
   }
-})
+}
 
 // Cron-specific dividend fetch endpoint (secret key authentication)
 // Test endpoint to verify secret key

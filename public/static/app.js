@@ -45,13 +45,17 @@ async function checkAndTriggerWeeklyDividendFetch() {
         
         console.log('[AUTO-FETCH] Monday detected - triggering weekly dividend fetch')
         
-        // Trigger the fetch in the background (don't wait for response)
+        // Trigger the fetch in the background (202 response expected)
         api.post('/api/dividend-repository/fetch')
             .then(response => {
-                console.log('[AUTO-FETCH] Dividend fetch started successfully')
-                localStorage.setItem('lastDividendAutoFetch', today)
-                // Optional: show subtle notification
-                // showNotification('Weekly dividend fetch started', 'info')
+                if (response.status === 202 || response.status === 200) {
+                    console.log('[AUTO-FETCH] Dividend fetch started successfully:', response.data)
+                    localStorage.setItem('lastDividendAutoFetch', today)
+                    // Optional: show subtle notification
+                    // showNotification('Weekly dividend fetch started in background', 'info')
+                } else {
+                    console.warn('[AUTO-FETCH] Unexpected response status:', response.status)
+                }
             })
             .catch(error => {
                 console.error('[AUTO-FETCH] Failed to trigger dividend fetch:', error)
@@ -9923,50 +9927,135 @@ async function fetchDividends() {
             }
         })
         
+        const data = await response.json()
+        
         btn.disabled = false
         btn.innerHTML = '<i class="fas fa-sync mr-2"></i>Fetch Dividends for All Holdings'
         
-        if (response.ok) {
-            const data = await response.json()
-            
-            // Build debug info HTML if available
-            let debugHTML = ''
-            if (data.debug && data.debug.length > 0) {
-                debugHTML = `
-                    <details class="mt-3">
-                        <summary class="cursor-pointer text-gray-700 font-medium">
-                            <i class="fas fa-bug mr-1"></i>Debug Info (${data.debug.length} entries)
-                        </summary>
-                        <div class="mt-2 text-xs text-gray-600 max-h-64 overflow-y-auto bg-gray-50 p-2 rounded">
-                            ${data.debug.map(log => `<div class="mb-1">${log}</div>`).join('')}
+        if (response.ok || response.status === 202) {
+            // Handle 202 Accepted response (background processing started)
+            if (data.status === 'accepted') {
+                statusDiv.innerHTML = `
+                    <div class="bg-blue-50 border border-blue-200 rounded p-3 text-sm">
+                        <div class="font-semibold text-blue-900 mb-1">
+                            <i class="fas fa-clock mr-1"></i>Dividend fetch started in background
                         </div>
-                    </details>
+                        <div class="text-blue-700">
+                            • Processing is running in the background (4-5 minutes)<br>
+                            • Check "Fetch History Logs" below for progress<br>
+                            • You can continue using the app while it completes<br>
+                            • Started at: ${new Date(data.started_at).toLocaleTimeString()}
+                        </div>
+                    </div>
                 `
+                
+                // Reload logs immediately to show the new "in_progress" entry
+                loadDividendFetchLogs()
+                
+                // Poll for completion every 15 seconds for up to 6 minutes
+                let pollCount = 0
+                const maxPolls = 24 // 6 minutes (24 * 15 seconds)
+                const pollInterval = setInterval(async () => {
+                    pollCount++
+                    
+                    // Check if we should stop polling
+                    if (pollCount >= maxPolls) {
+                        clearInterval(pollInterval)
+                        statusDiv.innerHTML = `
+                            <div class="bg-yellow-50 border border-yellow-200 rounded p-3 text-sm">
+                                <div class="font-semibold text-yellow-900 mb-1">
+                                    <i class="fas fa-info-circle mr-1"></i>Still processing...
+                                </div>
+                                <div class="text-yellow-700">
+                                    The fetch is taking longer than expected. Check the Fetch History Logs below for the latest status.
+                                </div>
+                            </div>
+                        `
+                        return
+                    }
+                    
+                    // Reload logs to check for completion
+                    await loadDividendFetchLogs()
+                    
+                    // Check if the most recent log is completed
+                    try {
+                        const logsResponse = await fetch('/api/dividend-repository/fetch-logs', {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        })
+                        if (logsResponse.ok) {
+                            const logsData = await logsResponse.json()
+                            if (logsData.logs && logsData.logs.length > 0) {
+                                const latestLog = logsData.logs[0]
+                                if (latestLog.status === 'success' || latestLog.status === 'partial' || latestLog.status === 'failed') {
+                                    // Fetch completed!
+                                    clearInterval(pollInterval)
+                                    
+                                    statusDiv.innerHTML = `
+                                        <div class="bg-green-50 border border-green-200 rounded p-3 text-sm">
+                                            <div class="font-semibold text-green-900 mb-1">
+                                                <i class="fas fa-check-circle mr-1"></i>Fetch completed!
+                                            </div>
+                                            <div class="text-green-700">
+                                                • Status: ${latestLog.status}<br>
+                                                • Found ${latestLog.dividends_found || 0} dividends<br>
+                                                • ${latestLog.dividends_eligible || 0} eligible based on holding dates<br>
+                                                • ${latestLog.api_calls_made || 0} API calls made<br>
+                                                • Completed in ${((latestLog.fetch_duration_ms || 0) / 1000).toFixed(2)} seconds
+                                            </div>
+                                            ${latestLog.error_message ? `<div class="text-orange-600 mt-2">Errors: ${latestLog.error_message}</div>` : ''}
+                                        </div>
+                                    `
+                                    
+                                    // Reload the dividend repository to show new data
+                                    loadDividendRepository()
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error polling for fetch completion:', e)
+                    }
+                }, 15000) // Poll every 15 seconds
+                
+            } else {
+                // Legacy synchronous response (should not happen with new code)
+                // Build debug info HTML if available
+                let debugHTML = ''
+                if (data.debug && data.debug.length > 0) {
+                    debugHTML = `
+                        <details class="mt-3">
+                            <summary class="cursor-pointer text-gray-700 font-medium">
+                                <i class="fas fa-bug mr-1"></i>Debug Info (${data.debug.length} entries)
+                            </summary>
+                            <div class="mt-2 text-xs text-gray-600 max-h-64 overflow-y-auto bg-gray-50 p-2 rounded">
+                                ${data.debug.map(log => `<div class="mb-1">${log}</div>`).join('')}
+                            </div>
+                        </details>
+                    `
+                }
+                
+                statusDiv.innerHTML = `
+                    <div class="bg-green-50 border border-green-200 rounded p-3 text-sm">
+                        <div class="font-semibold text-green-900 mb-1">
+                            <i class="fas fa-check-circle mr-1"></i>Fetch completed successfully!
+                        </div>
+                        <div class="text-green-700">
+                            • Found ${data.dividends_found} dividends<br>
+                            • ${data.dividends_eligible} are eligible based on your holding dates<br>
+                            • ${data.api_calls_made} API calls made<br>
+                            • Completed in ${(data.duration_ms / 1000).toFixed(2)} seconds
+                        </div>
+                        ${data.errors ? `<div class="text-orange-600 mt-2">Some errors occurred: ${data.errors.join('; ')}</div>` : ''}
+                        ${debugHTML}
+                    </div>
+                `
+                loadDividendRepository()
+                loadDividendFetchLogs()
             }
-            
-            statusDiv.innerHTML = `
-                <div class="bg-green-50 border border-green-200 rounded p-3 text-sm">
-                    <div class="font-semibold text-green-900 mb-1">
-                        <i class="fas fa-check-circle mr-1"></i>Fetch completed successfully!
-                    </div>
-                    <div class="text-green-700">
-                        • Found ${data.dividends_found} dividends<br>
-                        • ${data.dividends_eligible} are eligible based on your holding dates<br>
-                        • ${data.api_calls_made} API calls made<br>
-                        • Completed in ${(data.duration_ms / 1000).toFixed(2)} seconds
-                    </div>
-                    ${data.errors ? `<div class="text-orange-600 mt-2">Some errors occurred: ${data.errors.join('; ')}</div>` : ''}
-                    ${debugHTML}
-                </div>
-            `
-            loadDividendRepository()
-            loadDividendFetchLogs()
         } else {
-            const error = await response.json()
             statusDiv.innerHTML = `
                 <div class="text-red-600">
                     <i class="fas fa-exclamation-triangle mr-1"></i>
-                    ${error.error || 'Failed to fetch dividends'}
+                    ${data.error || 'Failed to fetch dividends'}
                 </div>
             `
         }
