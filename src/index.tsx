@@ -8255,29 +8255,6 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                         </div>
                                     </div>
                                     
-                                    <!-- Summary Stats -->
-                                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-                                            <div class="text-2xl font-bold text-blue-600" id="stats-total">0</div>
-                                            <div class="text-xs text-gray-600">Total Dividends</div>
-                                        </div>
-                                        <div class="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                                            <div class="text-2xl font-bold text-green-600" id="stats-eligible">0</div>
-                                            <div class="text-xs text-gray-600">Weekly</div>
-                                        </div>
-                                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
-                                            <div class="text-2xl font-bold text-yellow-600" id="stats-pending">0</div>
-                                            <div class="text-xs text-gray-600">Monthly</div>
-                                        </div>
-                                        <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
-                                            <div class="text-2xl font-bold text-purple-600" id="stats-total-amount">0</div>
-                                            <div class="text-xs text-gray-600">Quarterly</div>
-                                        </div>
-                                    </div>
-                                            <div class="text-xs text-gray-600">Total Eligible Amount</div>
-                                        </div>
-                                    </div>
-                                    
                                     <!-- Dividend Repository Table -->
                                     <div class="border border-gray-200 rounded-lg overflow-hidden">
                                         <div class="overflow-x-auto">
