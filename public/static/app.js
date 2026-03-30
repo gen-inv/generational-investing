@@ -7523,6 +7523,7 @@ async function renderPLTrendChart(period) {
         const labels = []
         const plData = []
         const cumulativeData = []
+        const tradeDetails = [] // Store trade details for tooltips
         let cumulativePL = 0
         
         trades.forEach((trade, index) => {
@@ -7535,6 +7536,13 @@ async function renderPLTrendChart(period) {
             // Cumulative P/L
             cumulativePL += (trade.profit_loss || 0)
             cumulativeData.push(cumulativePL)
+            
+            // Store trade details for tooltip
+            tradeDetails.push({
+                date: trade.close_date || trade.entry_date,
+                strategy: trade.strategy || 'N/A',
+                ticker: trade.ticker || ''
+            })
         })
         
         // Calculate Y-axis ranges
@@ -7701,6 +7709,15 @@ async function renderPLTrendChart(period) {
                     },
                     tooltip: {
                         callbacks: {
+                            title: function(context) {
+                                // Show trade number and date in title
+                                const index = context[0].dataIndex
+                                const trade = tradeDetails[index]
+                                if (trade) {
+                                    return [`Trade ${context[0].label}`, `Date: ${trade.date}`, `Strategy: ${trade.strategy}${trade.ticker ? ' (' + trade.ticker + ')' : ''}`]
+                                }
+                                return `Trade ${context[0].label}`
+                            },
                             label: function(context) {
                                 let label = context.dataset.label || ''
                                 if (label) {
