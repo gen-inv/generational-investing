@@ -1697,11 +1697,15 @@ async function showCompanyView(companyId) {
                     </div>
                 </div>
                 
-                <div class="border-t pt-4 flex gap-2">
+                <div class="border-t pt-4 flex gap-2 flex-wrap">
                     <button onclick="fetchEarningsDate(${companyId})" class="btn-primary flex items-center gap-2">
                         <i class="fas fa-calendar-alt"></i>
                         <span class="btn-text">Fetch Earnings Date</span>
                         <span class="btn-loading hidden">Fetching...</span>
+                    </button>
+                    <button onclick="openResearchModal('${company.ticker}'); this.closest('.fixed').remove()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded flex items-center gap-2">
+                        <i class="fas fa-chart-line"></i>
+                        View Research
                     </button>
                     <button onclick="editCompany(${companyId}); this.closest('.fixed').remove()" class="btn-secondary flex items-center gap-2">
                         <i class="fas fa-edit"></i>
