@@ -9806,6 +9806,50 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
             </div>
         </div>
         
+        <!-- Research Modal -->
+        <div id="research-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden">
+            <div class="bg-white rounded-lg shadow-xl max-w-7xl w-full max-h-[95vh] overflow-y-auto">
+                <div class="bg-gradient-to-r from-teal-700 to-teal-900 text-white px-6 py-4 flex justify-between items-center rounded-t-lg sticky top-0 z-10">
+                    <h3 id="research-modal-title" class="text-2xl font-bold">
+                        <i class="fas fa-chart-bar mr-2"></i>Company Research
+                    </h3>
+                    <button onclick="closeResearchModal()" class="text-white hover:text-gray-200">
+                        <i class="fas fa-times text-2xl"></i>
+                    </button>
+                </div>
+                
+                <!-- Tabs -->
+                <div class="flex border-b border-gray-200 bg-gray-50 sticky top-[68px] z-10">
+                    <button class="research-tab px-6 py-3 font-semibold text-gray-600 hover:text-teal-600 hover:bg-white border-b-2 border-transparent active" onclick="switchResearchTab('income')">
+                        <i class="fas fa-chart-line mr-2"></i>Income Statement
+                    </button>
+                    <button class="research-tab px-6 py-3 font-semibold text-gray-600 hover:text-teal-600 hover:bg-white border-b-2 border-transparent" onclick="switchResearchTab('balance')">
+                        <i class="fas fa-balance-scale mr-2"></i>Balance Sheet
+                    </button>
+                    <button class="research-tab px-6 py-3 font-semibold text-gray-600 hover:text-teal-600 hover:bg-white border-b-2 border-transparent" onclick="switchResearchTab('cashflow')">
+                        <i class="fas fa-money-bill-wave mr-2"></i>Cash Flow
+                    </button>
+                </div>
+                
+                <!-- Tab Content -->
+                <div class="p-6">
+                    <div id="research-loading" class="text-center py-12">
+                        <i class="fas fa-spinner fa-spin text-4xl text-teal-600 mb-4"></i>
+                        <p class="text-gray-600">Loading financial data...</p>
+                    </div>
+                    
+                    <div id="research-error" class="hidden text-center py-12">
+                        <i class="fas fa-exclamation-circle text-4xl text-red-600 mb-4"></i>
+                        <p class="text-gray-600" id="research-error-message">Error loading data</p>
+                    </div>
+                    
+                    <div id="research-income-tab" class="research-tab-content hidden"></div>
+                    <div id="research-balance-tab" class="research-tab-content hidden"></div>
+                    <div id="research-cashflow-tab" class="research-tab-content hidden"></div>
+                </div>
+            </div>
+        </div>
+        
         <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
         <script src="/static/app.js"></script>
     </body>

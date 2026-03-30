@@ -102,7 +102,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Initialize Daily Trade calculations
     initializeDailyTradeCalculations()
+    
+    // Check for research query parameter
+    checkResearchQueryParameter()
 })
+
+// Check for ?research=SYMBOL query parameter from research site
+function checkResearchQueryParameter() {
+    const urlParams = new URLSearchParams(window.location.search)
+    const researchSymbol = urlParams.get('research')
+    
+    if (researchSymbol) {
+        console.log(`[RESEARCH] Deep link detected for symbol: ${researchSymbol}`)
+        
+        // Wait for user to be logged in
+        if (token) {
+            // Open research modal immediately
+            setTimeout(() => {
+                openResearchModal(researchSymbol)
+            }, 500)
+        } else {
+            // Store symbol and open after login
+            localStorage.setItem('pendingResearchSymbol', researchSymbol)
+        }
+        
+        // Clean up URL without refreshing page
+        const cleanUrl = window.location.pathname
+        window.history.replaceState({}, document.title, cleanUrl)
+    }
+    
+    // Check if there's a pending research symbol after login
+    const pendingSymbol = localStorage.getItem('pendingResearchSymbol')
+    if (pendingSymbol && token) {
+        localStorage.removeItem('pendingResearchSymbol')
+        setTimeout(() => {
+            openResearchModal(pendingSymbol)
+        }, 500)
+    }
+}
 
 // ============================================================================
 // AUTH FUNCTIONS
@@ -12217,3 +12254,286 @@ function updateConcentrationAnalysis(summary) {
         }
     }
 }
+
+// ============================================================================
+// RESEARCH MODAL FUNCTIONS
+// ============================================================================
+
+// Research API Base URL
+const RESEARCH_API = 'https://research.generationalinvesting.ca'
+
+// Global research state
+let currentResearchData = null
+
+// Open research modal for a specific symbol
+async function openResearchModal(symbol) {
+    const modal = document.getElementById('research-modal')
+    const modalTitle = document.getElementById('research-modal-title')
+    const loadingEl = document.getElementById('research-loading')
+    const errorEl = document.getElementById('research-error')
+    const errorMessageEl = document.getElementById('research-error-message')
+    
+    // Show modal
+    modal.classList.remove('hidden')
+    
+    // Show loading state
+    loadingEl.classList.remove('hidden')
+    errorEl.classList.add('hidden')
+    document.querySelectorAll('.research-tab-content').forEach(el => el.classList.add('hidden'))
+    
+    // Update title
+    modalTitle.innerHTML = `
+        <i class="fas fa-spinner fa-spin mr-2"></i>Loading ${symbol}...
+    `
+    
+    try {
+        // Fetch company data from research API
+        const response = await axios.get(`${RESEARCH_API}/api/research/company/${symbol}`)
+        currentResearchData = response.data
+        
+        // Update title
+        modalTitle.innerHTML = `
+            <i class="fas fa-chart-bar mr-2"></i>${symbol} - ${response.data.company.name || 'N/A'}
+        `
+        
+        // Hide loading
+        loadingEl.classList.add('hidden')
+        
+        // Render all tabs
+        renderResearchIncomeTab(currentResearchData)
+        renderResearchBalanceTab(currentResearchData)
+        renderResearchCashFlowTab(currentResearchData)
+        
+        // Show income tab by default
+        switchResearchTab('income')
+        
+    } catch (error) {
+        console.error('Error loading research data:', error)
+        
+        // Show error
+        loadingEl.classList.add('hidden')
+        errorEl.classList.remove('hidden')
+        
+        if (error.response?.status === 404) {
+            errorMessageEl.textContent = `Company ${symbol} not found in research database`
+        } else {
+            errorMessageEl.textContent = error.message || 'Failed to load company data'
+        }
+        
+        modalTitle.innerHTML = `
+            <i class="fas fa-exclamation-circle mr-2"></i>Error Loading ${symbol}
+        `
+    }
+}
+
+// Close research modal
+function closeResearchModal() {
+    document.getElementById('research-modal').classList.add('hidden')
+    currentResearchData = null
+}
+
+// Switch between research tabs
+function switchResearchTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.research-tab').forEach(tab => {
+        tab.classList.remove('active', 'text-teal-600', 'bg-white', 'border-teal-600')
+        tab.classList.add('text-gray-600', 'border-transparent')
+    })
+    
+    const activeTab = event.target.closest('.research-tab')
+    if (activeTab) {
+        activeTab.classList.remove('text-gray-600', 'border-transparent')
+        activeTab.classList.add('active', 'text-teal-600', 'bg-white', 'border-teal-600')
+    }
+    
+    // Update tab content
+    document.querySelectorAll('.research-tab-content').forEach(content => {
+        content.classList.add('hidden')
+    })
+    document.getElementById(`research-${tabName}-tab`).classList.remove('hidden')
+}
+
+// Render Income Statement Tab
+function renderResearchIncomeTab(data) {
+    const container = document.getElementById('research-income-tab')
+    const statements = data.financials.income_statements || []
+    
+    if (statements.length === 0) {
+        container.innerHTML = '<div class="text-center py-12 text-gray-600">No income statement data available</div>'
+        return
+    }
+    
+    const years = statements.map(s => s.fiscal_year).sort((a, b) => b - a).slice(0, 10)
+    
+    container.innerHTML = `
+        <div class="overflow-x-auto">
+            <table class="min-w-full border border-gray-200">
+                <thead>
+                    <tr class="bg-teal-700 text-white">
+                        <th class="px-4 py-2 text-left sticky left-0 bg-teal-700">Metric</th>
+                        ${years.map(year => `<th class="px-4 py-2 text-right">${year}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    ${renderResearchMetricRow('Revenue', statements, years, 'revenue', true)}
+                    ${renderResearchMetricRow('Cost of Revenue', statements, years, 'cost_of_revenue', true)}
+                    ${renderResearchMetricRow('Gross Profit', statements, years, 'gross_profit', true)}
+                    ${renderResearchMetricRow('Operating Income', statements, years, 'operating_income', true)}
+                    ${renderResearchMetricRow('EBITDA', statements, years, 'ebitda', true)}
+                    ${renderResearchMetricRow('Net Income', statements, years, 'net_income', true)}
+                    ${renderResearchMetricRow('EPS (Basic)', statements, years, 'eps', false)}
+                    ${renderResearchMetricRow('EPS (Diluted)', statements, years, 'eps_diluted', false)}
+                    ${renderResearchMetricRow('Shares Outstanding', statements, years, 'weighted_average_shares', false, true)}
+                </tbody>
+            </table>
+        </div>
+    `
+}
+
+// Render Balance Sheet Tab
+function renderResearchBalanceTab(data) {
+    const container = document.getElementById('research-balance-tab')
+    const statements = data.financials.balance_sheets || []
+    
+    if (statements.length === 0) {
+        container.innerHTML = '<div class="text-center py-12 text-gray-600">No balance sheet data available</div>'
+        return
+    }
+    
+    const years = statements.map(s => s.fiscal_year).sort((a, b) => b - a).slice(0, 10)
+    
+    container.innerHTML = `
+        <div class="overflow-x-auto">
+            <table class="min-w-full border border-gray-200">
+                <thead>
+                    <tr class="bg-teal-700 text-white">
+                        <th class="px-4 py-2 text-left sticky left-0 bg-teal-700">Metric</th>
+                        ${years.map(year => `<th class="px-4 py-2 text-right">${year}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    <tr class="bg-teal-100"><th colspan="${years.length + 1}" class="px-4 py-2 text-center font-bold">ASSETS</th></tr>
+                    ${renderResearchMetricRow('Total Assets', statements, years, 'total_assets', true)}
+                    ${renderResearchMetricRow('Current Assets', statements, years, 'current_assets', true)}
+                    ${renderResearchMetricRow('Cash & Equivalents', statements, years, 'cash_and_equivalents', true)}
+                    ${renderResearchMetricRow('Accounts Receivable', statements, years, 'accounts_receivable', true)}
+                    ${renderResearchMetricRow('Inventory', statements, years, 'inventory', true)}
+                    ${renderResearchMetricRow('Property, Plant & Equipment', statements, years, 'property_plant_equipment', true)}
+                    <tr class="bg-orange-100"><th colspan="${years.length + 1}" class="px-4 py-2 text-center font-bold">LIABILITIES</th></tr>
+                    ${renderResearchMetricRow('Total Liabilities', statements, years, 'total_liabilities', true)}
+                    ${renderResearchMetricRow('Current Liabilities', statements, years, 'current_liabilities', true)}
+                    ${renderResearchMetricRow('Accounts Payable', statements, years, 'accounts_payable', true)}
+                    ${renderResearchMetricRow('Short-term Debt', statements, years, 'short_term_debt', true)}
+                    ${renderResearchMetricRow('Long-term Debt', statements, years, 'long_term_debt', true)}
+                    ${renderResearchMetricRow('Total Debt', statements, years, 'total_debt', true)}
+                    <tr class="bg-yellow-100"><th colspan="${years.length + 1}" class="px-4 py-2 text-center font-bold">EQUITY</th></tr>
+                    ${renderResearchMetricRow('Total Stockholders Equity', statements, years, 'total_stockholders_equity', true)}
+                    ${renderResearchMetricRow('Retained Earnings', statements, years, 'retained_earnings', true)}
+                    ${renderResearchMetricRow('Shares Outstanding', statements, years, 'shares_outstanding', false, true)}
+                </tbody>
+            </table>
+        </div>
+    `
+}
+
+// Render Cash Flow Tab
+function renderResearchCashFlowTab(data) {
+    const container = document.getElementById('research-cashflow-tab')
+    const statements = data.financials.cash_flow_statements || []
+    
+    if (statements.length === 0) {
+        container.innerHTML = '<div class="text-center py-12 text-gray-600">No cash flow data available</div>'
+        return
+    }
+    
+    const years = statements.map(s => s.fiscal_year).sort((a, b) => b - a).slice(0, 10)
+    
+    container.innerHTML = `
+        <div class="overflow-x-auto">
+            <table class="min-w-full border border-gray-200">
+                <thead>
+                    <tr class="bg-teal-700 text-white">
+                        <th class="px-4 py-2 text-left sticky left-0 bg-teal-700">Metric</th>
+                        ${years.map(year => `<th class="px-4 py-2 text-right">${year}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    ${renderResearchMetricRow('Operating Cash Flow', statements, years, 'operating_cash_flow', true)}
+                    ${renderResearchMetricRow('Capital Expenditure', statements, years, 'capital_expenditure', true)}
+                    ${renderResearchMetricRow('Free Cash Flow', statements, years, 'free_cash_flow', true)}
+                    ${renderResearchMetricRow('Investing Cash Flow', statements, years, 'investing_cash_flow', true)}
+                    ${renderResearchMetricRow('Financing Cash Flow', statements, years, 'financing_cash_flow', true)}
+                    ${renderResearchMetricRow('Dividend Payments', statements, years, 'dividend_payments', true)}
+                    ${renderResearchMetricRow('Stock Repurchases', statements, years, 'stock_repurchases', true)}
+                </tbody>
+            </table>
+        </div>
+    `
+}
+
+// Helper: Render metric row
+function renderResearchMetricRow(label, statements, years, field, isCurrency, isShares = false) {
+    const values = years.map(year => {
+        const statement = statements.find(s => s.fiscal_year === year)
+        const value = statement ? statement[field] : null
+        
+        if (value === null || value === undefined) {
+            return '<td class="px-4 py-2 text-right border-t">-</td>'
+        }
+        
+        if (isShares) {
+            return `<td class="px-4 py-2 text-right border-t">${formatResearchShares(value)}</td>`
+        } else if (isCurrency) {
+            return `<td class="px-4 py-2 text-right border-t">${formatResearchCurrency(value)}</td>`
+        } else {
+            return `<td class="px-4 py-2 text-right border-t">${formatResearchNumber(value, 2)}</td>`
+        }
+    })
+    
+    return `
+        <tr class="hover:bg-gray-50">
+            <th class="px-4 py-2 text-left font-semibold border-t sticky left-0 bg-gray-50">${label}</th>
+            ${values.join('')}
+        </tr>
+    `
+}
+
+// Helper: Format currency
+function formatResearchCurrency(value) {
+    if (!value && value !== 0) return '-'
+    const num = parseFloat(value)
+    if (isNaN(num)) return '-'
+    
+    const billions = num / 1_000_000_000
+    if (Math.abs(billions) >= 1) {
+        return `$${billions.toFixed(2)}B`
+    }
+    
+    const millions = num / 1_000_000
+    return `$${millions.toFixed(2)}M`
+}
+
+// Helper: Format shares
+function formatResearchShares(value) {
+    if (!value && value !== 0) return '-'
+    const num = parseFloat(value)
+    if (isNaN(num)) return '-'
+    
+    const billions = num / 1_000_000_000
+    if (Math.abs(billions) >= 1) {
+        return `${billions.toFixed(2)}B`
+    }
+    
+    const millions = num / 1_000_000
+    return `${millions.toFixed(2)}M`
+}
+
+// Helper: Format number
+function formatResearchNumber(value, decimals = 2) {
+    if (!value && value !== 0) return '-'
+    const num = parseFloat(value)
+    if (isNaN(num)) return '-'
+    return num.toFixed(decimals)
+}
+
+console.log('[RESEARCH] Research modal functions loaded')
