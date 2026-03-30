@@ -12260,7 +12260,7 @@ function updateConcentrationAnalysis(summary) {
 // ============================================================================
 
 // Research API Base URL
-const RESEARCH_API = 'https://research.generationalinvesting.ca'
+const RESEARCH_API = 'https://research-e79.pages.dev'
 
 // Global research state
 let currentResearchData = null
