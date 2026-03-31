@@ -1648,6 +1648,16 @@ async function showCompanyView(companyId) {
         const response = await api.get(`/api/companies/${companyId}`)
         const company = response.data.company
         
+        // Check if company exists on research site
+        let hasResearchData = false
+        try {
+            const researchResponse = await axios.get(`${RESEARCH_API}/api/research/company/${company.ticker}`)
+            hasResearchData = researchResponse.data && researchResponse.data.company
+        } catch (error) {
+            // Company doesn't exist on research site
+            hasResearchData = false
+        }
+        
         const modal = document.createElement('div')
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'
         modal.innerHTML = `
@@ -1703,10 +1713,18 @@ async function showCompanyView(companyId) {
                         <span class="btn-text">Fetch Earnings Date</span>
                         <span class="btn-loading hidden">Fetching...</span>
                     </button>
-                    <button onclick="openResearchModal('${company.ticker}')" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded flex items-center gap-2">
-                        <i class="fas fa-chart-line"></i>
-                        View Financials
-                    </button>
+                    ${hasResearchData ? `
+                        <button onclick="openResearchModal('${company.ticker}')" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded flex items-center gap-2">
+                            <i class="fas fa-chart-line"></i>
+                            View Financials
+                        </button>
+                    ` : `
+                        <button onclick="fetchFinancials('${company.ticker}')" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded flex items-center gap-2" id="fetch-financials-btn">
+                            <i class="fas fa-download"></i>
+                            <span class="btn-text">Fetch Financials</span>
+                            <span class="btn-loading hidden"><i class="fas fa-spinner fa-spin"></i> Fetching...</span>
+                        </button>
+                    `}
                     <button onclick="editCompany(${companyId}); this.closest('.fixed').remove()" class="btn-secondary flex items-center gap-2">
                         <i class="fas fa-edit"></i>
                         Edit Company
@@ -12291,6 +12309,58 @@ const RESEARCH_API = 'https://research-e79.pages.dev'
 
 // Global research state
 let currentResearchData = null
+
+// Fetch financials from research site (triggers SEC EDGAR fetch)
+async function fetchFinancials(symbol) {
+    const btn = document.getElementById('fetch-financials-btn')
+    const btnText = btn.querySelector('.btn-text')
+    const btnLoading = btn.querySelector('.btn-loading')
+    
+    // Show loading state
+    btn.disabled = true
+    btnText.classList.add('hidden')
+    btnLoading.classList.remove('hidden')
+    
+    try {
+        // Call research API to fetch financial data from SEC EDGAR
+        const response = await axios.post(`${RESEARCH_API}/api/research/fetch/${symbol}`)
+        
+        if (response.data.success) {
+            // Show success message
+            btnLoading.classList.add('hidden')
+            btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Fetched Successfully!'
+            btn.classList.remove('bg-amber-600', 'hover:bg-amber-700')
+            btn.classList.add('bg-green-600', 'hover:bg-green-700')
+            
+            // Wait 1 second then open the research modal
+            setTimeout(() => {
+                openResearchModal(symbol)
+            }, 1000)
+        } else {
+            throw new Error(response.data.error || 'Failed to fetch financials')
+        }
+    } catch (error) {
+        console.error('Error fetching financials:', error)
+        
+        // Show error
+        btnLoading.classList.add('hidden')
+        btn.innerHTML = '<i class="fas fa-exclamation-circle mr-2"></i>Fetch Failed'
+        btn.classList.remove('bg-amber-600', 'hover:bg-amber-700')
+        btn.classList.add('bg-red-600', 'hover:bg-red-700')
+        
+        // Show error message
+        const errorMsg = error.response?.data?.error || error.message || 'Failed to fetch financial data'
+        alert(`Error: ${errorMsg}`)
+        
+        // Reset button after 3 seconds
+        setTimeout(() => {
+            btn.disabled = false
+            btn.innerHTML = '<i class="fas fa-download mr-2"></i><span class="btn-text">Fetch Financials</span><span class="btn-loading hidden"><i class="fas fa-spinner fa-spin"></i> Fetching...</span>'
+            btn.classList.remove('bg-red-600', 'hover:bg-red-700')
+            btn.classList.add('bg-amber-600', 'hover:bg-amber-700')
+        }, 3000)
+    }
+}
 
 // Open research modal for a specific symbol
 async function openResearchModal(symbol) {
