@@ -7500,10 +7500,21 @@ async function calculateAccountBasedContracts() {
         
         // Get the account balance
         const accountResponse = await api.get(`/api/accounts/${defaultAccountId}`)
-        const account = accountResponse.data
-        const accountBalance = parseFloat(account.total_balance) || 0
+        const accountData = accountResponse.data.account // API returns { account: {...} }
         
-        console.log('Account data:', account, 'Balance:', accountBalance)
+        if (!accountData) {
+            throw new Error('Account data not found')
+        }
+        
+        // Calculate total balance based on default currency
+        let accountBalance = 0
+        if (accountData.default_currency === 'USD') {
+            accountBalance = parseFloat(accountData.balance_usd) || 0
+        } else {
+            accountBalance = parseFloat(accountData.balance_cad) || 0
+        }
+        
+        console.log('Account data:', accountData, 'Balance:', accountBalance, 'Currency:', accountData.default_currency)
         
         // Calculate maximum loss amount: (maxLossPct / 100) * accountBalance
         const maxLossAmount = (maxLossPct / 100) * accountBalance
