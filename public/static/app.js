@@ -469,13 +469,15 @@ function showSection(sectionName) {
             loadPortfolioOverview()
             break
         case 'daily-trade':
-            // Show default tab (Performance) first to render DOM, then load config
-            showDailyTradeTab('performance')
+            // Load config first, then show default tab (Performance)
             loadDailyTradeConfig().then(() => {
+                showDailyTradeTab('performance')
                 // Check for monthly expiration alert on initial load
                 checkMonthlyExpirationAlert()
             }).catch(err => {
                 console.error('Failed to load Daily Trade config:', err)
+                // Still show the tab even if config fails
+                showDailyTradeTab('performance')
             })
             break
         case 'utilities':
@@ -639,9 +641,18 @@ function showDailyTradeTab(tabName) {
 
 // Update Performance tab labels with configured rolling window value
 function updateRollingWindowLabels() {
-    // Get rolling window value from configuration form
-    const rollingWindowInput = document.getElementById('dt-rolling-profit-window')
-    const rollingWindow = rollingWindowInput ? parseInt(rollingWindowInput.value) : 50
+    // Get rolling window value from cached configuration
+    let rollingWindow = 50 // Default
+    
+    if (dailyTradeConfigCache && dailyTradeConfigCache.rolling_profit_window) {
+        rollingWindow = parseInt(dailyTradeConfigCache.rolling_profit_window)
+    } else {
+        // Fallback: try to read from DOM if cache not available
+        const rollingWindowInput = document.getElementById('dt-rolling-profit-window')
+        if (rollingWindowInput && rollingWindowInput.value) {
+            rollingWindow = parseInt(rollingWindowInput.value)
+        }
+    }
     
     // Update filter button text
     const filterButton = document.getElementById('dt-filter-rolling')
@@ -7564,7 +7575,17 @@ async function loadPerformanceStats(period) {
         // Build API query params
         let queryParams = `period=${period}`
         if (period === 'rolling') {
-            const rollingWindow = parseInt(document.getElementById('dt-rolling-profit-window')?.value || 50)
+            // Get rolling window from cached config
+            let rollingWindow = 50 // Default
+            if (dailyTradeConfigCache && dailyTradeConfigCache.rolling_profit_window) {
+                rollingWindow = parseInt(dailyTradeConfigCache.rolling_profit_window)
+            } else {
+                // Fallback: try to read from DOM if cache not available
+                const rollingWindowInput = document.getElementById('dt-rolling-profit-window')
+                if (rollingWindowInput && rollingWindowInput.value) {
+                    rollingWindow = parseInt(rollingWindowInput.value)
+                }
+            }
             queryParams += `&limit=${rollingWindow}`
         }
         
@@ -7616,7 +7637,17 @@ async function loadPerformanceStats(period) {
         // Update chart title
         let chartTitle = 'P/L Trend'
         if (period === 'rolling') {
-            const rollingWindow = parseInt(document.getElementById('dt-rolling-profit-window')?.value || 50)
+            // Get rolling window from cached config
+            let rollingWindow = 50 // Default
+            if (dailyTradeConfigCache && dailyTradeConfigCache.rolling_profit_window) {
+                rollingWindow = parseInt(dailyTradeConfigCache.rolling_profit_window)
+            } else {
+                // Fallback: try to read from DOM if cache not available
+                const rollingWindowInput = document.getElementById('dt-rolling-profit-window')
+                if (rollingWindowInput && rollingWindowInput.value) {
+                    rollingWindow = parseInt(rollingWindowInput.value)
+                }
+            }
             chartTitle += ` (Last ${rollingWindow} Trades)`
         } else if (period === 'year') {
             chartTitle += ' (YTD)'
@@ -7670,7 +7701,17 @@ async function renderPLTrendChart(period) {
         // Build API query params
         let queryParams = `period=${period}`
         if (period === 'rolling') {
-            const rollingWindow = parseInt(document.getElementById('dt-rolling-profit-window')?.value || 50)
+            // Get rolling window from cached config
+            let rollingWindow = 50 // Default
+            if (dailyTradeConfigCache && dailyTradeConfigCache.rolling_profit_window) {
+                rollingWindow = parseInt(dailyTradeConfigCache.rolling_profit_window)
+            } else {
+                // Fallback: try to read from DOM if cache not available
+                const rollingWindowInput = document.getElementById('dt-rolling-profit-window')
+                if (rollingWindowInput && rollingWindowInput.value) {
+                    rollingWindow = parseInt(rollingWindowInput.value)
+                }
+            }
             queryParams += `&limit=${rollingWindow}`
         }
         
