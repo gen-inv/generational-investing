@@ -12374,11 +12374,13 @@ function switchResearchTab(tabName) {
         tab.classList.add('text-gray-600', 'border-transparent')
     })
     
-    const activeTab = event.target.closest('.research-tab')
-    if (activeTab) {
-        activeTab.classList.remove('text-gray-600', 'border-transparent')
-        activeTab.classList.add('active', 'text-teal-600', 'bg-white', 'border-teal-600')
-    }
+    // Find and activate the correct tab by matching the onclick attribute
+    document.querySelectorAll('.research-tab').forEach(tab => {
+        if (tab.getAttribute('onclick')?.includes(`'${tabName}'`)) {
+            tab.classList.remove('text-gray-600', 'border-transparent')
+            tab.classList.add('active', 'text-teal-600', 'bg-white', 'border-teal-600')
+        }
+    })
     
     // Update tab content
     document.querySelectorAll('.research-tab-content').forEach(content => {
