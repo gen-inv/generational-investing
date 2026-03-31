@@ -1703,7 +1703,7 @@ async function showCompanyView(companyId) {
                         <span class="btn-text">Fetch Earnings Date</span>
                         <span class="btn-loading hidden">Fetching...</span>
                     </button>
-                    <button onclick="openResearchModal('${company.ticker}'); this.closest('.fixed').remove()" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded flex items-center gap-2">
+                    <button onclick="openResearchModal('${company.ticker}')" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded flex items-center gap-2">
                         <i class="fas fa-chart-line"></i>
                         View Research
                     </button>
@@ -12300,6 +12300,12 @@ async function openResearchModal(symbol) {
     const loadingEl = document.getElementById('research-loading')
     const errorEl = document.getElementById('research-error')
     const errorMessageEl = document.getElementById('research-error-message')
+    
+    // Close company details modal if open
+    const companyModal = document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50')
+    if (companyModal) {
+        companyModal.remove()
+    }
     
     // Show modal
     modal.classList.remove('hidden')
