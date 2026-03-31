@@ -1023,27 +1023,6 @@ async function loadDailyTradeConfig() {
         if (enablePositionSizing) {
             enablePositionSizing.checked = config.enable_position_sizing || false
             // Initialize UI state
-            togglePositionSizing()
-        }
-        
-        // Position sizing type
-        const sizingType = config.position_sizing_type || 'profit'
-        const profitRadio = document.querySelector('input[name="dt-position-sizing-type"][value="profit"]')
-        const accountRadio = document.querySelector('input[name="dt-position-sizing-type"][value="account"]')
-        if (sizingType === 'profit' && profitRadio) {
-            profitRadio.checked = true
-        } else if (sizingType === 'account' && accountRadio) {
-            accountRadio.checked = true
-        }
-        
-        // Account-based sizing config
-        document.getElementById('dt-account-max-loss-percent').value = config.account_max_loss_percent || 4.00
-        
-        // New position sizing fields
-        const enablePositionSizing = document.getElementById('dt-enable-position-sizing')
-        if (enablePositionSizing) {
-            enablePositionSizing.checked = config.enable_position_sizing || false
-            // Initialize UI state
             if (typeof togglePositionSizing === 'function') {
                 togglePositionSizing()
             }
