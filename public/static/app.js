@@ -469,11 +469,13 @@ function showSection(sectionName) {
             loadPortfolioOverview()
             break
         case 'daily-trade':
-            // Load config first, then show default tab (Performance)
+            // Show default tab (Performance) first to render DOM, then load config
+            showDailyTradeTab('performance')
             loadDailyTradeConfig().then(() => {
-                showDailyTradeTab('performance')
                 // Check for monthly expiration alert on initial load
                 checkMonthlyExpirationAlert()
+            }).catch(err => {
+                console.error('Failed to load Daily Trade config:', err)
             })
             break
         case 'utilities':
@@ -982,6 +984,9 @@ function closeDailyTradeConfig() {
     }
 }
 
+// Global config cache
+let dailyTradeConfigCache = null
+
 // Load Daily Trade configuration
 async function loadDailyTradeConfig() {
     try {
@@ -1004,71 +1009,85 @@ async function loadDailyTradeConfig() {
         const response = await api.get('/api/daily-trade/config')
         const config = response.data
         
+        // Cache the config
+        dailyTradeConfigCache = config
+        
         console.log('Config received:', config)
         
-        // Populate form fields
-        document.getElementById('dt-max-contract-limit').value = config.max_contract_limit || 25
-        document.getElementById('dt-rolling-profit-window').value = config.rolling_profit_window || 50
-        document.getElementById('dt-target-premium-min').value = config.target_premium_min || 10.00
-        document.getElementById('dt-target-premium-max').value = config.target_premium_max || 15.00
-        document.getElementById('dt-guideline-delta').value = config.guideline_delta || -0.10
-        document.getElementById('dt-strike-width').value = config.strike_width || 5
-        document.getElementById('dt-default-contracts').value = config.default_contracts || 1
-        document.getElementById('dt-profit-target-percent').value = config.profit_target_percent || 50
-        document.getElementById('dt-atm-proximity-limit').value = config.atm_proximity_limit || 30
-        document.getElementById('dt-time-exit').value = config.time_exit ? config.time_exit.substring(0, 5) : '14:00'
+        // Check if config modal is visible before populating form fields
+        const configModal = document.getElementById('dt-config-modal')
+        const isModalVisible = configModal && !configModal.classList.contains('hidden')
         
-        // New position sizing fields
-        const enablePositionSizing = document.getElementById('dt-enable-position-sizing')
-        if (enablePositionSizing) {
-            enablePositionSizing.checked = config.enable_position_sizing || false
-            // Initialize UI state
-            if (typeof togglePositionSizing === 'function') {
-                togglePositionSizing()
+        if (isModalVisible) {
+            // Populate form fields only if modal is open
+            const setFieldValue = (id, value) => {
+                const element = document.getElementById(id)
+                if (element) {
+                    element.value = value
+                } else {
+                    console.warn(`Element not found: ${id}`)
+                }
             }
-        }
-        
-        // Position sizing type
-        const sizingType = config.position_sizing_type || 'profit'
-        const profitRadio = document.querySelector('input[name="dt-position-sizing-type"][value="profit"]')
-        const accountRadio = document.querySelector('input[name="dt-position-sizing-type"][value="account"]')
-        if (sizingType === 'profit' && profitRadio) {
-            profitRadio.checked = true
-        } else if (sizingType === 'account' && accountRadio) {
-            accountRadio.checked = true
-        }
-        
-        // Initialize sizing type UI
-        if (typeof toggleSizingType === 'function') {
-            toggleSizingType()
-        }
-        
-        // Load account select
-        const accountSelect = document.getElementById('dt-default-account')
-        if (accountSelect) {
-            console.log('Populating account select. Accounts available:', accountsList ? accountsList.length : 0)
-            accountSelect.innerHTML = '<option value="">Select account...</option>'
-            if (accountsList && accountsList.length > 0) {
-                const accountOptions = accountsList.map(acc => {
-                    console.log('Adding account:', acc.id, acc.account_name)
-                    return `<option value="${acc.id}" ${acc.id === config.default_account_id ? 'selected' : ''}>${acc.account_name}</option>`
-                }).join('')
-                accountSelect.innerHTML += accountOptions
-                console.log('Account select populated with', accountsList.length, 'accounts')
-            } else {
-                console.warn('No accounts available to populate dropdown')
+            
+            setFieldValue('dt-max-contract-limit', config.max_contract_limit || 25)
+            setFieldValue('dt-rolling-profit-window', config.rolling_profit_window || 50)
+            setFieldValue('dt-target-premium-min', config.target_premium_min || 10.00)
+            setFieldValue('dt-target-premium-max', config.target_premium_max || 15.00)
+            setFieldValue('dt-guideline-delta', config.guideline_delta || -0.10)
+            setFieldValue('dt-strike-width', config.strike_width || 5)
+            setFieldValue('dt-default-contracts', config.default_contracts || 1)
+            setFieldValue('dt-profit-target-percent', config.profit_target_percent || 50)
+            setFieldValue('dt-atm-proximity-limit', config.atm_proximity_limit || 30)
+            setFieldValue('dt-time-exit', config.time_exit ? config.time_exit.substring(0, 5) : '14:00')
+            
+            // New position sizing fields
+            const enablePositionSizing = document.getElementById('dt-enable-position-sizing')
+            if (enablePositionSizing) {
+                enablePositionSizing.checked = config.enable_position_sizing || false
+                // Initialize UI state
+                if (typeof togglePositionSizing === 'function') {
+                    togglePositionSizing()
+                }
+            }
+            
+            // Position sizing type
+            const sizingType = config.position_sizing_type || 'profit'
+            const profitRadio = document.querySelector('input[name="dt-position-sizing-type"][value="profit"]')
+            const accountRadio = document.querySelector('input[name="dt-position-sizing-type"][value="account"]')
+            if (sizingType === 'profit' && profitRadio) {
+                profitRadio.checked = true
+            } else if (sizingType === 'account' && accountRadio) {
+                accountRadio.checked = true
+            }
+            
+            // Initialize sizing type UI
+            if (typeof toggleSizingType === 'function') {
+                toggleSizingType()
+            }
+            
+            // Load account select
+            const accountSelect = document.getElementById('dt-default-account')
+            if (accountSelect) {
+                console.log('Populating account select. Accounts available:', accountsList ? accountsList.length : 0)
+                accountSelect.innerHTML = '<option value="">Select account...</option>'
+                if (accountsList && accountsList.length > 0) {
+                    const accountOptions = accountsList.map(acc => {
+                        console.log('Adding account:', acc.id, acc.account_name)
+                        return `<option value="${acc.id}" ${acc.id === config.default_account_id ? 'selected' : ''}>${acc.account_name}</option>`
+                    }).join('')
+                    accountSelect.innerHTML += accountOptions
+                    console.log('Account select populated with', accountsList.length, 'accounts')
+                } else {
+                    console.warn('No accounts available to populate dropdown')
+                }
             }
         } else {
-            console.error('Account select element not found!')
+            console.log('Config modal not visible, skipping form population')
         }
         
-        // Update rolling window labels in Performance tab
+        // Always update these labels/displays (they exist outside the modal)
         updateRollingWindowLabels()
-        
-        // Update strike width displays in Today's Trading tab
         updateStrikeWidthDisplays()
-        
-        // Update contracts hint in Quick Entry Form
         updateContractsHint(config)
         
         console.log('Daily Trade config loaded successfully', config)
