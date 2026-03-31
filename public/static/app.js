@@ -7508,6 +7508,13 @@ let plTrendChart = null
 // Render P/L Trend Chart
 async function renderPLTrendChart(period) {
     try {
+        // Helper function to format strategy type
+        const formatStrategyType = (strategyType) => {
+            if (!strategyType) return 'N/A'
+            const strategyObj = STRATEGY_TYPES.find(st => st.value === strategyType)
+            return strategyObj ? strategyObj.label : strategyType.replace(/_/g, ' ')
+        }
+        
         // Build API query params
         let queryParams = `period=${period}`
         if (period === 'rolling') {
