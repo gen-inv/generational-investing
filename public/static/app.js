@@ -1705,13 +1705,12 @@ async function showCompanyView(companyId) {
                     </button>
                     <button onclick="openResearchModal('${company.ticker}')" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded flex items-center gap-2">
                         <i class="fas fa-chart-line"></i>
-                        View Research
+                        View Financials
                     </button>
                     <button onclick="editCompany(${companyId}); this.closest('.fixed').remove()" class="btn-secondary flex items-center gap-2">
                         <i class="fas fa-edit"></i>
                         Edit Company
                     </button>
-                    <button onclick="this.closest('.fixed').remove()" class="btn-secondary flex-1">Close</button>
                 </div>
             </div>
         `
