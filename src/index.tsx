@@ -7750,9 +7750,9 @@ app.get('/', (c) => {
                                         <i class="fas fa-plus-circle text-orange-600 mr-2"></i>Quick Entry Form
                                     </h3>
                                     <div class="flex items-center gap-2">
-                                        <span class="text-sm text-gray-600">Profit-Based Sizing</span>
+                                        <span class="text-sm text-gray-600">Auto-Position Sizing</span>
                                         <label class="relative inline-block w-12 h-6">
-                                            <input type="checkbox" id="dt-profit-sizing-toggle" class="sr-only peer" onchange="toggleProfitSizing()">
+                                            <input type="checkbox" id="dt-profit-sizing-toggle" class="sr-only peer" onchange="toggleAutoPositionSizing()">
                                             <div class="w-full h-full bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
                                         </label>
                                     </div>
@@ -7778,7 +7778,7 @@ app.get('/', (c) => {
                                     <div>
                                         <label class="block text-gray-700 font-semibold mb-1 text-sm">Contracts</label>
                                         <input type="number" id="dt-contracts" value="1" min="1" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-center text-sm">
-                                        <small class="text-xs text-gray-500 mt-1 block" id="dt-contracts-hint">Manual sizing</small>
+                                        <small class="text-xs text-gray-500 mt-1 block" id="dt-contracts-hint">Manual Entry</small>
                                     </div>
                                 </div>
                                 

@@ -758,24 +758,35 @@ function updateContractsHint(config) {
     const hintElement = document.getElementById('dt-contracts-hint')
     if (!hintElement) return
     
-    // Check if position sizing is enabled
+    // Check the Quick Entry toggle state
+    const toggle = document.getElementById('dt-profit-sizing-toggle')
+    const isToggleOn = toggle && toggle.checked
+    
+    if (!isToggleOn) {
+        // Toggle is OFF - always show "Manual Entry"
+        hintElement.innerHTML = 'Manual Entry'
+        hintElement.className = 'text-xs text-gray-500 mt-1 block'
+        return
+    }
+    
+    // Toggle is ON - check position sizing config
     if (config.enable_position_sizing) {
         const sizingType = config.position_sizing_type || 'profit'
         
         if (sizingType === 'profit') {
-            // Profit-based sizing - orange
+            // Will be updated by calculateProfitBasedContracts with actual values
             const rollingWindow = config.rolling_profit_window || 50
-            hintElement.innerHTML = `<i class="fas fa-chart-line mr-1"></i>Profit-based sizing (last ${rollingWindow} trades)`
+            hintElement.innerHTML = `Profit-based: Loading... (last ${rollingWindow})`
             hintElement.className = 'text-xs text-orange-600 font-semibold mt-1 block'
         } else if (sizingType === 'account') {
-            // Account-based sizing - purple
+            // Will be updated by calculateAccountBasedContracts with actual values
             const maxLossPct = config.account_max_loss_percent || 4.00
-            hintElement.innerHTML = `<i class="fas fa-wallet mr-1"></i>Account-based sizing (${maxLossPct}% max loss)`
+            hintElement.innerHTML = `Account-based: Loading... (${maxLossPct}% max loss)`
             hintElement.className = 'text-xs text-purple-600 font-semibold mt-1 block'
         }
     } else {
-        // Manual sizing - grey
-        hintElement.innerHTML = '<i class="fas fa-hand-paper mr-1"></i>Manual sizing'
+        // Config has auto-sizing disabled, fall back to manual
+        hintElement.innerHTML = 'Manual Entry'
         hintElement.className = 'text-xs text-gray-500 mt-1 block'
     }
 }
@@ -1083,6 +1094,14 @@ async function loadDailyTradeConfig() {
             }
         } else {
             console.log('Config modal not visible, skipping form population')
+        }
+        
+        // Set the Quick Entry toggle based on config
+        const quickEntryToggle = document.getElementById('dt-profit-sizing-toggle')
+        if (quickEntryToggle && config.enable_position_sizing) {
+            quickEntryToggle.checked = true
+            // Trigger the toggle to update UI and calculate contracts
+            toggleAutoPositionSizing()
         }
         
         // Always update these labels/displays (they exist outside the modal)
@@ -7328,7 +7347,7 @@ let dailyTradePerformanceStats = null
 let currentPerformancePeriod = 'rolling' // Default to rolling window (Last X Trades)
 
 // Toggle profit-based position sizing
-function toggleProfitSizing() {
+function toggleAutoPositionSizing() {
     const toggle = document.getElementById('dt-profit-sizing-toggle')
     const contractsInput = document.getElementById('dt-contracts')
     const hint = document.getElementById('dt-contracts-hint')
@@ -7336,24 +7355,41 @@ function toggleProfitSizing() {
     const plusBtn = document.getElementById('dt-contracts-plus')
     
     if (toggle.checked) {
-        // Profit-based sizing ON
-        calculateProfitBasedContracts()
+        // Auto-Position Sizing is ON
+        // Check configuration to determine sizing method
+        if (dailyTradeConfigCache && dailyTradeConfigCache.enable_position_sizing) {
+            const sizingType = dailyTradeConfigCache.position_sizing_type || 'profit'
+            
+            if (sizingType === 'profit') {
+                // Profit-based sizing
+                calculateProfitBasedContracts()
+            } else if (sizingType === 'account') {
+                // Account-based sizing
+                calculateAccountBasedContracts()
+            }
+        } else {
+            // Config doesn't have position sizing enabled, fall back to manual
+            toggle.checked = false
+            hint.innerHTML = 'Manual Entry (Position sizing not enabled in config)'
+            hint.className = 'text-xs text-red-500 mt-1 block'
+            return
+        }
+        
+        // Disable manual controls
         contractsInput.disabled = true
         if (minusBtn) minusBtn.disabled = true
         if (plusBtn) plusBtn.disabled = true
         contractsInput.classList.add('bg-gray-100', 'cursor-not-allowed')
-        // Hint will be updated by calculateProfitBasedContracts with profit info
     } else {
-        // Manual sizing ON
+        // Manual Entry
         const defaultContracts = parseInt(document.getElementById('dt-default-contracts')?.value || 1)
         contractsInput.value = defaultContracts
         contractsInput.disabled = false
         if (minusBtn) minusBtn.disabled = false
         if (plusBtn) plusBtn.disabled = false
         contractsInput.classList.remove('bg-gray-100', 'cursor-not-allowed')
-        hint.textContent = 'Manual sizing'
-        hint.classList.remove('text-orange-600', 'font-semibold')
-        hint.classList.add('text-gray-500')
+        hint.innerHTML = 'Manual Entry'
+        hint.className = 'text-xs text-gray-500 mt-1 block'
         updateTradeSummary() // Recalculate with manual value
     }
 }
@@ -7404,8 +7440,7 @@ async function calculateProfitBasedContracts() {
         // Update hint with profit info
         if (hint) {
             const profitSign = netPL >= 0 ? '+' : ''
-            const profitColor = netPL >= 0 ? 'text-green-600' : 'text-red-600'
-            hint.innerHTML = `Profit-based: ${profitSign}${formatCurrency(netPL)} (last ${rollingWindow}) → ${calculatedContracts} contracts`
+            hint.innerHTML = `Profit-based: ${profitSign}${formatCurrency(netPL)} (last ${rollingWindow}) = ${calculatedContracts} contracts`
             hint.classList.remove('text-gray-500')
             hint.classList.add('text-orange-600', 'font-semibold')
         }
@@ -7419,9 +7454,80 @@ async function calculateProfitBasedContracts() {
         
         // Update hint with error state
         if (hint) {
-            hint.textContent = `Profit-based: Error loading data → 1 contract`
+            hint.innerHTML = `Profit-based: Error loading data = 1 contract`
             hint.classList.remove('text-gray-500')
             hint.classList.add('text-orange-600', 'font-semibold')
+        }
+    }
+}
+
+// Calculate account-based contracts
+async function calculateAccountBasedContracts() {
+    const hint = document.getElementById('dt-contracts-hint')
+    
+    try {
+        // Get configuration values
+        const maxLossPct = parseFloat(document.getElementById('dt-account-max-loss-percent')?.value || 4.00)
+        const maxContractLimit = parseInt(document.getElementById('dt-max-contract-limit')?.value || 25)
+        const strikeWidth = parseInt(document.getElementById('dt-strike-width')?.value || 5)
+        const defaultAccountId = parseInt(document.getElementById('dt-default-account')?.value)
+        
+        if (!defaultAccountId) {
+            throw new Error('No default account selected')
+        }
+        
+        console.log('Account-based sizing configuration:', { maxLossPct, maxContractLimit, strikeWidth, defaultAccountId })
+        
+        // Get the account balance
+        const accountResponse = await api.get(`/api/accounts/${defaultAccountId}`)
+        const account = accountResponse.data
+        const accountBalance = parseFloat(account.total_balance) || 0
+        
+        console.log('Account data:', account, 'Balance:', accountBalance)
+        
+        // Calculate maximum loss amount: (maxLossPct / 100) * accountBalance
+        const maxLossAmount = (maxLossPct / 100) * accountBalance
+        
+        // Calculate contracts based on max loss and strike width
+        // Formula: Max Loss Amount ÷ (Strike Width × 100) = Contracts (truncated)
+        let calculatedContracts = 1 // Default minimum
+        
+        if (accountBalance > 0 && maxLossAmount > 0) {
+            const rawContracts = maxLossAmount / (strikeWidth * 100)
+            console.log('Raw contracts before truncation:', rawContracts)
+            // Truncate (not round) and apply limits
+            calculatedContracts = Math.max(1, Math.min(Math.floor(rawContracts), maxContractLimit))
+            console.log('Final contracts after truncation and limits:', calculatedContracts)
+        } else {
+            console.log('Account balance or max loss is not positive, using minimum 1 contract')
+        }
+        
+        // Update the contracts input
+        const contractsInput = document.getElementById('dt-contracts')
+        if (contractsInput) {
+            contractsInput.value = calculatedContracts
+            updateTradeSummary() // Recalculate risk with new contract count
+        }
+        
+        // Update hint with account info
+        if (hint) {
+            hint.innerHTML = `Account-based: ${maxLossPct}% of ${formatCurrency(accountBalance)} = ${calculatedContracts} contracts`
+            hint.classList.remove('text-gray-500')
+            hint.classList.add('text-purple-600', 'font-semibold')
+        }
+        
+        console.log(`✅ Account-based sizing complete: Balance=${accountBalance}, Max Loss %=${maxLossPct}, Max Loss $=${maxLossAmount}, Strike Width=${strikeWidth}, Calculated contracts=${calculatedContracts} (truncated)`)
+    } catch (error) {
+        console.error('❌ Error calculating account-based contracts:', error)
+        console.error('Error details:', error.message, error.stack)
+        // Fallback to minimum
+        document.getElementById('dt-contracts').value = 1
+        
+        // Update hint with error state
+        if (hint) {
+            hint.innerHTML = `Account-based: Error loading data = 1 contract`
+            hint.classList.remove('text-gray-500')
+            hint.classList.add('text-purple-600', 'font-semibold')
         }
     }
 }
