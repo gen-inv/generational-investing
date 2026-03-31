@@ -7399,9 +7399,14 @@ async function calculateProfitBasedContracts() {
     const hint = document.getElementById('dt-contracts-hint')
     
     try {
-        const rollingWindow = parseInt(document.getElementById('dt-rolling-profit-window')?.value || 50)
-        const maxContractLimit = parseInt(document.getElementById('dt-max-contract-limit')?.value || 25)
-        const strikeWidth = parseInt(document.getElementById('dt-strike-width')?.value || 5)
+        // Get configuration values from cached config (not DOM, as modal may not be open)
+        if (!dailyTradeConfigCache) {
+            throw new Error('Configuration not loaded')
+        }
+        
+        const rollingWindow = parseInt(dailyTradeConfigCache.rolling_profit_window || 50)
+        const maxContractLimit = parseInt(dailyTradeConfigCache.max_contract_limit || 25)
+        const strikeWidth = parseInt(dailyTradeConfigCache.strike_width || 5)
         
         console.log('Profit-based sizing configuration:', { rollingWindow, maxContractLimit, strikeWidth })
         
@@ -7466,14 +7471,18 @@ async function calculateAccountBasedContracts() {
     const hint = document.getElementById('dt-contracts-hint')
     
     try {
-        // Get configuration values
-        const maxLossPct = parseFloat(document.getElementById('dt-account-max-loss-percent')?.value || 4.00)
-        const maxContractLimit = parseInt(document.getElementById('dt-max-contract-limit')?.value || 25)
-        const strikeWidth = parseInt(document.getElementById('dt-strike-width')?.value || 5)
-        const defaultAccountId = parseInt(document.getElementById('dt-default-account')?.value)
+        // Get configuration values from cached config (not DOM, as modal may not be open)
+        if (!dailyTradeConfigCache) {
+            throw new Error('Configuration not loaded')
+        }
+        
+        const maxLossPct = parseFloat(dailyTradeConfigCache.account_max_loss_percent || 4.00)
+        const maxContractLimit = parseInt(dailyTradeConfigCache.max_contract_limit || 25)
+        const strikeWidth = parseInt(dailyTradeConfigCache.strike_width || 5)
+        const defaultAccountId = parseInt(dailyTradeConfigCache.default_account_id)
         
         if (!defaultAccountId) {
-            throw new Error('No default account selected')
+            throw new Error('No default account selected in configuration')
         }
         
         console.log('Account-based sizing configuration:', { maxLossPct, maxContractLimit, strikeWidth, defaultAccountId })
