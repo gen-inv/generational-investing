@@ -4214,7 +4214,9 @@ app.get('/api/daily-trades/chart-data', authMiddleware, async (c) => {
         id,
         trade_date,
         entry_time,
+        exit_time,
         strategy_type,
+        ticker,
         contracts,
         total_credit,
         profit_loss

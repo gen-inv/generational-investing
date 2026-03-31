@@ -7539,8 +7539,8 @@ async function renderPLTrendChart(period) {
             
             // Store trade details for tooltip
             tradeDetails.push({
-                date: trade.close_date || trade.entry_date,
-                strategy: trade.strategy || 'N/A',
+                date: trade.trade_date,
+                strategy: formatStrategyType(trade.strategy_type),
                 ticker: trade.ticker || ''
             })
         })
