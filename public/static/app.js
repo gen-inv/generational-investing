@@ -7548,7 +7548,7 @@ async function renderPLTrendChart(period) {
             tradeDetails.push({
                 date: trade.trade_date,
                 strategy: formatStrategyType(trade.strategy_type),
-                ticker: trade.ticker || ''
+                ticker: 'SPX' // Daily trades are SPX options
             })
         })
         
