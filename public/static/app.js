@@ -10276,7 +10276,7 @@ async function fetchDividends() {
                     
                     // Check if the most recent log is completed
                     try {
-                        const logsResponse = await fetch('/api/dividend-repository/fetch-logs', {
+                        const logsResponse = await fetch('/api/dividend-repository/logs', {
                             headers: { 'Authorization': `Bearer ${token}` }
                         })
                         if (logsResponse.ok) {
@@ -10371,7 +10371,10 @@ async function loadDividendRepository() {
         const token = localStorage.getItem('token')
         if (!token) return
         
-        const ticker = document.getElementById('dividend-ticker-filter').value
+        const tickerFilter = document.getElementById('dividend-ticker-filter')
+        if (!tickerFilter) return // Not on dividend page
+        
+        const ticker = tickerFilter.value
         
         let url = `/api/dividend-repository?status=all`
         if (ticker) {
@@ -10386,6 +10389,8 @@ async function loadDividendRepository() {
         
         const data = await response.json()
         const tbody = document.getElementById('dividend-repository-table')
+        
+        if (!tbody) return // Table not found
         
         if (!data.dividends || data.dividends.length === 0) {
             tbody.innerHTML = `
@@ -10445,10 +10450,15 @@ function updateDividendStats(dividends) {
     const monthly = dividends.filter(d => d.frequency === 12).length
     const quarterly = dividends.filter(d => d.frequency === 4).length
     
-    document.getElementById('stats-total').textContent = total
-    document.getElementById('stats-eligible').textContent = weekly
-    document.getElementById('stats-pending').textContent = monthly
-    document.getElementById('stats-total-amount').textContent = quarterly
+    const statsTotal = document.getElementById('stats-total')
+    const statsEligible = document.getElementById('stats-eligible')
+    const statsPending = document.getElementById('stats-pending')
+    const statsTotalAmount = document.getElementById('stats-total-amount')
+    
+    if (statsTotal) statsTotal.textContent = total
+    if (statsEligible) statsEligible.textContent = weekly
+    if (statsPending) statsPending.textContent = monthly
+    if (statsTotalAmount) statsTotalAmount.textContent = quarterly
 }
 
 async function loadDividendFetchLogs() {
@@ -10464,6 +10474,8 @@ async function loadDividendFetchLogs() {
         
         const data = await response.json()
         const logsDiv = document.getElementById('dividend-fetch-logs')
+        
+        if (!logsDiv) return // Not on dividend page
         
         if (!data.logs || data.logs.length === 0) {
             logsDiv.innerHTML = '<p class="text-sm text-gray-500">No fetch history yet</p>'
