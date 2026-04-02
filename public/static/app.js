@@ -9134,12 +9134,32 @@ async function openCloseTradeModal(tradeId) {
             : trade.strategy_type === 'CREDIT_SPREAD_CALL' ? 'Call Spread'
             : 'Put Spread'
         
+        // Get strike width from config (default 5)
+        const strikeWidth = dailyTradeConfigCache?.strike_width || 5
+        
         let strikeInfo = ''
+        let titleStrikes = ''
+        
         if (trade.call_spread_enabled) {
-            strikeInfo += `<div><strong>Call Short Strike:</strong> ${trade.call_short_strike} (Credit: $${parseFloat(trade.call_total_credit).toFixed(2)})</div>`
+            const callShort = parseFloat(trade.call_short_strike)
+            const callLong = callShort + strikeWidth
+            strikeInfo += `<div><strong>Call Strikes:</strong> ${callShort}/${callLong} (Credit: $${parseFloat(trade.call_total_credit).toFixed(2)})</div>`
+            titleStrikes += `Call ${callShort}/${callLong}`
         }
         if (trade.put_spread_enabled) {
-            strikeInfo += `<div><strong>Put Short Strike:</strong> ${trade.put_short_strike} (Credit: $${parseFloat(trade.put_total_credit).toFixed(2)})</div>`
+            const putShort = parseFloat(trade.put_short_strike)
+            const putLong = putShort - strikeWidth
+            strikeInfo += `<div><strong>Put Strikes:</strong> ${putLong}/${putShort} (Credit: $${parseFloat(trade.put_total_credit).toFixed(2)})</div>`
+            if (titleStrikes) titleStrikes += ' | '
+            titleStrikes += `Put ${putLong}/${putShort}`
+        }
+        
+        // Update modal title to include strikes
+        const modalTitle = document.querySelector('#close-trade-modal h3')
+        if (modalTitle) {
+            modalTitle.innerHTML = `
+                <i class="fas fa-check-circle mr-2"></i>Close Trade: ${strategyLabel} - ${titleStrikes}
+            `
         }
         
         document.getElementById('close-trade-summary').innerHTML = `
