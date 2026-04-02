@@ -6664,6 +6664,27 @@ app.get('/api/dividend-repository', authMiddleware, async (c) => {
   }
 })
 
+// Get fetch logs (must be before /:id route to avoid matching 'logs' as an id)
+app.get('/api/dividend-repository/logs', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const limit = parseInt(c.req.query('limit') || '10')
+    
+    const results = await DB.prepare(`
+      SELECT * FROM dividend_fetch_logs
+      WHERE user_id = ?
+      ORDER BY started_at DESC
+      LIMIT ?
+    `).bind(userId, limit).all()
+    
+    return c.json({ logs: results.results })
+  } catch (error) {
+    console.error('Error fetching logs:', error)
+    return c.json({ error: 'Failed to fetch logs' }, 500)
+  }
+})
+
 // Get single dividend by ID
 app.get('/api/dividend-repository/:id', authMiddleware, async (c) => {
   try {
@@ -6802,27 +6823,6 @@ app.post('/api/dividend-repository/:id/apply', authMiddleware, async (c) => {
   } catch (error) {
     console.error('Error applying dividend:', error)
     return c.json({ error: 'Failed to apply dividend' }, 500)
-  }
-})
-
-// Get fetch logs
-app.get('/api/dividend-repository/logs', authMiddleware, async (c) => {
-  try {
-    const userId = c.get('userId')
-    const { DB } = c.env
-    const limit = parseInt(c.req.query('limit') || '10')
-    
-    const results = await DB.prepare(`
-      SELECT * FROM dividend_fetch_logs
-      WHERE user_id = ?
-      ORDER BY started_at DESC
-      LIMIT ?
-    `).bind(userId, limit).all()
-    
-    return c.json({ logs: results.results })
-  } catch (error) {
-    console.error('Error fetching logs:', error)
-    return c.json({ error: 'Failed to fetch logs' }, 500)
   }
 })
 
