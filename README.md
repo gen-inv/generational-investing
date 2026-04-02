@@ -8,7 +8,8 @@
 ## URLs
 - **Production**: https://app.generationalinvesting.ca
 - **Production (Pages.dev)**: https://generational-investing.pages.dev
-- **Development**: https://3000-imi5lx8i4w7yx1t3dzzid-18e660f9.sandbox.novita.ai
+- **Preview**: https://a8e93b43.generational-investing.pages.dev
+- **Development**: https://3000-imi5lx8i4w7yx1t3dzzid-583b4d74.sandbox.novita.ai
 - **GitHub**: https://github.com/rob-page/generational-investing
 
 ## Demo Account
@@ -140,6 +141,19 @@
    - Avenir font family
    - Modern, professional UI
    - Responsive design
+
+10. **Research Integration** 🆕
+   - **Fetch Financials Button**: Intelligent button in Company Details modal
+   - **Automatic CIK Lookup**: Pre-seeded database with 50+ popular US stock CIKs
+   - **SEC EDGAR Integration**: Fetches 10-year financial data (Income Statement, Balance Sheet, Cash Flow)
+   - **Full-Screen Research Modal**: Displays comprehensive financial data with tabbed interface
+   - **Clean Error Handling**: Gracefully handles missing data without console errors
+   - **Button States**: 
+     - Amber "Fetch Financials" (not fetched yet)
+     - Green "Fetched Successfully!" (after successful fetch)
+     - Blue "View Financials" (already fetched, instant view)
+   - **Status Icons**: Visual indicators for data availability
+   - **Research Site**: https://research-e79.pages.dev
 
 ### 📋 Functional Entry Points (API Endpoints)
 
@@ -639,7 +653,7 @@ npx wrangler d1 execute webapp-production --local --command="SELECT * FROM compa
 Proprietary - All rights reserved
 
 ## Last Updated
-March 20, 2026
+April 2, 2026
 
 ## Project Status
 - ✅ v1.0 Complete - Core features implemented and tested
