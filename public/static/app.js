@@ -1701,10 +1701,18 @@ async function showCompanyView(companyId) {
         // Check if company exists on research site
         let hasResearchData = false
         try {
-            const researchResponse = await axios.get(`${RESEARCH_API}/api/research/company/${company.ticker}`)
-            hasResearchData = researchResponse.data && researchResponse.data.company
+            const researchResponse = await axios.get(`${RESEARCH_API}/api/research/company/${company.ticker}`, {
+                validateStatus: function (status) {
+                    // Accept 404 as valid status (company doesn't exist yet)
+                    return (status >= 200 && status < 300) || status === 404
+                }
+            })
+            
+            // Only set to true if status is 200 and company data exists
+            hasResearchData = researchResponse.status === 200 && researchResponse.data && researchResponse.data.company
         } catch (error) {
-            // Company doesn't exist on research site
+            // Unexpected error (not a 404)
+            console.warn('Error checking research data:', error.message)
             hasResearchData = false
         }
         
@@ -12598,7 +12606,18 @@ async function openResearchModal(symbol) {
     
     try {
         // Fetch company data from research API
-        const response = await axios.get(`${RESEARCH_API}/api/research/company/${symbol}`)
+        const response = await axios.get(`${RESEARCH_API}/api/research/company/${symbol}`, {
+            validateStatus: function (status) {
+                // Accept 404 as valid status (company doesn't exist yet)
+                return (status >= 200 && status < 300) || status === 404
+            }
+        })
+        
+        // Check if it was a 404 before trying to use the data
+        if (response.status === 404) {
+            throw { response: { status: 404 }, message: 'Company not found' }
+        }
+        
         currentResearchData = response.data
         
         // Update title
