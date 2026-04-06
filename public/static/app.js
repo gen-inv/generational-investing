@@ -3304,14 +3304,14 @@ async function showStockDetails(id) {
                                                     </td>
                                                     <td class="px-4 py-2 text-center">
                                                         ${cc.is_open ? `
-                                                            <button onclick="viewCoveredCallDetails(${cc.id})" class="text-brand-teal hover:text-brand-gold mr-2" title="View Details">
-                                                                <i class="fas fa-eye"></i>
-                                                            </button>
                                                             <button onclick="editCoveredCall(${cc.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
                                                                 <i class="fas fa-edit"></i>
                                                             </button>
-                                                            <button onclick="closeCoveredCall(${cc.id}, ${id})" class="text-yellow-600 hover:text-yellow-800" title="Close">
+                                                            <button onclick="closeCoveredCall(${cc.id}, ${id})" class="text-green-600 hover:text-green-800 mr-2" title="Close">
                                                                 <i class="fas fa-check-circle"></i>
+                                                            </button>
+                                                            <button onclick="viewCoveredCallDetails(${cc.id})" class="text-brand-teal hover:text-brand-gold" title="View Details">
+                                                                <i class="fas fa-eye"></i>
                                                             </button>
                                                         ` : `
                                                             <button onclick="viewCoveredCallDetails(${cc.id})" class="text-brand-teal hover:text-brand-gold" title="View Details">
