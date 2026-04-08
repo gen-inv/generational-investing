@@ -5989,27 +5989,52 @@ async function performDividendFetchInternal(
       }
     }
     
-    debugInfo.push(`Processing ${holdingsToProcess.length} unique tickers (deduplicated from ${allHoldings.length} total holdings)`)
+    debugInfo.push(`Processing ${holdingsToProcess.length} unique tickers (deduplicated from ${allHollings.length} total holdings)`)
     console.log(`[DIVIDEND-FETCH-BG] Processing ${holdingsToProcess.length} unique tickers`)
     
-    // Batch processing to respect Polygon.io rate limits (5 calls/minute)
-    // Process in batches of 5 tickers, with 60-second delay between batches
-    const BATCH_SIZE = 5
-    const BATCH_DELAY_MS = 60000 // 60 seconds between batches
+    // Smart rate limiter for Polygon.io (5 calls/minute)
+    // Track actual call timestamps and only wait when needed
+    const RATE_LIMIT_CALLS = 5
+    const RATE_LIMIT_WINDOW_MS = 60000 // 60 seconds
+    const callTimestamps: number[] = [] // Track timestamps of last N calls
     
-    for (let batchIndex = 0; batchIndex < holdingsToProcess.length; batchIndex += BATCH_SIZE) {
-      const batch = holdingsToProcess.slice(batchIndex, batchIndex + BATCH_SIZE)
-      const batchNumber = Math.floor(batchIndex / BATCH_SIZE) + 1
-      const totalBatches = Math.ceil(holdingsToProcess.length / BATCH_SIZE)
+    // Helper function to respect rate limits with minimal waiting
+    const respectRateLimit = async () => {
+      const now = Date.now()
       
-      debugInfo.push(`Starting batch ${batchNumber}/${totalBatches} with ${batch.length} tickers`)
-      console.log(`[DIVIDEND-FETCH-BG] Processing batch ${batchNumber}/${totalBatches}`)
+      // Remove timestamps older than the rate limit window
+      while (callTimestamps.length > 0 && now - callTimestamps[0] >= RATE_LIMIT_WINDOW_MS) {
+        callTimestamps.shift()
+      }
       
-      // Process each ticker in the current batch
-      for (const holding of batch) {
+      // If we've made 5 calls in the last 60 seconds, wait until the oldest call expires
+      if (callTimestamps.length >= RATE_LIMIT_CALLS) {
+        const oldestCall = callTimestamps[0]
+        const waitTime = RATE_LIMIT_WINDOW_MS - (now - oldestCall) + 100 // +100ms buffer
+        
+        if (waitTime > 0) {
+          debugInfo.push(`Rate limit: Waiting ${(waitTime/1000).toFixed(1)}s before next call`)
+          console.log(`[DIVIDEND-FETCH-BG] Rate limit: Waiting ${(waitTime/1000).toFixed(1)}s`)
+          await new Promise(resolve => setTimeout(resolve, waitTime))
+        }
+        
+        // After waiting, remove the expired timestamp
+        callTimestamps.shift()
+      }
+      
+      // Record this call's timestamp
+      callTimestamps.push(Date.now())
+    }
+    
+    // Process all tickers with smart rate limiting
+    // No fixed batches - just process sequentially with automatic throttling
+    for (const holding of holdingsToProcess) {
       try {
         console.log(`[DIVIDEND-FETCH-BG] Fetching dividends for ${holding.ticker}`)
         tickersProcessed.push(holding.ticker)
+        
+        // Wait if needed to respect rate limits
+        await respectRateLimit()
         
         // Call Massive (Polygon.io) API
         // Endpoint: GET /v3/reference/dividends?ticker={ticker}&apiKey={key}
@@ -6236,25 +6261,13 @@ async function performDividendFetchInternal(
           }
         }
         
-        debugInfo.push(`${holding.ticker}: Completed, moving to next ticker in batch`)
+        debugInfo.push(`${holding.ticker}: Completed, moving to next ticker`)
         
       } catch (error) {
         console.error(`Error processing ${holding.ticker}:`, error)
         errors.push(`${holding.ticker}: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
-    } // End of ticker loop within batch
-    
-    // Wait 60 seconds before processing next batch (unless this is the last batch)
-    const isLastBatch = (batchIndex + BATCH_SIZE) >= holdingsToProcess.length
-    if (!isLastBatch) {
-      debugInfo.push(`Batch ${batchNumber} complete. Waiting 60s before next batch to respect rate limits...`)
-      console.log(`[DIVIDEND-FETCH-BG] Batch ${batchNumber} complete, waiting 60s before next batch`)
-      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS))
-    } else {
-      debugInfo.push(`Batch ${batchNumber} complete (final batch)`)
-      console.log(`[DIVIDEND-FETCH-BG] Final batch ${batchNumber} complete`)
-    }
-  } // End of batch loop
+    } // End of ticker processing loop
     
     const duration = Date.now() - startTime
     
