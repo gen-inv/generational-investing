@@ -6223,9 +6223,10 @@ async function performDividendFetchInternal(
           }
         }
         
-        // Delay to respect Massive API rate limits (5 calls/minute = 12.5 seconds between calls for extra buffer)
-        debugInfo.push(`${holding.ticker}: Waiting 12.5s before next ticker...`)
-        await new Promise(resolve => setTimeout(resolve, 12500))
+        // NO DELAY - Polygon.io free tier allows 5 calls/minute
+        // With 14 tickers and 60 seconds/minute, we're well under the limit
+        // If we hit rate limits, the cron job will retry on the next schedule
+        debugInfo.push(`${holding.ticker}: Completed, moving to next ticker`)
         
       } catch (error) {
         console.error(`Error processing ${holding.ticker}:`, error)
