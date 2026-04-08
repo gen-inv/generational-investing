@@ -5992,8 +5992,21 @@ async function performDividendFetchInternal(
     debugInfo.push(`Processing ${holdingsToProcess.length} unique tickers (deduplicated from ${allHoldings.length} total holdings)`)
     console.log(`[DIVIDEND-FETCH-BG] Processing ${holdingsToProcess.length} unique tickers`)
     
-    // Process each unique ticker
-    for (const holding of holdingsToProcess) {
+    // Batch processing to respect Polygon.io rate limits (5 calls/minute)
+    // Process in batches of 5 tickers, with 60-second delay between batches
+    const BATCH_SIZE = 5
+    const BATCH_DELAY_MS = 60000 // 60 seconds between batches
+    
+    for (let batchIndex = 0; batchIndex < holdingsToProcess.length; batchIndex += BATCH_SIZE) {
+      const batch = holdingsToProcess.slice(batchIndex, batchIndex + BATCH_SIZE)
+      const batchNumber = Math.floor(batchIndex / BATCH_SIZE) + 1
+      const totalBatches = Math.ceil(holdingsToProcess.length / BATCH_SIZE)
+      
+      debugInfo.push(`Starting batch ${batchNumber}/${totalBatches} with ${batch.length} tickers`)
+      console.log(`[DIVIDEND-FETCH-BG] Processing batch ${batchNumber}/${totalBatches}`)
+      
+      // Process each ticker in the current batch
+      for (const holding of batch) {
       try {
         console.log(`[DIVIDEND-FETCH-BG] Fetching dividends for ${holding.ticker}`)
         tickersProcessed.push(holding.ticker)
@@ -6223,16 +6236,25 @@ async function performDividendFetchInternal(
           }
         }
         
-        // NO DELAY - Polygon.io free tier allows 5 calls/minute
-        // With 14 tickers and 60 seconds/minute, we're well under the limit
-        // If we hit rate limits, the cron job will retry on the next schedule
-        debugInfo.push(`${holding.ticker}: Completed, moving to next ticker`)
+        debugInfo.push(`${holding.ticker}: Completed, moving to next ticker in batch`)
         
       } catch (error) {
         console.error(`Error processing ${holding.ticker}:`, error)
         errors.push(`${holding.ticker}: ${error instanceof Error ? error.message : 'Unknown error'}`)
       }
+    } // End of ticker loop within batch
+    
+    // Wait 60 seconds before processing next batch (unless this is the last batch)
+    const isLastBatch = (batchIndex + BATCH_SIZE) >= holdingsToProcess.length
+    if (!isLastBatch) {
+      debugInfo.push(`Batch ${batchNumber} complete. Waiting 60s before next batch to respect rate limits...`)
+      console.log(`[DIVIDEND-FETCH-BG] Batch ${batchNumber} complete, waiting 60s before next batch`)
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS))
+    } else {
+      debugInfo.push(`Batch ${batchNumber} complete (final batch)`)
+      console.log(`[DIVIDEND-FETCH-BG] Final batch ${batchNumber} complete`)
     }
+  } // End of batch loop
     
     const duration = Date.now() - startTime
     
