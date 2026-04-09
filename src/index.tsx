@@ -5989,7 +5989,7 @@ async function performDividendFetchInternal(
       }
     }
     
-    debugInfo.push(`Processing ${holdingsToProcess.length} unique tickers (deduplicated from ${allHollings.length} total holdings)`)
+    debugInfo.push(`Processing ${holdingsToProcess.length} unique tickers (deduplicated from ${allHoldings.length} total holdings)`)
     console.log(`[DIVIDEND-FETCH-BG] Processing ${holdingsToProcess.length} unique tickers`)
     
     // Smart rate limiter for Polygon.io (5 calls/minute)
