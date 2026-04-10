@@ -5892,16 +5892,35 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     // This will take 2-3 minutes but ensures reliable completion
     await performDividendFetchInternal(DB, userId, logId, startTime)
     
-    console.log(`[DIVIDEND-FETCH] Fetch completed successfully`)
+    console.log(`[DIVIDEND-FETCH] Fetch completed, retrieving results from log`)
     
-    // Return success after completion
+    // Fetch the completed log to get actual results
+    const completedLog = await DB.prepare(`
+      SELECT * FROM dividend_fetch_logs WHERE id = ?
+    `).bind(logId).first() as any
+    
+    if (!completedLog) {
+      return c.json({
+        error: 'Failed to retrieve fetch results',
+        log_id: logId
+      }, 500)
+    }
+    
+    // Return success with actual results
     return c.json({
-      status: 'success',
-      message: 'Dividend fetch completed successfully.',
+      status: completedLog.status,
+      message: completedLog.status === 'success' 
+        ? 'Dividend fetch completed successfully.' 
+        : 'Dividend fetch completed with some errors.',
       log_id: logId,
+      tickers_processed: completedLog.tickers_processed,
+      dividends_found: completedLog.dividends_found,
+      dividends_eligible: completedLog.dividends_eligible,
+      api_calls_made: completedLog.api_calls_made,
+      error_message: completedLog.error_message,
       started_at: new Date(startTime).toISOString(),
-      completed_at: new Date().toISOString(),
-      duration_ms: Date.now() - startTime
+      completed_at: completedLog.completed_at,
+      duration_ms: completedLog.fetch_duration_ms
     }, 200)
     
   } catch (error) {
