@@ -5886,32 +5886,23 @@ app.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     
     const logId = logResult.meta.last_row_id as number
     
-    console.log(`[DIVIDEND-FETCH] Created log entry ${logId}, starting background processing`)
+    console.log(`[DIVIDEND-FETCH] Created log entry ${logId}, starting synchronous processing`)
     
-    // Use waitUntil to keep worker alive for background processing
-    // This respects Cloudflare's CPU time limits by returning 202 immediately
-    const executionContext = c.executionCtx
+    // Run synchronously (no waitUntil - just await the result)
+    // This will take 2-3 minutes but ensures reliable completion
+    await performDividendFetchInternal(DB, userId, logId, startTime)
     
-    // Start the fetch process in the background
-    const fetchPromise = performDividendFetchInternal(DB, userId, logId, startTime)
+    console.log(`[DIVIDEND-FETCH] Fetch completed successfully`)
     
-    // Tell Cloudflare to keep the worker alive until fetchPromise completes
-    if (executionContext && executionContext.waitUntil) {
-      executionContext.waitUntil(fetchPromise)
-      console.log(`[DIVIDEND-FETCH] Background processing queued with waitUntil`)
-    } else {
-      console.warn(`[DIVIDEND-FETCH] executionContext.waitUntil not available, processing may be interrupted`)
-      // Still start the promise but it might get cut off
-      fetchPromise.catch(err => console.error('[DIVIDEND-FETCH] Background error:', err))
-    }
-    
-    // Return immediately with 202 Accepted
+    // Return success after completion
     return c.json({
-      status: 'accepted',
-      message: 'Dividend fetch started in background. Check fetch history for results.',
+      status: 'success',
+      message: 'Dividend fetch completed successfully.',
       log_id: logId,
-      started_at: new Date().toISOString()
-    }, 202)
+      started_at: new Date(startTime).toISOString(),
+      completed_at: new Date().toISOString(),
+      duration_ms: Date.now() - startTime
+    }, 200)
     
   } catch (error) {
     console.error('[DIVIDEND-FETCH] Error starting dividend fetch:', error)
