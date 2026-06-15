@@ -8,7 +8,7 @@
 ## URLs
 - **Production**: https://app.generationalinvesting.ca
 - **Production (Pages.dev)**: https://generational-investing.pages.dev
-- **Latest Deploy**: https://b33c848d.generational-investing.pages.dev
+- **Latest Deploy**: https://19e82b57.generational-investing.pages.dev
 - **Development**: https://3000-imi5lx8i4w7yx1t3dzzid-583b4d74.sandbox.novita.ai
 - **GitHub**: https://github.com/ericrrichards/generational-investing
 
