@@ -8,9 +8,9 @@
 ## URLs
 - **Production**: https://app.generationalinvesting.ca
 - **Production (Pages.dev)**: https://generational-investing.pages.dev
-- **Preview**: https://a8e93b43.generational-investing.pages.dev
+- **Latest Deploy**: https://b33c848d.generational-investing.pages.dev
 - **Development**: https://3000-imi5lx8i4w7yx1t3dzzid-583b4d74.sandbox.novita.ai
-- **GitHub**: https://github.com/rob-page/generational-investing
+- **GitHub**: https://github.com/ericrrichards/generational-investing
 
 ## Demo Account
 - **Email**: demo@generationalinvesting.ca
@@ -653,7 +653,11 @@ npx wrangler d1 execute webapp-production --local --command="SELECT * FROM compa
 Proprietary - All rights reserved
 
 ## Last Updated
-April 2, 2026
+June 15, 2026
+
+## Recent Updates
+- **June 15, 2026**: Fixed closed stock trade editing modal to show profit/loss and trade summary
+- **April 2, 2026**: Dashboard YTD P/L calculation aligned with Reports P/L Summary
 
 ## Project Status
 - ✅ v1.0 Complete - Core features implemented and tested
