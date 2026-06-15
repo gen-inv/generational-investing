@@ -2590,9 +2590,47 @@ async function showStockForm(stockId = null) {
 
                     <!-- Close Fields (if editing closed trade) -->
                     ${isClosed ? `
-                    <div class="bg-gradient-to-br from-red-50 to-red-100 p-3 rounded-lg border border-red-300 mb-4">
-                        <h4 class="text-sm font-bold text-red-800 mb-3 flex items-center">
-                            <i class="fas fa-times-circle mr-1"></i>Closing Details
+                    <!-- Profit/Loss Summary (Read-Only Display) -->
+                    <div class="bg-gradient-to-br ${stock.profit_loss >= 0 ? 'from-green-50 to-green-100 border-green-300' : 'from-red-50 to-red-100 border-red-300'} p-4 rounded-lg border mb-4">
+                        <h4 class="text-sm font-bold ${stock.profit_loss >= 0 ? 'text-green-800' : 'text-red-800'} mb-3 flex items-center">
+                            <i class="fas ${stock.profit_loss >= 0 ? 'fa-check-circle' : 'fa-times-circle'} mr-2"></i>Trade Performance Summary
+                        </h4>
+                        <div class="space-y-2">
+                            <!-- P/L Display -->
+                            <div class="flex items-center justify-between py-2 border-b ${stock.profit_loss >= 0 ? 'border-green-200' : 'border-red-200'}">
+                                <span class="text-sm font-semibold ${stock.profit_loss >= 0 ? 'text-green-900' : 'text-red-900'}">
+                                    <i class="fas fa-chart-line mr-1"></i>Net Profit/Loss:
+                                </span>
+                                <span class="text-xl font-bold ${stock.profit_loss >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                    ${stock.profit_loss >= 0 ? '+' : ''}$${parseFloat(stock.profit_loss).toFixed(2)}
+                                </span>
+                            </div>
+                            <!-- Trade Details -->
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Opened:</span>
+                                    <span class="font-semibold text-gray-800">${stock.trade_date}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Closed:</span>
+                                    <span class="font-semibold text-gray-800">${stock.closed_date || 'N/A'}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Shares:</span>
+                                    <span class="font-semibold text-gray-800">${stock.quantity}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-600">Avg Price:</span>
+                                    <span class="font-semibold text-gray-800">$${parseFloat(stock.price).toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Closing Details (Editable) -->
+                    <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-3 rounded-lg border border-gray-300 mb-4">
+                        <h4 class="text-sm font-bold text-gray-800 mb-3 flex items-center">
+                            <i class="fas fa-edit mr-1 text-blue-600"></i>Edit Closing Details
                         </h4>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                             <div>
