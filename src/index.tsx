@@ -2932,8 +2932,9 @@ app.get('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
     
     // Verify holding belongs to user and get account info
     const holding = await DB.prepare(`
-      SELECT sh.id, sh.ticker, sh.account_id
+      SELECT sh.id, sh.ticker, sh.account_id, a.account_name, a.account_type
       FROM stock_holdings sh
+      LEFT JOIN accounts a ON sh.account_id = a.id
       WHERE sh.id = ? AND sh.user_id = ?
     `).bind(holdingId, userId).first()
     
@@ -2942,17 +2943,127 @@ app.get('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
     }
     
     // Get covered calls for this ticker AND specific account_id only
+    // Also get account info for display
     // Filter by account_id to prevent cross-account showing (important for multiple Cash/RRSP accounts)
     const coveredCalls = await DB.prepare(`
-      SELECT * FROM option_trades
-      WHERE user_id = ? AND ticker = ? AND account_id = ? AND strategy_type = 'COVERED_CALL'
-      ORDER BY trade_date DESC
+      SELECT 
+        ot.*,
+        a.account_name,
+        a.account_type as account_type_name
+      FROM option_trades ot
+      LEFT JOIN accounts a ON ot.account_id = a.id
+      WHERE ot.user_id = ? AND ot.ticker = ? AND ot.account_id = ? AND ot.strategy_type = 'COVERED_CALL'
+      ORDER BY ot.trade_date DESC
     `).bind(userId, holding.ticker, holding.account_id).all()
     
     return c.json(coveredCalls.results || [])
   } catch (error) {
     console.error('Get covered calls error:', error)
     return c.json({ error: 'Failed to fetch covered calls' }, 500)
+  }
+})
+
+// Diagnostic endpoint: Get all covered calls for a ticker (regardless of account_id)
+app.get('/api/stocks/:id/all-covered-calls', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const holdingId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Get holding info
+    const holding = await DB.prepare(`
+      SELECT sh.id, sh.ticker, sh.account_id, a.account_name as holding_account_name
+      FROM stock_holdings sh
+      LEFT JOIN accounts a ON sh.account_id = a.id
+      WHERE sh.id = ? AND sh.user_id = ?
+    `).bind(holdingId, userId).first() as any
+    
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
+    }
+    
+    // Get ALL covered calls for this ticker (any account)
+    const allCoveredCalls = await DB.prepare(`
+      SELECT 
+        ot.*,
+        a.account_name as cc_account_name,
+        a.account_type as cc_account_type,
+        CASE 
+          WHEN ot.account_id = ? THEN 1 
+          ELSE 0 
+        END as matches_holding
+      FROM option_trades ot
+      LEFT JOIN accounts a ON ot.account_id = a.id
+      WHERE ot.user_id = ? AND ot.ticker = ? AND ot.strategy_type = 'COVERED_CALL'
+      ORDER BY matches_holding DESC, ot.trade_date DESC
+    `).bind(holding.account_id, userId, holding.ticker).all()
+    
+    return c.json({
+      holding_info: {
+        id: holding.id,
+        ticker: holding.ticker,
+        account_id: holding.account_id,
+        account_name: holding.holding_account_name
+      },
+      covered_calls: allCoveredCalls.results || []
+    })
+  } catch (error) {
+    console.error('Get all covered calls error:', error)
+    return c.json({ error: 'Failed to fetch covered calls' }, 500)
+  }
+})
+
+// Link a covered call to a stock holding (update account_id)
+app.put('/api/covered-calls/:ccId/link-to-holding/:holdingId', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const ccId = c.req.param('ccId')
+    const holdingId = c.req.param('holdingId')
+    const { DB } = c.env
+    
+    // Verify covered call belongs to user
+    const coveredCall = await DB.prepare(`
+      SELECT * FROM option_trades 
+      WHERE id = ? AND user_id = ? AND strategy_type = 'COVERED_CALL'
+    `).bind(ccId, userId).first() as any
+    
+    if (!coveredCall) {
+      return c.json({ error: 'Covered call not found' }, 404)
+    }
+    
+    // Verify holding belongs to user
+    const holding = await DB.prepare(`
+      SELECT sh.id, sh.ticker, sh.account_id, a.account_type
+      FROM stock_holdings sh
+      LEFT JOIN accounts a ON sh.account_id = a.id
+      WHERE sh.id = ? AND sh.user_id = ?
+    `).bind(holdingId, userId).first() as any
+    
+    if (!holding) {
+      return c.json({ error: 'Stock holding not found' }, 404)
+    }
+    
+    // Verify ticker matches
+    if (coveredCall.ticker !== holding.ticker) {
+      return c.json({ 
+        error: `Ticker mismatch: Covered call is for ${coveredCall.ticker}, holding is for ${holding.ticker}` 
+      }, 400)
+    }
+    
+    // Update covered call's account_id and account_type to match holding
+    await DB.prepare(`
+      UPDATE option_trades 
+      SET account_id = ?, account_type = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(holding.account_id, holding.account_type, ccId).run()
+    
+    return c.json({ 
+      success: true,
+      message: `Covered call ${ccId} linked to holding ${holdingId} (account: ${holding.account_id})`
+    })
+  } catch (error) {
+    console.error('Link covered call error:', error)
+    return c.json({ error: 'Failed to link covered call' }, 500)
   }
 })
 
