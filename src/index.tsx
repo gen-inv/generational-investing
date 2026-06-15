@@ -1627,16 +1627,44 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
     let totalCurrentValue = 0;
 
     for (const account of accounts as any[]) {
-      // Get YTD P/L from closed stock trades
-      // Use LIKE pattern for year matching since close_date is stored as DATE string
-      const stockPL = await DB.prepare(`
-        SELECT COALESCE(SUM(profit_loss), 0) as total_pl
-        FROM stock_trades
-        WHERE user_id = ? 
-        AND account_type = ?
-        AND is_open = 0
-        AND close_date LIKE ?
-      `).bind(userId, account.account_type, `${currentYear}%`).first() as any;
+      // Get YTD P/L from closed stock positions (using stock_holdings + stock_transactions)
+      const stockPositions = await DB.prepare(`
+        SELECT sh.id as holding_id, sh.closed_date
+        FROM stock_holdings sh
+        WHERE sh.user_id = ? 
+        AND sh.account_id = ?
+        AND sh.is_open = 0
+        AND sh.closed_date IS NOT NULL
+        AND sh.closed_date LIKE ?
+      `).bind(userId, account.id, `${currentYear}%`).all()
+      
+      // Calculate P/L for each closed stock position
+      let stockPLTotal = 0
+      for (const holding of stockPositions.results as any[]) {
+        const transactions = await DB.prepare(`
+          SELECT transaction_type, shares, price_per_share, commission
+          FROM stock_transactions
+          WHERE holding_id = ?
+        `).bind(holding.holding_id).all()
+        
+        let totalBuyValue = 0
+        let totalBuyCommissions = 0
+        let totalSellValue = 0
+        let totalSellCommissions = 0
+        
+        transactions.results.forEach((tx: any) => {
+          if (tx.transaction_type === 'BUY') {
+            totalBuyValue += tx.shares * tx.price_per_share
+            totalBuyCommissions += tx.commission || 0
+          } else if (tx.transaction_type === 'SELL') {
+            totalSellValue += tx.shares * tx.price_per_share
+            totalSellCommissions += tx.commission || 0
+          }
+        })
+        
+        // P/L = Sale Proceeds - Cost Basis - All Commissions
+        stockPLTotal += totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
+      }
 
       // Get YTD P/L from closed option trades
       const optionPL = await DB.prepare(`
@@ -1672,7 +1700,7 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
       `).bind(userId, account.account_type, `${currentYear}%`).first() as any;
 
       console.log(`YTD Performance for ${account.account_name}:`, {
-        stockPL: stockPL?.total_pl || 0,
+        stockPL: stockPLTotal,
         optionPL: optionPL?.total_pl || 0,
         dailyPL: dailyPL?.total_pl || 0,
         dividends: dividends?.total_dividends || 0,
@@ -1680,7 +1708,7 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
         currentYear
       });
 
-      const ytdPL = (stockPL?.total_pl || 0) + (optionPL?.total_pl || 0) + (dailyPL?.total_pl || 0) + (dividends?.total_dividends || 0);
+      const ytdPL = stockPLTotal + (optionPL?.total_pl || 0) + (dailyPL?.total_pl || 0) + (dividends?.total_dividends || 0);
       const currentValue = account.default_currency === 'CAD' 
         ? (account.balance_cad || 0) 
         : (account.balance_usd || 0);
