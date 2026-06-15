@@ -2037,6 +2037,97 @@ app.get('/api/stocks', authMiddleware, async (c) => {
   return c.json(enhancedStocks)
 })
 
+// Get single stock holding with transaction details
+app.get('/api/stocks/:id', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const holdingId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Get holding details
+    const holding = await DB.prepare(`
+      SELECT 
+        sh.*,
+        a.account_name,
+        a.account_type,
+        c.ticker as company_ticker,
+        c.company_name
+      FROM stock_holdings sh
+      LEFT JOIN accounts a ON sh.account_id = a.id
+      LEFT JOIN companies c ON sh.company_id = c.id
+      WHERE sh.id = ? AND sh.user_id = ?
+    `).bind(holdingId, userId).first()
+    
+    if (!holding) {
+      return c.json({ error: 'Stock holding not found' }, 404)
+    }
+    
+    // Get all transactions for this holding
+    const transactions = await DB.prepare(`
+      SELECT * FROM stock_transactions
+      WHERE holding_id = ?
+      ORDER BY transaction_date ASC
+    `).bind(holdingId).all()
+    
+    // Calculate P/L for closed positions
+    let profitLoss = null
+    let closePrice = null
+    let closeCommission = null
+    let closeDate = null
+    
+    if (holding.is_open === 0) {
+      let totalBuyValue = 0
+      let totalBuyCommissions = 0
+      let totalSellValue = 0
+      let totalSellCommissions = 0
+      let totalSellShares = 0
+      
+      transactions.results.forEach((tx: any) => {
+        if (tx.transaction_type === 'BUY') {
+          totalBuyValue += tx.shares * tx.price_per_share
+          totalBuyCommissions += tx.commission || 0
+        } else if (tx.transaction_type === 'SELL') {
+          totalSellValue += tx.shares * tx.price_per_share
+          totalSellCommissions += tx.commission || 0
+          totalSellShares += tx.shares
+          // Use the last SELL transaction for close details
+          closePrice = tx.price_per_share
+          closeCommission = tx.commission || 0
+          closeDate = tx.transaction_date
+        }
+      })
+      
+      profitLoss = totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
+    }
+    
+    // Get the first transaction to determine trade_type
+    const firstTransaction = transactions.results[0] as any
+    const tradeType = firstTransaction?.transaction_type || 'BUY'
+    
+    // Return holding with transaction details mapped to old field names
+    return c.json({
+      ...holding,
+      // Map new field names to old field names for backwards compatibility
+      id: holding.id,
+      price: holding.average_price,
+      quantity: holding.total_shares,
+      trade_date: holding.opened_date,
+      trade_type: tradeType,
+      commission: firstTransaction?.commission || 0,
+      avg_price: holding.average_price,
+      profit_loss: profitLoss,
+      close_date: closeDate,
+      close_price: closePrice,
+      close_commission: closeCommission,
+      closed_date: holding.closed_date,
+      transactions: transactions.results
+    })
+  } catch (error) {
+    console.error('Get stock error:', error)
+    return c.json({ error: 'Failed to fetch stock' }, 500)
+  }
+})
+
 app.post('/api/stocks', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')

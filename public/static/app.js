@@ -2473,8 +2473,8 @@ async function showStockForm(stockId = null) {
         // Load existing data if editing
         let stock = null
         if (isEdit) {
-            const response = await api.get(`/api/stocks`)
-            stock = response.data.find(s => s.id === stockId)
+            const response = await api.get(`/api/stocks/${stockId}`)
+            stock = response.data
         }
         
         const isClosed = stock && stock.is_open === 0
