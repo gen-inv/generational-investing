@@ -5119,13 +5119,37 @@ async function loadOptions() {
         const tableHeader = table.closest('table').querySelector('thead tr')
         const isCoveredCallTab = currentStrategyFilter === 'COVERED_CALL'
         
-        // Set appropriate header for last column
+        // For covered calls, need to add Account column before Actions
+        if (isCoveredCallTab) {
+            // Check if Account column already exists
+            const existingAccountHeader = tableHeader.querySelector('th:nth-last-child(2)')
+            if (existingAccountHeader.textContent !== 'Account') {
+                // Insert Account column before Actions
+                const actionsHeader = tableHeader.querySelector('th:last-child')
+                const accountHeader = document.createElement('th')
+                accountHeader.className = 'px-4 py-3 text-center'
+                accountHeader.textContent = 'Account'
+                tableHeader.insertBefore(accountHeader, actionsHeader)
+            }
+        } else {
+            // Remove Account column if it exists
+            const headers = tableHeader.querySelectorAll('th')
+            if (headers.length > 9) {
+                const accountHeader = tableHeader.querySelector('th:nth-last-child(2)')
+                if (accountHeader.textContent === 'Account') {
+                    accountHeader.remove()
+                }
+            }
+        }
+        
+        // Set Actions header text
         const lastHeaderCell = tableHeader.querySelector('th:last-child')
-        lastHeaderCell.textContent = isCoveredCallTab ? 'Account / Actions' : 'Actions'
+        lastHeaderCell.textContent = 'Actions'
         
         if (filteredOptions.length === 0) {
             const strategyName = STRATEGY_TYPES.find(st => st.value === currentStrategyFilter)?.label || 'this strategy'
-            table.innerHTML = `<tr><td colspan="9" class="text-center py-4 text-gray-500">No open option trades found for ${strategyName}</td></tr>`
+            const colspanCount = isCoveredCallTab ? 10 : 9
+            table.innerHTML = `<tr><td colspan="${colspanCount}" class="text-center py-4 text-gray-500">No open option trades found for ${strategyName}</td></tr>`
             return
         }
         
@@ -5147,22 +5171,24 @@ async function loadOptions() {
                             ${option.is_open ? 'Open' : 'Closed'}
                         </span>
                     </td>
-                    <td class="px-4 py-3 text-center">
-                        ${option.strategy_type === 'COVERED_CALL' ? 
-                            `<div class="flex items-center justify-center gap-3">
-                                <span class="text-gray-700 font-medium">${accountDisplay}</span>
-                                <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800 font-semibold" title="Delete Covered Call">
-                                    <i class="fas fa-trash mr-1"></i>Delete
-                                </button>
-                            </div>` :
-                            `<button onclick="manageOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2 font-semibold" title="Manage Trade">
+                    ${option.strategy_type === 'COVERED_CALL' ? 
+                        `<td class="px-4 py-3 text-center">
+                            <span class="text-gray-700 font-medium">${accountDisplay}</span>
+                        </td>
+                        <td class="px-4 py-3 text-center">
+                            <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800 font-semibold" title="Delete Covered Call">
+                                <i class="fas fa-trash mr-1"></i>Delete
+                            </button>
+                        </td>` :
+                        `<td class="px-4 py-3 text-center">
+                            <button onclick="manageOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2 font-semibold" title="Manage Trade">
                                 <i class="fas fa-cog mr-1"></i>Manage
                             </button>
                             <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800 font-semibold" title="Delete Trade">
                                 <i class="fas fa-trash mr-1"></i>Delete
-                            </button>`
-                        }
-                    </td>
+                            </button>
+                        </td>`
+                    }
                 </tr>
             `
         })
