@@ -214,16 +214,15 @@ Report these if you encounter them:
 ┌──────────┬────────────────────┬────────────┐
 │ Account  │ Ticker             │ Date       │
 ├──────────┼────────────────────┼────────────┤
-│ TFSA     │ AAPL [🎡 Wheel]   │ 2026-06-16 │
+│ TFSA     │ AAPL [🎡]         │ 2026-06-16 │
 │ RRSP     │ MSFT               │ 2026-06-16 │
 └──────────┴────────────────────┴────────────┘
 ```
 
 Badge appearance:
 - **Background**: Purple (#7C3AED)
-- **Text**: White
+- **Text**: None (icon only)
 - **Icon**: Wagon wheel (fa-dharmachakra)
-- **Text**: "Wheel"
 - **Size**: Small (xs)
 - **Shape**: Rounded pill
 
