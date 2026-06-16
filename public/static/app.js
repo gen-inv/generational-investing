@@ -6056,14 +6056,17 @@ async function assignStockPosition(optionId) {
         // Determine strategy type based on option strategy
         const strategyType = option.strategy_type === 'SELLING_PUT_WHEEL' ? 'WHEEL' : 'STOCKPILING'
         
-        // Get today's date as default assignment date
-        const today = new Date().toISOString().split('T')[0]
+        // Calculate default assignment date: earlier of expiration date or today
+        const today = new Date()
+        const expirationDate = new Date(option.expiration_date)
+        const defaultDate = expirationDate < today ? expirationDate : today
+        const defaultDateString = defaultDate.toISOString().split('T')[0]
         
         // Create assignment modal
         const modal = document.createElement('div')
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
         modal.innerHTML = `
-            <div class="bg-white rounded-lg shadow-2xl max-w-2xl w-full">
+            <div class="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
                 <!-- Header -->
                 <div class="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-6">
                     <h3 class="text-2xl font-bold flex items-center">
@@ -6072,8 +6075,8 @@ async function assignStockPosition(optionId) {
                     <p class="text-amber-100 text-sm mt-2">Close option and create stock position from assignment</p>
                 </div>
                 
-                <!-- Content -->
-                <div class="p-6">
+                <!-- Content with Scroll -->
+                <div class="p-6 overflow-y-auto">
                     <!-- Assignment Summary -->
                     <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-300 mb-6">
                         <h4 class="text-sm font-bold text-blue-900 mb-3 flex items-center">
@@ -6114,7 +6117,7 @@ async function assignStockPosition(optionId) {
                                 <label class="block text-gray-700 font-semibold mb-2">
                                     <i class="fas fa-calendar mr-2 text-amber-600"></i>Assignment Date *
                                 </label>
-                                <input type="date" name="assignment_date" value="${today}" 
+                                <input type="date" name="assignment_date" value="${defaultDateString}" 
                                        class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none" 
                                        required>
                                 <p class="text-xs text-gray-500 mt-1">Date when option was assigned and stock was purchased</p>
