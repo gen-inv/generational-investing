@@ -406,6 +406,111 @@ P/L Calculation (for closed positions):
 - Contains flat BUY/SELL records with no aggregation
 - Being phased out in favor of holdings+transactions model
 
+### Stock Position Management Modal 🆕
+
+**Comprehensive position details with enhanced cost basis tracking:**
+
+The Position Management Modal provides a complete view of each stock position with the following sections:
+
+**1. Header with Strategy Badge**
+- Displays ticker symbol
+- Shows strategy type badge:
+  - **Wheel Strategy**: Purple badge with wagon wheel icon (🎯)
+  - **Stockpiling**: Gray badge with "Stockpiling" text
+  - No badge for legacy positions without strategy type
+
+**2. Position Summary**
+- Current shares held
+- Average price per share
+- **Cost basis per share** (average price minus adjustments)
+- Total cost basis adjustments
+- Account name and opened date
+- Target buy price (if set)
+- Position notes
+
+**3. Share Ownership History**
+- Complete BUY/SELL transaction history
+- Date, type, shares, price, total for each transaction
+- Status (Open/Closed) for each transaction
+- Useful for reviewing position building over time
+
+**4. Covered Call History**
+- All covered calls written against this position
+- Strike price, expiration, premium collected
+- Days until expiration warnings
+- Closed P/L for expired/closed calls
+- Actions: Edit, Close, View Details
+
+**5. Dividend History**
+- **Missing Dividends Detection**: Compares position to dividend repository
+  - Shows dividends you likely received but haven't recorded
+  - Quick-add buttons to record missing dividends
+  - Automatic withholding tax adjustments for CASH/TFSA accounts
+- **Recorded Dividends**: All dividend payments recorded for this position
+  - Date, amount, per-share calculation
+  - Notes for each dividend
+
+**6. Cost Basis Adjustments** 🆕
+- **Complete history** of all cost basis reductions:
+  - **Short Put Premium**: Premium collected from assigned put options (Wheel/Stockpiling)
+  - **Dividend**: Dividend payments received
+  - **Covered Call Premium**: Premium collected from covered calls
+- Each adjustment shows:
+  - Date, Type (color-coded badge), Amount, Notes
+- **Total adjustments** displayed at bottom
+- Emerald-themed section for easy visibility
+
+**7. Assignment History** 🆕
+- **Only shown if stock was acquired via option assignment**
+- Shows original short put option details that created this stock position:
+  - Trade date and assignment date
+  - Strike price and expiration date
+  - Premium per share and total premium collected
+  - Number of contracts assigned
+- **Multiple assignments supported**: If you built the position via multiple put assignments
+- Amber-themed section distinguishing it from other sections
+- Explains how premium reduced your cost basis
+
+**Cost Basis Calculation Example:**
+```
+Scenario: Wheel Strategy Entry
+1. Sell Put: Strike $50, Premium $2.00, 1 contract
+2. Option assigned → Buy 100 shares @ $50
+
+Cost Basis Calculation:
+- Purchase Price: $50.00/share
+- Premium Collected: $2.00 × 1 × 100 = $200
+- Premium per Share: $200 ÷ 100 = $2.00
+- Adjusted Cost Basis: $50.00 - $2.00 = $48.00/share
+
+Position Summary Shows:
+- Avg Price: $50.00
+- Cost Basis: $48.00 ← Your effective entry price!
+- CB Adjustments: -$200.00
+
+Assignment History Shows:
+- Original put details with $200 total premium
+
+Cost Basis Adjustments Shows:
+- Short Put Premium: $200.00 (reduces basis)
+```
+
+**Actions Available:**
+- Add to Position (buy more shares)
+- Edit Trade (change quantity, price, strategy type)
+- Sell from Position (partial or full sale)
+- Record Dividend
+- Initiate Covered Call
+- Close Position
+
+**API Endpoints:**
+- `GET /api/stocks/:id/dividends` - Recorded dividends
+- `GET /api/stocks/:id/missing-dividends` - Missing dividend detection
+- `GET /api/stocks/:id/covered-calls` - Covered call history
+- `GET /api/stocks/:id/purchase-history` - Transaction history
+- `GET /api/stocks/:id/cost-basis-adjustments` - All cost basis adjustments 🆕
+- `GET /api/stocks/:id/assignment-history` - Assignment details 🆕
+
 ### Data Flow
 1. User authenticates → JWT token generated
 2. All API requests include Bearer token
