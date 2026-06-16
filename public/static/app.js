@@ -6304,6 +6304,20 @@ async function showOptionDetails(id) {
         const strategyConfig = getStrategyConfig(option.strategy_type)
         const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
         
+        // Generate strategy badge based on strategy type
+        let strategyBadge = ''
+        if (option.strategy_type === 'SELLING_PUT_WHEEL') {
+            strategyBadge = '<span class="inline-flex items-center px-2 py-1 rounded text-sm font-bold bg-purple-600 text-white ml-2" title="Wheel Strategy"><i class="fas fa-dharmachakra"></i></span>'
+        } else if (option.strategy_type === 'SELLING_PUT') {
+            strategyBadge = '<span class="inline-flex items-center px-2 py-1 rounded text-sm font-medium bg-gray-600 text-white ml-2" title="Stockpiling Strategy">Stockpiling</span>'
+        } else if (option.strategy_type === 'COVERED_CALL') {
+            strategyBadge = '<span class="inline-flex items-center px-2 py-1 rounded text-sm font-medium bg-green-600 text-white ml-2" title="Covered Call"><i class="fas fa-umbrella"></i></span>'
+        } else if (option.strategy_type === 'CREDIT_SPREAD' || option.strategy_type === 'DEBIT_SPREAD') {
+            strategyBadge = '<span class="inline-flex items-center px-2 py-1 rounded text-sm font-medium bg-blue-600 text-white ml-2" title="Spread Strategy"><i class="fas fa-arrows-alt-h"></i></span>'
+        } else if (option.strategy_type === 'IRON_CONDOR') {
+            strategyBadge = '<span class="inline-flex items-center px-2 py-1 rounded text-sm font-medium bg-indigo-600 text-white ml-2" title="Iron Condor"><i class="fas fa-layer-group"></i></span>'
+        }
+        
         // Calculate DTE
         const expirationDate = new Date(option.expiration_date)
         const tradeDate = new Date(option.trade_date)
@@ -6319,7 +6333,7 @@ async function showOptionDetails(id) {
                 <!-- Header -->
                 <div class="flex justify-between items-center p-6 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700">
                     <h3 class="text-2xl font-bold text-white">
-                        <i class="fas fa-layer-group mr-2"></i>${option.ticker} - ${strategyLabel}
+                        <i class="fas fa-layer-group mr-2"></i>${option.ticker}${strategyBadge} - Trade Details
                     </h3>
                     <button onclick="this.closest('.fixed').remove()" class="text-white hover:text-purple-200">
                         <i class="fas fa-times text-2xl"></i>
@@ -6370,8 +6384,7 @@ async function showOptionDetails(id) {
                             <div class="flex items-center justify-between mb-4">
                                 <div>
                                     <h4 class="text-2xl font-bold mb-1">${option.ticker}</h4>
-                                    <p class="text-sm opacity-90">${strategyLabel}</p>
-                                    <p class="text-sm opacity-90 mt-1">${accountDisplay} • Opened ${option.trade_date}</p>
+                                    <p class="text-sm opacity-90">${accountDisplay} • Opened ${option.trade_date}</p>
                                 </div>
                                 <div class="text-right">
                                     <span class="px-4 py-2 rounded-full ${option.is_open ? 'bg-green-500' : 'bg-gray-500'} text-white font-semibold text-sm">
