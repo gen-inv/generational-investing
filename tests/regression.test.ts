@@ -104,6 +104,28 @@ describe('Authentication Tests', () => {
     const data = await response.json()
     expect(data.error).toBe('Email already exists')
   })
+
+  it('should login with demo account credentials', async () => {
+    // Test the demo account that users can use
+    const response = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'demo@generationalinvesting.ca',
+        password: 'test123'
+      })
+    })
+
+    expect(response.status).toBe(200)
+    const data = await response.json()
+    expect(data.token).toBeDefined()
+    expect(data.user).toBeDefined()
+    expect(data.user.email).toBe('demo@generationalinvesting.ca')
+    
+    // Verify token format (JWT should have 3 parts separated by dots)
+    const tokenParts = data.token.split('.')
+    expect(tokenParts).toHaveLength(3)
+  })
 })
 
 describe('Exchange Rate Caching Tests', () => {
