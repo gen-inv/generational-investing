@@ -5121,7 +5121,7 @@ async function loadOptions() {
         
         // Set appropriate header for last column
         const lastHeaderCell = tableHeader.querySelector('th:last-child')
-        lastHeaderCell.textContent = isCoveredCallTab ? 'Account' : 'Actions'
+        lastHeaderCell.textContent = isCoveredCallTab ? 'Account / Actions' : 'Actions'
         
         if (filteredOptions.length === 0) {
             const strategyName = STRATEGY_TYPES.find(st => st.value === currentStrategyFilter)?.label || 'this strategy'
@@ -5149,7 +5149,12 @@ async function loadOptions() {
                     </td>
                     <td class="px-4 py-3 text-center">
                         ${option.strategy_type === 'COVERED_CALL' ? 
-                            `<span class="text-gray-700 font-medium">${accountDisplay}</span>` :
+                            `<div class="flex items-center justify-center gap-3">
+                                <span class="text-gray-700 font-medium">${accountDisplay}</span>
+                                <button onclick="deleteOption(${option.id})" class="text-red-600 hover:text-red-800 font-semibold" title="Delete Covered Call">
+                                    <i class="fas fa-trash mr-1"></i>Delete
+                                </button>
+                            </div>` :
                             `<button onclick="manageOption(${option.id})" class="text-brand-teal hover:text-brand-gold mr-2 font-semibold" title="Manage Trade">
                                 <i class="fas fa-cog mr-1"></i>Manage
                             </button>
