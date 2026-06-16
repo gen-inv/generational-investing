@@ -450,26 +450,17 @@ The Position Management Modal provides a complete view of each stock position wi
   - Date, amount, per-share calculation
   - Notes for each dividend
 
-**6. Cost Basis Adjustments** 🆕
-- **Complete history** of all cost basis reductions:
-  - **Short Put Premium**: Premium collected from assigned put options (Wheel/Stockpiling)
-  - **Dividend**: Dividend payments received
-  - **Covered Call Premium**: Premium collected from covered calls
-- Each adjustment shows:
-  - Date, Type (color-coded badge), Amount, Notes
-- **Total adjustments** displayed at bottom
-- Emerald-themed section for easy visibility
-
-**7. Assignment History** 🆕
+**6. Assignment History** 🆕
 - **Only shown if stock was acquired via option assignment**
-- Shows original short put option details that created this stock position:
-  - Trade date and assignment date
-  - Strike price and expiration date
-  - Premium per share and total premium collected
-  - Number of contracts assigned
-- **Multiple assignments supported**: If you built the position via multiple put assignments
-- Amber-themed section distinguishing it from other sections
-- Explains how premium reduced your cost basis
+- Shows premium credits from assigned short put options:
+  - Assignment date
+  - Premium credit amount
+  - Details (original option info in notes)
+- **Multiple assignments supported**: All assignment premiums listed
+- **Total premium credits** displayed at bottom
+- Amber-themed section for clear visual distinction
+- Explains how premium collected reduces your cost basis
+- Note: Dividends appear in Dividend History, Covered Calls in their own section
 
 **Cost Basis Calculation Example:**
 ```
@@ -489,10 +480,9 @@ Position Summary Shows:
 - CB Adjustments: -$200.00
 
 Assignment History Shows:
-- Original put details with $200 total premium
-
-Cost Basis Adjustments Shows:
-- Short Put Premium: $200.00 (reduces basis)
+- Assignment Date: 2/16/24
+- Premium Credit: $200.00
+- Details: Strike $50, Premium $2.00, 1 contract
 ```
 
 **Actions Available:**
@@ -508,8 +498,7 @@ Cost Basis Adjustments Shows:
 - `GET /api/stocks/:id/missing-dividends` - Missing dividend detection
 - `GET /api/stocks/:id/covered-calls` - Covered call history
 - `GET /api/stocks/:id/purchase-history` - Transaction history
-- `GET /api/stocks/:id/cost-basis-adjustments` - All cost basis adjustments 🆕
-- `GET /api/stocks/:id/assignment-history` - Assignment details 🆕
+- `GET /api/stocks/:id/cost-basis-adjustments` - All cost basis adjustments (filtered for assignments in UI) 🆕
 
 ### Data Flow
 1. User authenticates → JWT token generated
