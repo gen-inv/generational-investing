@@ -7266,7 +7266,7 @@ app.get('/', (c) => {
                                 <i class="fas fa-layer-group mr-2"></i>Options Trades
                             </a>
                             <a href="#" onclick="showSection('daily-trade')" class="nav-link" data-section="daily-trade">
-                                <i class="fas fa-chart-line mr-2 text-orange-400"></i>Daily Trade
+                                <i class="fas fa-chart-line mr-2 text-orange-400"></i>0DTE SPX
                             </a>
                             <a href="#" onclick="showSection('utilities')" class="nav-link" data-section="utilities">
                                 <i class="fas fa-tools mr-2"></i>Utilities
