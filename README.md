@@ -513,6 +513,80 @@ This ensures the displayed cost basis always reflects your true effective entry 
 - `GET /api/stocks/:id/purchase-history` - Transaction history
 - `GET /api/stocks/:id/cost-basis-adjustments` - All cost basis adjustments (filtered for assignments in UI) 🆕
 
+### Options Trade Details Modal 🆕
+
+**Comprehensive option trade details with consistent design:**
+
+The Options Trade Details Modal provides complete information about each option trade, matching the design language of the Stock Position Management Modal.
+
+**1. Header with Strategy Badge**
+- Displays ticker symbol
+- Shows strategy type badge with consistent visual design:
+  - **Wheel (SELLING_PUT_WHEEL)**: Purple badge with dharma wheel icon 🎯
+  - **Stockpiling (SELLING_PUT)**: Gray badge with "Stockpiling" text
+  - **Covered Call**: Green badge with umbrella icon ☂️
+  - **Spreads (Credit/Debit)**: Blue badge with arrows icon ↔️
+  - **Iron Condor**: Indigo badge with layers icon 📚
+  - **Long Call/Put**: Standard display (no special badge)
+- Followed by "- Trade Details" label
+
+**2. Position Summary**
+- Ticker symbol and current status (OPEN/CLOSED)
+- Account name and trade date
+- Trade metrics grid:
+  - **Trade Date**: Opening date
+  - **Contracts**: Number of contracts (1 contract = 100 shares)
+  - **Expiration**: Expiration date with DTE (Days to Expiration)
+  - **Original DTE**: Days to expiration at trade entry
+- Financial information:
+  - **Account**: Account name and type
+  - **Open Commission**: Commission paid to open
+  - **Profit/Loss**: Realized P/L if closed
+- Close information (if applicable):
+  - Close date and close commission
+- Trade notes (if any)
+
+**3. Position Details**
+Renders leg-specific information based on strategy complexity:
+
+**Single Leg Strategies** (Selling Put, Covered Call, Long Call/Put):
+- Strike Price
+- Premium per Share
+- Total Premium (contracts × premium × 100)
+- Close Price (if closed)
+
+**Two Leg Strategies** (Credit/Debit Spreads):
+- **Short Leg**: Strike, premium collected, total
+- **Long Leg**: Strike, premium paid, total
+- **Net Credit/Debit**: Overall position cost
+- **Spread Width**: Difference between strikes
+- **Max Profit/Loss**: Risk metrics
+
+**Four Leg Strategies** (Iron Condor):
+- **Put Credit Spread**: Short/long strikes and premiums
+- **Call Credit Spread**: Short/long strikes and premiums
+- **Net Credit**: Total premium collected
+- **Max Loss**: Risk if breached on either side
+
+**Actions Available:**
+- Edit Trade (change details)
+- Add To Position (buy more contracts)
+- Reduce From Position (sell some contracts)
+- Assign Stock Position (for short puts - Wheel/Stockpiling only)
+- Close Position (exit the trade)
+
+**Design Consistency:**
+- Header gradient: Purple (matches option theme)
+- Strategy badges: Same style as Stock modal
+- Layout: Same sidebar + main content structure
+- Typography: Consistent font sizes and weights
+- Information hierarchy: Same pattern of summary → details
+
+**API Endpoints:**
+- `GET /api/options` - All option trades
+- `GET /api/options/:id` - Single option details
+- `POST /api/options/:id/assign` - Assign stock from short put
+
 ### Data Flow
 1. User authenticates → JWT token generated
 2. All API requests include Bearer token
