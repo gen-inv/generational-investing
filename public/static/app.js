@@ -3127,21 +3127,19 @@ async function showStockDetails(id) {
         const company = companies.find(c => c.id === stock.company_id)
         const buyPrice = company?.buy_price
         
-        // Fetch dividend history, covered call history, purchase history, cost basis adjustments, and assignment history for this position
+        // Fetch dividend history, covered call history, purchase history, and cost basis adjustments for this position
         const dividendHistoryPromise = api.get(`/api/stocks/${id}/dividends`).catch(() => ({ data: [] }))
         const missingDividendsPromise = api.get(`/api/stocks/${id}/missing-dividends`).catch(() => ({ data: [] }))
         const coveredCallHistoryPromise = api.get(`/api/stocks/${id}/covered-calls`).catch(() => ({ data: [] }))
         const purchaseHistoryPromise = api.get(`/api/stocks/${id}/purchase-history`).catch(() => ({ data: [] }))
         const costBasisAdjustmentsPromise = api.get(`/api/stocks/${id}/cost-basis-adjustments`).catch(() => ({ data: [] }))
-        const assignmentHistoryPromise = api.get(`/api/stocks/${id}/assignment-history`).catch(() => ({ data: [] }))
         
-        const [dividendHistory, missingDividendsResponse, coveredCallHistory, purchaseHistory, costBasisAdjustments, assignmentHistory] = await Promise.all([
+        const [dividendHistory, missingDividendsResponse, coveredCallHistory, purchaseHistory, costBasisAdjustments] = await Promise.all([
             dividendHistoryPromise,
             missingDividendsPromise,
             coveredCallHistoryPromise,
             purchaseHistoryPromise,
-            costBasisAdjustmentsPromise,
-            assignmentHistoryPromise
+            costBasisAdjustmentsPromise
         ])
         
         const dividends = dividendHistory.data || []
@@ -3149,7 +3147,6 @@ async function showStockDetails(id) {
         const coveredCalls = coveredCallHistory.data || []
         const purchaseHistoryData = purchaseHistory.data || []
         const costBasisAdjustmentsData = costBasisAdjustments.data || []
-        const assignmentHistoryData = assignmentHistory.data || []
         
         console.log('=== DIVIDEND DEBUG ===')
         console.log('Stock ID:', id)
@@ -3537,112 +3534,52 @@ async function showStockDetails(id) {
                             `}
                         </div>
                         
-                        <!-- Cost Basis Adjustments -->
-                        <div class="mb-6">
-                            <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                                <i class="fas fa-calculator text-emerald-600 mr-2"></i>
-                                Cost Basis Adjustments
-                            </h4>
-                            ${costBasisAdjustmentsData.length > 0 ? `
-                                <div class="overflow-x-auto bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border-2 border-emerald-300 p-4">
-                                    <table class="w-full text-sm">
-                                        <thead class="bg-emerald-200 border-b-2 border-emerald-400">
-                                            <tr>
-                                                <th class="px-4 py-3 text-left text-emerald-800 font-semibold">Date</th>
-                                                <th class="px-4 py-3 text-left text-emerald-800 font-semibold">Type</th>
-                                                <th class="px-4 py-3 text-right text-emerald-800 font-semibold">Amount</th>
-                                                <th class="px-4 py-3 text-left text-emerald-800 font-semibold">Notes</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-emerald-200">
-                                            ${costBasisAdjustmentsData.map(adj => {
-                                                const typeLabel = adj.adjustment_type === 'SELLING_PUT' ? 'Short Put Premium' :
-                                                                 adj.adjustment_type === 'DIVIDEND' ? 'Dividend' :
-                                                                 adj.adjustment_type === 'COVERED_CALL' ? 'Covered Call Premium' :
-                                                                 adj.adjustment_type
-                                                const typeBg = adj.adjustment_type === 'SELLING_PUT' ? 'bg-purple-100 text-purple-700' :
-                                                              adj.adjustment_type === 'DIVIDEND' ? 'bg-yellow-100 text-yellow-700' :
-                                                              adj.adjustment_type === 'COVERED_CALL' ? 'bg-blue-100 text-blue-700' :
-                                                              'bg-gray-100 text-gray-700'
-                                                return `
-                                                    <tr class="hover:bg-emerald-100">
-                                                        <td class="px-4 py-3 text-gray-700">${adj.adjustment_date}</td>
-                                                        <td class="px-4 py-3">
-                                                            <span class="px-2 py-1 rounded ${typeBg} font-semibold text-xs">
-                                                                ${typeLabel}
-                                                            </span>
-                                                        </td>
-                                                        <td class="px-4 py-3 text-right font-semibold text-green-700">$${adj.amount.toFixed(2)}</td>
-                                                        <td class="px-4 py-3 text-gray-600">${adj.notes || '-'}</td>
-                                                    </tr>
-                                                `
-                                            }).join('')}
-                                        </tbody>
-                                    </table>
-                                    <div class="mt-4 pt-4 border-t-2 border-emerald-300 flex justify-between items-center">
-                                        <p class="text-sm text-emerald-700 font-medium">
-                                            <i class="fas fa-info-circle mr-1"></i>
-                                            Total adjustments reduce your cost basis per share
-                                        </p>
-                                        <p class="text-sm text-emerald-700 font-semibold">
-                                            Total: $${costBasisAdjustmentsData.reduce((sum, adj) => sum + adj.amount, 0).toFixed(2)}
-                                        </p>
-                                    </div>
-                                </div>
-                            ` : `
-                                <div class="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border-2 border-gray-200">
-                                    <i class="fas fa-inbox text-3xl mb-2"></i>
-                                    <p>No cost basis adjustments yet</p>
-                                </div>
-                            `}
-                        </div>
-                        
                         <!-- Assignment History -->
-                        ${assignmentHistoryData.length > 0 ? `
-                            <div class="mb-6">
-                                <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                                    <i class="fas fa-exchange-alt text-amber-600 mr-2"></i>
-                                    Assignment History
-                                </h4>
-                                <div class="overflow-x-auto bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border-2 border-amber-300 p-4">
-                                    <table class="w-full text-sm">
-                                        <thead class="bg-amber-200 border-b-2 border-amber-400">
-                                            <tr>
-                                                <th class="px-4 py-3 text-left text-amber-800 font-semibold">Trade Date</th>
-                                                <th class="px-4 py-3 text-center text-amber-800 font-semibold">Strike</th>
-                                                <th class="px-4 py-3 text-left text-amber-800 font-semibold">Expiration</th>
-                                                <th class="px-4 py-3 text-right text-amber-800 font-semibold">Premium/Share</th>
-                                                <th class="px-4 py-3 text-center text-amber-800 font-semibold">Contracts</th>
-                                                <th class="px-4 py-3 text-right text-amber-800 font-semibold">Total Premium</th>
-                                                <th class="px-4 py-3 text-left text-amber-800 font-semibold">Assignment Date</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-amber-200">
-                                            ${assignmentHistoryData.map(assignment => {
-                                                const totalPremium = assignment.premium * assignment.quantity * 100
-                                                return `
-                                                    <tr class="hover:bg-amber-100">
-                                                        <td class="px-4 py-3 text-gray-700">${assignment.trade_date}</td>
-                                                        <td class="px-4 py-3 text-center font-semibold">$${assignment.strike_price.toFixed(2)}</td>
-                                                        <td class="px-4 py-3 text-gray-700">${assignment.expiration_date}</td>
-                                                        <td class="px-4 py-3 text-right font-semibold text-green-700">$${assignment.premium.toFixed(3)}</td>
-                                                        <td class="px-4 py-3 text-center">${assignment.quantity}</td>
-                                                        <td class="px-4 py-3 text-right font-semibold text-green-700">$${totalPremium.toFixed(2)}</td>
-                                                        <td class="px-4 py-3 text-gray-700">${assignment.adjustment_date || assignment.close_date}</td>
-                                                    </tr>
-                                                `
-                                            }).join('')}
-                                        </tbody>
-                                    </table>
-                                    <div class="mt-4 pt-4 border-t-2 border-amber-300">
-                                        <p class="text-sm text-amber-800 font-medium">
-                                            <i class="fas fa-info-circle mr-1"></i>
-                                            These short put options were assigned, resulting in stock purchases. The premium collected reduced your cost basis.
-                                        </p>
+                        ${(() => {
+                            // Filter to show only SELLING_PUT adjustments
+                            const assignmentAdjustments = costBasisAdjustmentsData.filter(adj => adj.adjustment_type === 'SELLING_PUT')
+                            if (assignmentAdjustments.length === 0) return ''
+                            
+                            return `
+                                <div class="mb-6">
+                                    <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                        <i class="fas fa-exchange-alt text-amber-600 mr-2"></i>
+                                        Assignment History
+                                    </h4>
+                                    <div class="overflow-x-auto bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border-2 border-amber-300 p-4">
+                                        <table class="w-full text-sm">
+                                            <thead class="bg-amber-200 border-b-2 border-amber-400">
+                                                <tr>
+                                                    <th class="px-4 py-3 text-left text-amber-800 font-semibold">Assignment Date</th>
+                                                    <th class="px-4 py-3 text-right text-amber-800 font-semibold">Premium Credit</th>
+                                                    <th class="px-4 py-3 text-left text-amber-800 font-semibold">Details</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-amber-200">
+                                                ${assignmentAdjustments.map(adj => {
+                                                    return \`
+                                                        <tr class="hover:bg-amber-100">
+                                                            <td class="px-4 py-3 text-gray-700">\${adj.adjustment_date}</td>
+                                                            <td class="px-4 py-3 text-right font-semibold text-green-700">$\${adj.amount.toFixed(2)}</td>
+                                                            <td class="px-4 py-3 text-gray-600">\${adj.notes || '-'}</td>
+                                                        </tr>
+                                                    \`
+                                                }).join('')}
+                                            </tbody>
+                                        </table>
+                                        <div class="mt-4 pt-4 border-t-2 border-amber-300 flex justify-between items-center">
+                                            <p class="text-sm text-amber-800 font-medium">
+                                                <i class="fas fa-info-circle mr-1"></i>
+                                                Premium collected from assigned short puts reduces your cost basis
+                                            </p>
+                                            <p class="text-sm text-amber-800 font-semibold">
+                                                Total: $${assignmentAdjustments.reduce((sum, adj) => sum + adj.amount, 0).toFixed(2)}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ` : ''}
+                            `
+                        })()}
                     </div>
                 </div>
             </div>
