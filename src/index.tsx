@@ -4032,7 +4032,7 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
       strategy_type: strategyType,
       premium_adjustment: netProceeds,
       gross_premium: grossPremium,
-      commission: commission
+      commission: openCommission
     })
     
   } catch (error) {
