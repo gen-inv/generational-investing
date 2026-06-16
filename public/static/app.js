@@ -3556,15 +3556,13 @@ async function showStockDetails(id) {
                                                 </tr>
                                             </thead>
                                             <tbody class="divide-y divide-amber-200">
-                                                ${assignmentAdjustments.map(adj => {
-                                                    return \`
-                                                        <tr class="hover:bg-amber-100">
-                                                            <td class="px-4 py-3 text-gray-700">\${adj.adjustment_date}</td>
-                                                            <td class="px-4 py-3 text-right font-semibold text-green-700">$\${adj.amount.toFixed(2)}</td>
-                                                            <td class="px-4 py-3 text-gray-600">\${adj.notes || '-'}</td>
-                                                        </tr>
-                                                    \`
-                                                }).join('')}
+                                                ${assignmentAdjustments.map(adj => `
+                                                    <tr class="hover:bg-amber-100">
+                                                        <td class="px-4 py-3 text-gray-700">${adj.adjustment_date}</td>
+                                                        <td class="px-4 py-3 text-right font-semibold text-green-700">$${adj.amount.toFixed(2)}</td>
+                                                        <td class="px-4 py-3 text-gray-600">${adj.notes || '-'}</td>
+                                                    </tr>
+                                                `).join('')}
                                             </tbody>
                                         </table>
                                         <div class="mt-4 pt-4 border-t-2 border-amber-300 flex justify-between items-center">
