@@ -2374,16 +2374,18 @@ async function loadStocks() {
                 }
             }
             
-            // Wheel Strategy indicator
-            let wheelBadge = ''
+            // Strategy indicator badges
+            let strategyBadge = ''
             if (stock.strategy_type === 'WHEEL') {
-                wheelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-600 text-white ml-1" title="Wheel Strategy"><i class="fas fa-dharmachakra"></i></span>`
+                strategyBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-600 text-white ml-1" title="Wheel Strategy"><i class="fas fa-dharmachakra"></i></span>`
+            } else if (stock.strategy_type === 'DIVIDEND_ETFS') {
+                strategyBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-green-600 text-white ml-1" title="Dividend ETFs"><i class="fas fa-money-bill-wave"></i></span>`
             }
             
             table.innerHTML += `
                 <tr class="${rowClass}">
                     <td class="px-4 py-3">${accountName}</td>
-                    <td class="px-4 py-3 font-semibold text-brand-teal">${indicators}${stock.ticker}${wheelBadge}</td>
+                    <td class="px-4 py-3 font-semibold text-brand-teal">${indicators}${stock.ticker}${strategyBadge}</td>
                     <td class="px-4 py-3">${stock.trade_date}</td>
                     <td class="px-4 py-3 text-right">${stock.quantity}</td>
                     <td class="px-4 py-3 text-right">$${parseFloat(avgPrice).toFixed(3)}</td>
@@ -2600,10 +2602,16 @@ async function showStockForm(stockId = null) {
                                     <i class="fas fa-dharmachakra mr-1 text-purple-600"></i>Wheel Strategy
                                 </span>
                             </label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="strategy_type" value="DIVIDEND_ETFS" class="mr-2">
+                                <span class="text-sm text-gray-700 flex items-center">
+                                    <i class="fas fa-money-bill-wave mr-1 text-green-600"></i>Dividend ETFs
+                                </span>
+                            </label>
                         </div>
                         <p class="text-xs text-purple-700 mt-2">
                             <i class="fas fa-info-circle mr-1"></i>
-                            Select "Wheel Strategy" if this stock is part of a wheel trade (sell put → buy stock → sell covered call)
+                            Select "Wheel Strategy" for wheel trades (sell put → buy stock → sell covered call), or "Dividend ETFs" for dividend-focused investments
                         </p>
                     </div>
 
@@ -3225,7 +3233,7 @@ async function showStockDetails(id) {
                             <div class="flex items-center justify-between">
                                 <div>
                                     <h4 class="text-lg font-semibold mb-1">${stock.ticker} - ${stock.company_name || stock.ticker}</h4>
-                                    ${stock.strategy_type ? `<p class="text-sm opacity-90 font-medium">${stock.strategy_type === 'WHEEL' ? '🎯 Wheel Strategy' : stock.strategy_type === 'STOCKPILING' ? 'Stockpiling Strategy' : stock.strategy_type}</p>` : ''}
+                                    ${stock.strategy_type ? `<p class="text-sm opacity-90 font-medium">${stock.strategy_type === 'WHEEL' ? '🎯 Wheel Strategy' : stock.strategy_type === 'STOCKPILING' ? 'Stockpiling Strategy' : stock.strategy_type === 'DIVIDEND_ETFS' ? '💰 Dividend ETFs' : stock.strategy_type}</p>` : ''}
                                     <p class="text-sm opacity-90 ${stock.strategy_type ? 'mt-1' : ''}">${stock.account_name || 'N/A'} • Opened ${stock.trade_date}</p>
                                     ${buyPrice ? `<p class="text-sm opacity-90 mt-1">🎯 Target Buy Price: <span class="font-semibold">$${parseFloat(buyPrice).toFixed(2)}</span></p>` : ''}
                                 </div>
