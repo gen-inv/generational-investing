@@ -6280,6 +6280,191 @@ app.get('/api/reports/dividends', authMiddleware, async (c) => {
   }
 })
 
+// Monthly Income Report
+app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const year = c.req.query('year') || new Date().getFullYear().toString()
+    const month = c.req.query('month') || (new Date().getMonth() + 1).toString()
+    
+    // Calculate date range for the month
+    const startDate = `${year}-${month.padStart(2, '0')}-01`
+    const nextMonth = parseInt(month) === 12 ? 1 : parseInt(month) + 1
+    const nextYear = parseInt(month) === 12 ? parseInt(year) + 1 : parseInt(year)
+    const endDate = `${nextYear}-${nextMonth.toString().padStart(2, '0')}-01`
+    
+    // Stock Investments Income
+    // Dividend ETFs
+    const dividendETFsClosedPL = await DB.prepare(`
+      SELECT sh.ticker, SUM(st.shares * (st.price_per_share - sh.average_price)) as profit_loss
+      FROM stock_transactions st
+      INNER JOIN stock_holdings sh ON st.holding_id = sh.id
+      WHERE st.user_id = ? AND sh.strategy_type = 'DIVIDEND_ETFS'
+        AND st.transaction_type = 'SELL'
+        AND st.transaction_date >= ? AND st.transaction_date < ?
+      GROUP BY sh.ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    const dividendETFsCoveredCalls = await DB.prepare(`
+      SELECT ot.ticker, SUM(ot.profit_loss) as profit_loss
+      FROM option_trades ot
+      INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
+      WHERE ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
+        AND sh.strategy_type = 'DIVIDEND_ETFS'
+        AND ot.is_open = 0 AND ot.close_date >= ? AND ot.close_date < ?
+      GROUP BY ot.ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    const dividendETFsDividends = await DB.prepare(`
+      SELECT sh.ticker, SUM(cba.amount) as amount
+      FROM cost_basis_adjustments cba
+      INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
+      WHERE cba.user_id = ? AND cba.adjustment_type = 'DIVIDEND'
+        AND sh.strategy_type = 'DIVIDEND_ETFS'
+        AND cba.adjustment_date >= ? AND cba.adjustment_date < ?
+      GROUP BY sh.ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    // Stockpiling
+    const stockpilingClosedPL = await DB.prepare(`
+      SELECT sh.ticker, SUM(st.shares * (st.price_per_share - sh.average_price)) as profit_loss
+      FROM stock_transactions st
+      INNER JOIN stock_holdings sh ON st.holding_id = sh.id
+      WHERE st.user_id = ? AND sh.strategy_type = 'STOCKPILING'
+        AND st.transaction_type = 'SELL'
+        AND st.transaction_date >= ? AND st.transaction_date < ?
+      GROUP BY sh.ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    const stockpilingCoveredCalls = await DB.prepare(`
+      SELECT ot.ticker, SUM(ot.profit_loss) as profit_loss
+      FROM option_trades ot
+      INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
+      WHERE ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
+        AND sh.strategy_type = 'STOCKPILING'
+        AND ot.is_open = 0 AND ot.close_date >= ? AND ot.close_date < ?
+      GROUP BY ot.ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    const stockpilingDividends = await DB.prepare(`
+      SELECT sh.ticker, SUM(cba.amount) as amount
+      FROM cost_basis_adjustments cba
+      INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
+      WHERE cba.user_id = ? AND cba.adjustment_type = 'DIVIDEND'
+        AND sh.strategy_type = 'STOCKPILING'
+        AND cba.adjustment_date >= ? AND cba.adjustment_date < ?
+      GROUP BY sh.ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    // Wheel Stock
+    const wheelClosedPL = await DB.prepare(`
+      SELECT sh.ticker, SUM(st.shares * (st.price_per_share - sh.average_price)) as profit_loss
+      FROM stock_transactions st
+      INNER JOIN stock_holdings sh ON st.holding_id = sh.id
+      WHERE st.user_id = ? AND sh.strategy_type = 'WHEEL'
+        AND st.transaction_type = 'SELL'
+        AND st.transaction_date >= ? AND st.transaction_date < ?
+      GROUP BY sh.ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    const wheelCoveredCalls = await DB.prepare(`
+      SELECT ot.ticker, SUM(ot.profit_loss) as profit_loss
+      FROM option_trades ot
+      INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
+      WHERE ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
+        AND sh.strategy_type = 'WHEEL'
+        AND ot.is_open = 0 AND ot.close_date >= ? AND ot.close_date < ?
+      GROUP BY ot.ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    const wheelDividends = await DB.prepare(`
+      SELECT sh.ticker, SUM(cba.amount) as amount
+      FROM cost_basis_adjustments cba
+      INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
+      WHERE cba.user_id = ? AND cba.adjustment_type = 'DIVIDEND'
+        AND sh.strategy_type = 'WHEEL'
+        AND cba.adjustment_date >= ? AND cba.adjustment_date < ?
+      GROUP BY sh.ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    // Option Trades Income
+    // Short Puts (Wheel)
+    const shortPutsWheel = await DB.prepare(`
+      SELECT ticker, SUM(profit_loss) as profit_loss
+      FROM option_trades
+      WHERE user_id = ? AND strategy_type = 'SELLING_PUT_WHEEL'
+        AND is_open = 0 AND close_date >= ? AND close_date < ?
+      GROUP BY ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    // Short Puts (Stockpiling)
+    const shortPutsStockpiling = await DB.prepare(`
+      SELECT ticker, SUM(profit_loss) as profit_loss
+      FROM option_trades
+      WHERE user_id = ? AND strategy_type = 'SELLING_PUT'
+        AND is_open = 0 AND close_date >= ? AND close_date < ?
+      GROUP BY ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    // Short Puts (Long Term)
+    const shortPutsLongTerm = await DB.prepare(`
+      SELECT ticker, SUM(profit_loss) as profit_loss
+      FROM option_trades
+      WHERE user_id = ? AND strategy_type = 'SELLING_PUT_LONG_TERM'
+        AND is_open = 0 AND close_date >= ? AND close_date < ?
+      GROUP BY ticker
+    `).bind(userId, startDate, endDate).all()
+    
+    // 0 DTE SPX Trades
+    const dteTrades = await DB.prepare(`
+      SELECT SUM(profit_loss) as profit_loss, COUNT(*) as trade_count
+      FROM daily_trades
+      WHERE user_id = ? AND is_open = 0
+        AND close_date >= ? AND close_date < ?
+    `).bind(userId, startDate, endDate).first() as any
+    
+    return c.json({
+      year: parseInt(year),
+      month: parseInt(month),
+      startDate,
+      endDate,
+      stockInvestments: {
+        dividendETFs: {
+          closedPL: dividendETFsClosedPL.results || [],
+          coveredCalls: dividendETFsCoveredCalls.results || [],
+          dividends: dividendETFsDividends.results || []
+        },
+        stockpiling: {
+          closedPL: stockpilingClosedPL.results || [],
+          coveredCalls: stockpilingCoveredCalls.results || [],
+          dividends: stockpilingDividends.results || []
+        },
+        wheel: {
+          closedPL: wheelClosedPL.results || [],
+          coveredCalls: wheelCoveredCalls.results || [],
+          dividends: wheelDividends.results || []
+        }
+      },
+      optionTrades: {
+        shortPutsWheel: shortPutsWheel.results || [],
+        shortPutsStockpiling: shortPutsStockpiling.results || [],
+        shortPutsLongTerm: shortPutsLongTerm.results || [],
+        dteTrades: {
+          profitLoss: dteTrades?.profit_loss || 0,
+          tradeCount: dteTrades?.trade_count || 0
+        }
+      }
+    })
+  } catch (error) {
+    console.error('Error generating monthly income report:', error)
+    return c.json({
+      error: 'Failed to generate monthly income report',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500)
+  }
+})
+
 // ============================================================================
 // DIVIDEND REPOSITORY - Automated Dividend Tracking
 // ============================================================================
@@ -9012,6 +9197,9 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 <button onclick="showReportTab('dividends')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="dividends">
                                     <i class="fas fa-coins mr-2"></i>Dividends
                                 </button>
+                                <button onclick="showReportTab('monthly-income')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="monthly-income">
+                                    <i class="fas fa-money-bill-wave mr-2"></i>Monthly Income
+                                </button>
                                 <button onclick="showReportTab('closed-trades')" class="report-tab px-6 py-3 font-semibold text-gray-600 hover:text-brand-teal" data-tab="closed-trades">
                                     <i class="fas fa-history mr-2"></i>Closed Trades
                                 </button>
@@ -9952,6 +10140,27 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                         </table>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Monthly Income Tab -->
+                        <div id="report-tab-monthly-income" class="report-tab-content hidden">
+                            <div class="flex justify-between items-center mb-6">
+                                <h3 class="text-2xl font-bold text-brand-teal">
+                                    <i class="fas fa-money-bill-wave mr-2"></i>Monthly Income Report
+                                </h3>
+                                <div class="flex gap-4">
+                                    <select id="monthly-income-month" class="px-4 py-2 border border-gray-300 rounded-lg" onchange="loadMonthlyIncome()">
+                                        <!-- Populated dynamically -->
+                                    </select>
+                                    <select id="monthly-income-year" class="px-4 py-2 border border-gray-300 rounded-lg" onchange="loadMonthlyIncome()">
+                                        <!-- Populated dynamically -->
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div id="monthly-income-content">
+                                <p class="text-center text-gray-500 py-8">Select a month to view income details</p>
                             </div>
                         </div>
                         
