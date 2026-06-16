@@ -2374,10 +2374,16 @@ async function loadStocks() {
                 }
             }
             
+            // Wheel Strategy indicator
+            let wheelBadge = ''
+            if (stock.strategy_type === 'WHEEL') {
+                wheelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-600 text-white ml-1" title="Wheel Strategy"><i class="fas fa-dharmachakra mr-1"></i>Wheel</span>`
+            }
+            
             table.innerHTML += `
                 <tr class="${rowClass}">
                     <td class="px-4 py-3">${accountName}</td>
-                    <td class="px-4 py-3 font-semibold text-brand-teal">${indicators}${stock.ticker}</td>
+                    <td class="px-4 py-3 font-semibold text-brand-teal">${indicators}${stock.ticker}${wheelBadge}</td>
                     <td class="px-4 py-3">${stock.trade_date}</td>
                     <td class="px-4 py-3 text-right">${stock.quantity}</td>
                     <td class="px-4 py-3 text-right">$${parseFloat(avgPrice).toFixed(3)}</td>
@@ -2576,6 +2582,29 @@ async function showStockForm(stockId = null) {
                                 <input type="number" step="0.01" name="commission" id="commission_input" value="0" min="0" class="stock-field w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition text-sm">
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Strategy Type Section -->
+                    <div class="bg-gradient-to-br from-purple-50 to-purple-100 p-3 rounded-lg border border-purple-300 mb-4">
+                        <h4 class="text-sm font-bold text-purple-800 mb-3 flex items-center">
+                            <i class="fas fa-bullseye mr-1"></i>Trading Strategy
+                        </h4>
+                        <div class="flex gap-6">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="strategy_type" value="STOCKPILING" class="mr-2" checked>
+                                <span class="text-sm text-gray-700">Stockpiling</span>
+                            </label>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="radio" name="strategy_type" value="WHEEL" class="mr-2">
+                                <span class="text-sm text-gray-700 flex items-center">
+                                    <i class="fas fa-dharmachakra mr-1 text-purple-600"></i>Wheel Strategy
+                                </span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-purple-700 mt-2">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            Select "Wheel Strategy" if this stock is part of a wheel trade (sell put → buy stock → sell covered call)
+                        </p>
                     </div>
 
                     <!-- Risk/Profit Analysis Section -->
@@ -2783,6 +2812,7 @@ async function showStockForm(stockId = null) {
             account_id: parseInt(formData.get('account_id')),
             trade_date: formData.get('trade_date'),
             commission: parseFloat(formData.get('commission')) || 0,
+            strategy_type: formData.get('strategy_type') || 'STOCKPILING',
             notes: formData.get('notes') || null
         }
         
@@ -2820,6 +2850,11 @@ async function showStockForm(stockId = null) {
         form.trade_date.value = stock.trade_date
         form.commission.value = stock.commission || 0
         form.notes.value = stock.notes || ''
+        
+        // Set strategy type radio button
+        const strategyType = stock.strategy_type || 'STOCKPILING'
+        const radioButton = form.querySelector(`input[name="strategy_type"][value="${strategyType}"]`)
+        if (radioButton) radioButton.checked = true
         
         // Populate close fields if trade is closed
         if (stock.is_open === 0 && stock.close_date) {
@@ -5035,6 +5070,7 @@ let includeClosedOptions = false
 // Strategy type mappings
 const STRATEGY_TYPES = [
     { value: 'SELLING_PUT', label: 'Short Put (Stockpiling)' },
+    { value: 'SELLING_PUT_WHEEL', label: 'Short Put (Wheel)' },
     { value: 'SELLING_PUT_LONG_TERM', label: 'Short Put (Long Term)' },
     { value: 'BUYING_PUT', label: 'Long Put' },
     { value: 'LONG_CALL', label: 'Long Call' },
@@ -5048,6 +5084,7 @@ const STRATEGY_TYPES = [
 function getStrategyConfig(strategyType) {
     const configs = {
         'SELLING_PUT': { legs: 1, isPremiumCredit: true },
+        'SELLING_PUT_WHEEL': { legs: 1, isPremiumCredit: true },
         'SELLING_PUT_LONG_TERM': { legs: 1, isPremiumCredit: true },
         'BUYING_PUT': { legs: 1, isPremiumCredit: false },
         'LONG_CALL': { legs: 1, isPremiumCredit: false },

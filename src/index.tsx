@@ -2224,8 +2224,8 @@ app.post('/api/stocks', authMiddleware, async (c) => {
       
       const result = await DB.prepare(`
         INSERT INTO stock_holdings (
-          user_id, company_id, ticker, account_id, total_shares, average_price, is_open, opened_date
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+          user_id, company_id, ticker, account_id, total_shares, average_price, is_open, opened_date, strategy_type
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
       `).bind(
         userId,
         data.company_id,
@@ -2233,7 +2233,8 @@ app.post('/api/stocks', authMiddleware, async (c) => {
         data.account_id,
         quantity,
         price,
-        data.trade_date
+        data.trade_date,
+        data.strategy_type || 'STOCKPILING'
       ).run()
       
       holdingId = result.meta.last_row_id
@@ -2278,7 +2279,25 @@ app.put('/api/stocks/:id', authMiddleware, async (c) => {
     const data = await c.req.json()
     const { DB } = c.env
     
-    // Verify trade belongs to user (legacy stock_trades table)
+    // First check if this is a stock_holdings record (new system)
+    const holding = await DB.prepare(`
+      SELECT * FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(tradeId, userId).first()
+    
+    if (holding) {
+      // Update stock_holdings record - allow updating strategy_type
+      if (data.strategy_type) {
+        await DB.prepare(`
+          UPDATE stock_holdings 
+          SET strategy_type = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND user_id = ?
+        `).bind(data.strategy_type, tradeId, userId).run()
+      }
+      
+      return c.json({ success: true })
+    }
+    
+    // If not found in stock_holdings, try legacy stock_trades table
     const trade = await DB.prepare(`
       SELECT id FROM stock_trades WHERE id = ? AND user_id = ?
     `).bind(tradeId, userId).first()
