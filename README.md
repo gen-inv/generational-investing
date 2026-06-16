@@ -43,6 +43,11 @@
 4. **Stock Trading Management**
    - Buy/Sell trade recording
    - Position tracking (open/closed)
+   - **Strategy Type Tracking** 🆕:
+     - **Wheel Strategy**: Track stocks acquired through Wheel trading (sell put → get assigned → sell call)
+     - **Stockpiling**: Track stocks for long-term hold strategy
+     - Visual badges for Wheel positions with wagon wheel icon
+     - Editable strategy types on existing positions
    - Cost basis adjustments for:
      - Dividends received
      - Covered call premiums
@@ -52,6 +57,7 @@
 5. **Option Trading Management**
    - Multiple strategy support:
      - Selling Puts (Stockpiling)
+     - **Selling Puts (Wheel)** 🆕 - For Wheel strategy entry
      - Buying Puts
      - Covered Calls
      - Credit Spreads
@@ -305,6 +311,7 @@ The following features are fully specified and ready to implement:
 5. **stock_holdings** (Current - used for Position Analysis)
    - id, user_id, company_id, ticker, account_id
    - total_shares, average_price
+   - **strategy_type** (WHEEL/STOCKPILING) 🆕
    - is_open (boolean), opened_date, closed_date
    - notes, created_at, updated_at
    - UNIQUE(user_id, ticker, account_id, is_open)
@@ -656,6 +663,7 @@ Proprietary - All rights reserved
 June 15, 2026
 
 ## Recent Updates
+- **June 16, 2026**: Added Wheel trading strategy support with visual badges and strategy tracking
 - **June 15, 2026**: Fixed closed stock trade editing modal to show profit/loss and trade summary
 - **April 2, 2026**: Dashboard YTD P/L calculation aligned with Reports P/L Summary
 
