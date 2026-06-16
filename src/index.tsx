@@ -3805,12 +3805,18 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
     
     // Fetch the option trade
     const option = await DB.prepare(`
-      SELECT * FROM option_trades WHERE id = ? AND user_id = ?
+      SELECT ot.*, c.ticker as company_ticker
+      FROM option_trades ot
+      JOIN companies c ON ot.company_id = c.id
+      WHERE ot.id = ? AND ot.user_id = ?
     `).bind(optionId, userId).first() as any
     
     if (!option) {
       return c.json({ error: 'Option trade not found' }, 404)
     }
+    
+    // Use the company's ticker, not the option's ticker (which may be outdated)
+    const ticker = option.company_ticker || option.ticker
     
     // Validate this is a short put strategy
     if (option.strategy_type !== 'SELLING_PUT' && option.strategy_type !== 'SELLING_PUT_WHEEL') {
@@ -3888,7 +3894,7 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
       `).bind(
         userId,
         option.company_id,
-        option.ticker,
+        ticker,
         option.account_id,
         shares,
         strikePrice,
