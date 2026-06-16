@@ -3157,9 +3157,11 @@ async function showStockDetails(id) {
         console.log('Missing dividends data:', missingDividends)
         console.log('========================')
         
+        // Calculate cost basis dynamically from ALL cost basis adjustments
         const avgPrice = stock.avg_price || stock.price
-        const costBasis = stock.cost_basis || stock.price
-        const adjustments = stock.total_adjustments || 0
+        const totalAdjustments = costBasisAdjustmentsData.reduce((sum, adj) => sum + adj.amount, 0)
+        const costBasis = avgPrice - (totalAdjustments / stock.quantity)
+        const adjustments = totalAdjustments
         
         const modal = document.createElement('div')
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
