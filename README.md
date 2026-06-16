@@ -63,6 +63,12 @@
      - Credit Spreads
      - Debit Spreads
      - Iron Condors
+   - **Stock Assignment Feature** 🆕:
+     - Assign stock positions from Short Put options (Wheel and Stockpiling)
+     - Automatic option closure with max loss calculation
+     - Creates/updates stock holdings with correct strategy type
+     - Maintains full transaction audit trail
+     - Handles average price calculations for existing positions
    - Strike price tracking (up to 4 strikes for complex strategies)
    - Premium and quantity tracking
    - Expiration date management
@@ -194,6 +200,12 @@
 - `POST /api/options` - Add option trade
 - `PUT /api/options/:id` - Update option trade
 - `DELETE /api/options/:id` - Delete option trade
+- `POST /api/options/:id/assign` - Assign stock position from Short Put option
+  - Body: `{ assignment_date, notes }`
+  - Closes option with $0 close price (max loss)
+  - Creates/updates stock_holdings with strategy_type (WHEEL/STOCKPILING)
+  - Creates stock_transaction record
+  - Returns: `{ success, shares, price, strategy_type }`
 
 #### Daily Trades (0DTE)
 - `GET /api/daily-trades` - Get all daily trades
@@ -663,7 +675,7 @@ Proprietary - All rights reserved
 June 15, 2026
 
 ## Recent Updates
-- **June 16, 2026**: Added Wheel trading strategy support with visual badges and strategy tracking
+- **June 16, 2026**: Added Wheel trading strategy with stock assignment from Short Put options
 - **June 15, 2026**: Fixed closed stock trade editing modal to show profit/loss and trade summary
 - **April 2, 2026**: Dashboard YTD P/L calculation aligned with Reports P/L Summary
 
