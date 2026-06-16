@@ -3795,6 +3795,142 @@ app.delete('/api/options/:id', authMiddleware, async (c) => {
   return c.json({ success: true })
 })
 
+// Assign stock position from short put option
+app.post('/api/options/:id/assign', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const optionId = c.req.param('id')
+    const data = await c.req.json()
+    const { DB } = c.env
+    
+    // Fetch the option trade
+    const option = await DB.prepare(`
+      SELECT * FROM option_trades WHERE id = ? AND user_id = ?
+    `).bind(optionId, userId).first() as any
+    
+    if (!option) {
+      return c.json({ error: 'Option trade not found' }, 404)
+    }
+    
+    // Validate this is a short put strategy
+    if (option.strategy_type !== 'SELLING_PUT' && option.strategy_type !== 'SELLING_PUT_WHEEL') {
+      return c.json({ error: 'Assignment is only available for Short Put strategies' }, 400)
+    }
+    
+    // Validate option is still open
+    if (!option.is_open) {
+      return c.json({ error: 'Option is already closed' }, 400)
+    }
+    
+    // Validate assignment date
+    if (!data.assignment_date) {
+      return c.json({ error: 'Assignment date is required' }, 400)
+    }
+    
+    // Calculate stock details
+    const shares = option.quantity * 100
+    const strikePrice = parseFloat(option.strike_price)
+    
+    // Determine strategy type based on option strategy
+    const strategyType = option.strategy_type === 'SELLING_PUT_WHEEL' ? 'WHEEL' : 'STOCKPILING'
+    
+    // Start transaction: Close option and create stock position
+    // 1. Close the option with $0 close price (assignment = max loss)
+    await DB.prepare(`
+      UPDATE option_trades
+      SET is_open = 0,
+          close_date = ?,
+          close_price = 0,
+          close_commission = 0,
+          profit_loss = ?,
+          notes = ?
+      WHERE id = ? AND user_id = ?
+    `).bind(
+      data.assignment_date,
+      -((strikePrice * option.quantity * 100) - (option.premium * option.quantity * 100) + (option.commission || 0)),
+      option.notes ? `${option.notes}\n\nASSIGNED: ${data.notes || 'Stock position created from assignment'}` : `ASSIGNED: ${data.notes || 'Stock position created from assignment'}`,
+      optionId,
+      userId
+    ).run()
+    
+    // 2. Check if stock holding already exists for this ticker + account
+    const existingHolding = await DB.prepare(`
+      SELECT id, total_shares, average_price 
+      FROM stock_holdings 
+      WHERE user_id = ? AND company_id = ? AND account_id = ? AND is_open = 1
+    `).bind(userId, option.company_id, option.account_id).first() as any
+    
+    let holdingId: number
+    
+    if (existingHolding) {
+      // Update existing holding with new shares
+      const totalShares = existingHolding.total_shares + shares
+      const totalCost = (existingHolding.total_shares * existingHolding.average_price) + (shares * strikePrice)
+      const newAvgPrice = totalCost / totalShares
+      
+      await DB.prepare(`
+        UPDATE stock_holdings
+        SET total_shares = ?,
+            average_price = ?,
+            strategy_type = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND user_id = ?
+      `).bind(totalShares, newAvgPrice, strategyType, existingHolding.id, userId).run()
+      
+      holdingId = existingHolding.id
+    } else {
+      // Create new stock holding
+      const holdingResult = await DB.prepare(`
+        INSERT INTO stock_holdings (
+          user_id, company_id, ticker, account_id, total_shares, average_price, 
+          is_open, opened_date, strategy_type, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+      `).bind(
+        userId,
+        option.company_id,
+        option.ticker,
+        option.account_id,
+        shares,
+        strikePrice,
+        data.assignment_date,
+        strategyType,
+        data.notes || 'Created from option assignment'
+      ).run()
+      
+      holdingId = holdingResult.meta.last_row_id as number
+    }
+    
+    // 3. Create stock transaction record
+    await DB.prepare(`
+      INSERT INTO stock_transactions (
+        user_id, holding_id, transaction_type, shares, price_per_share,
+        transaction_date, commission, notes
+      ) VALUES (?, ?, 'BUY', ?, ?, ?, 0, ?)
+    `).bind(
+      userId,
+      holdingId,
+      shares,
+      strikePrice,
+      data.assignment_date,
+      `Assigned from option: ${shares} shares @ $${strikePrice}`
+    ).run()
+    
+    return c.json({ 
+      success: true,
+      message: 'Stock position assigned successfully',
+      option_closed: true,
+      stock_created: true,
+      shares: shares,
+      price: strikePrice,
+      strategy_type: strategyType
+    })
+    
+  } catch (error) {
+    console.error('Assignment error:', error)
+    return c.json({ error: 'Failed to assign stock position' }, 500)
+  }
+})
+
 // ============================================================================
 // DAILY TRADE CONFIG ROUTES
 // ============================================================================

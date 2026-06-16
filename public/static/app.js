@@ -6024,6 +6024,185 @@ async function deleteOption(id) {
     }
 }
 
+async function assignStockPosition(optionId) {
+    try {
+        // Fetch option details
+        const response = await api.get('/api/options')
+        const option = response.data.find(o => o.id === optionId)
+        
+        if (!option) {
+            alert('Option trade not found')
+            return
+        }
+        
+        // Validate this is a short put strategy
+        if (option.strategy_type !== 'SELLING_PUT' && option.strategy_type !== 'SELLING_PUT_WHEEL') {
+            alert('Assignment is only available for Short Put strategies')
+            return
+        }
+        
+        // Fetch accounts for display
+        const accountsResponse = await api.get('/api/accounts')
+        const accounts = accountsResponse.data.accounts || accountsResponse.data
+        const account = accounts.find(a => a.id === option.account_id)
+        const accountDisplay = account ? `${account.account_name} (${account.account_type})` : option.account_type || 'N/A'
+        
+        // Calculate shares (contracts * 100)
+        const shares = option.quantity * 100
+        
+        // Strike price becomes stock purchase price
+        const strikePrice = parseFloat(option.strike_price)
+        
+        // Determine strategy type based on option strategy
+        const strategyType = option.strategy_type === 'SELLING_PUT_WHEEL' ? 'WHEEL' : 'STOCKPILING'
+        
+        // Get today's date as default assignment date
+        const today = new Date().toISOString().split('T')[0]
+        
+        // Create assignment modal
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+        modal.innerHTML = `
+            <div class="bg-white rounded-lg shadow-2xl max-w-2xl w-full">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-amber-600 to-amber-700 text-white p-6">
+                    <h3 class="text-2xl font-bold flex items-center">
+                        <i class="fas fa-exchange-alt mr-3"></i>Assign Stock Position
+                    </h3>
+                    <p class="text-amber-100 text-sm mt-2">Close option and create stock position from assignment</p>
+                </div>
+                
+                <!-- Content -->
+                <div class="p-6">
+                    <!-- Assignment Summary -->
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-300 mb-6">
+                        <h4 class="text-sm font-bold text-blue-900 mb-3 flex items-center">
+                            <i class="fas fa-info-circle mr-2"></i>Assignment Summary
+                        </h4>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <p class="text-gray-600">Ticker</p>
+                                <p class="font-bold text-gray-900">${option.ticker}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-600">Strategy</p>
+                                <p class="font-bold text-gray-900">${strategyType === 'WHEEL' ? '🎡 Wheel' : 'Stockpiling'}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-600">Shares</p>
+                                <p class="font-bold text-gray-900">${shares}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-600">Strike Price</p>
+                                <p class="font-bold text-gray-900">$${strikePrice.toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-600">Account</p>
+                                <p class="font-bold text-gray-900">${accountDisplay}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-600">Contracts</p>
+                                <p class="font-bold text-gray-900">${option.quantity}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Assignment Form -->
+                    <form id="assignmentForm">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">
+                                    <i class="fas fa-calendar mr-2 text-amber-600"></i>Assignment Date *
+                                </label>
+                                <input type="date" name="assignment_date" value="${today}" 
+                                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none" 
+                                       required>
+                                <p class="text-xs text-gray-500 mt-1">Date when option was assigned and stock was purchased</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 font-semibold mb-2">
+                                    <i class="fas fa-sticky-note mr-2 text-yellow-600"></i>Notes (Optional)
+                                </label>
+                                <textarea name="notes" rows="3" 
+                                          class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-amber-600 focus:ring-2 focus:ring-amber-200 focus:outline-none"
+                                          placeholder="Add any notes about this assignment..."></textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- What Will Happen Section -->
+                        <div class="mt-6 bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-300">
+                            <h5 class="text-sm font-bold text-green-900 mb-2 flex items-center">
+                                <i class="fas fa-check-circle mr-2"></i>What Will Happen
+                            </h5>
+                            <ul class="text-sm text-green-900 space-y-1">
+                                <li>✓ Option position will be closed with $0 close price (assignment = max loss)</li>
+                                <li>✓ Stock position will be created: ${shares} shares @ $${strikePrice.toFixed(2)}</li>
+                                <li>✓ Strategy type will be set to: <strong>${strategyType === 'WHEEL' ? 'Wheel Strategy' : 'Stockpiling'}</strong></li>
+                                <li>✓ Account will remain: ${accountDisplay}</li>
+                            </ul>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex gap-3 mt-6">
+                            <button type="submit" class="flex-1 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold py-3 px-6 rounded-lg transition shadow-lg hover:shadow-xl">
+                                <i class="fas fa-check mr-2"></i>Confirm Assignment
+                            </button>
+                            <button type="button" onclick="this.closest('.fixed').remove()" 
+                                    class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-3 px-6 rounded-lg transition">
+                                <i class="fas fa-times mr-2"></i>Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `
+        
+        document.body.appendChild(modal)
+        
+        // Handle form submission
+        const form = document.getElementById('assignmentForm')
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault()
+            
+            const formData = new FormData(form)
+            const assignmentDate = formData.get('assignment_date')
+            const notes = formData.get('notes') || ''
+            
+            try {
+                // Call API to assign stock position
+                const response = await api.post(`/api/options/${optionId}/assign`, {
+                    assignment_date: assignmentDate,
+                    notes: notes
+                })
+                
+                // Close modal
+                modal.remove()
+                
+                // Close the option details modal if it exists
+                const detailsModal = document.getElementById('option-details-modal')
+                if (detailsModal) detailsModal.remove()
+                
+                // Reload data
+                await loadOptions()
+                await loadStocks()
+                await loadDashboard()
+                
+                // Show success message
+                alert(`✓ Assignment completed successfully!\n\nOption closed and ${shares} shares of ${option.ticker} added to your portfolio.`)
+                
+            } catch (error) {
+                console.error('Assignment error:', error)
+                alert(error.response?.data?.error || 'Failed to assign stock position')
+            }
+        })
+        
+    } catch (error) {
+        console.error('Error preparing assignment:', error)
+        alert('Failed to prepare assignment')
+    }
+}
+
 async function showOptionDetails(id) {
     try {
         // Fetch all options and find the one we need
@@ -6100,6 +6279,13 @@ async function showOptionDetails(id) {
                                 <i class="fas fa-minus-circle mr-2 text-orange-600 group-hover:text-white"></i>
                                 <span class="font-medium">Reduce From Position</span>
                             </button>
+                            
+                            ${(option.strategy_type === 'SELLING_PUT' || option.strategy_type === 'SELLING_PUT_WHEEL') ? `
+                            <button onclick="assignStockPosition(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-amber-600 hover:text-white rounded-lg border border-gray-200 transition-colors group">
+                                <i class="fas fa-exchange-alt mr-2 text-amber-600 group-hover:text-white"></i>
+                                <span class="font-medium">Assign Stock Position</span>
+                            </button>
+                            ` : ''}
                             
                             <button onclick="closeOption(${id}); document.getElementById('option-details-modal').remove();" class="w-full text-left px-4 py-3 bg-white hover:bg-green-600 hover:text-white rounded-lg border border-gray-200 transition-colors group">
                                 <i class="fas fa-check-circle mr-2 text-green-600 group-hover:text-white"></i>
