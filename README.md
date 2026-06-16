@@ -422,8 +422,13 @@ The Position Management Modal provides a complete view of each stock position wi
 **2. Position Summary**
 - Current shares held
 - Average price per share
-- **Cost basis per share** (average price minus adjustments)
-- Total cost basis adjustments
+- **Cost basis per share** (average price minus ALL adjustments)
+  - **Dynamically calculated** from all cost basis adjustment sources:
+    - Assignment premiums (from assigned short puts)
+    - Dividend payments received
+    - Covered call premiums collected
+  - Formula: `Cost Basis = Avg Price - (Total Adjustments / Shares)`
+- Total cost basis adjustments (sum of ALL adjustment types)
 - Account name and opened date
 - Target buy price (if set)
 - Position notes
@@ -465,24 +470,32 @@ The Position Management Modal provides a complete view of each stock position wi
 **Cost Basis Calculation Example:**
 ```
 Scenario: Wheel Strategy Entry
-1. Sell Put: Strike $50, Premium $2.00, 1 contract
+1. Sell Put: Strike $50, Premium $2.00, 1 contract (Commission: $0.50)
 2. Option assigned → Buy 100 shares @ $50
 
 Cost Basis Calculation:
 - Purchase Price: $50.00/share
-- Premium Collected: $2.00 × 1 × 100 = $200
-- Premium per Share: $200 ÷ 100 = $2.00
-- Adjusted Cost Basis: $50.00 - $2.00 = $48.00/share
+- Gross Premium: $2.00 × 1 × 100 = $200.00
+- Commission Paid: $0.50
+- Net Proceeds: $200.00 - $0.50 = $199.50
+- Premium per Share: $199.50 ÷ 100 = $1.995
+- Adjusted Cost Basis: $50.00 - $1.995 = $48.01/share
 
 Position Summary Shows:
 - Avg Price: $50.00
-- Cost Basis: $48.00 ← Your effective entry price!
-- CB Adjustments: -$200.00
+- Cost Basis: $48.01 ← Your effective entry price!
+- CB Adjustments: -$199.50
 
 Assignment History Shows:
 - Assignment Date: 2/16/24
-- Premium Credit: $200.00
+- Premium Credit: $199.50 (net proceeds after commission)
 - Details: Strike $50, Premium $2.00, 1 contract
+
+Note: The modal dynamically calculates Cost Basis from ALL sources:
+- Assignment premiums (SELLING_PUT adjustments)
+- Dividend payments (DIVIDEND adjustments)
+- Covered call premiums (COVERED_CALL adjustments)
+This ensures the displayed cost basis always reflects your true effective entry price.
 ```
 
 **Actions Available:**
