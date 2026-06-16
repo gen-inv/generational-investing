@@ -1842,7 +1842,7 @@ app.get('/api/stocks', authMiddleware, async (c) => {
       c.company_name,
       (SELECT COALESCE(SUM(amount), 0) 
        FROM cost_basis_adjustments cba
-       WHERE cba.holding_id = sh.id AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL')) as total_adjustments,
+       WHERE cba.holding_id = sh.id AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL', 'SELLING_PUT')) as total_adjustments,
       (SELECT MIN(expiration_date)
        FROM option_trades
        WHERE user_id = sh.user_id 
@@ -3919,7 +3919,12 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
     const strategyType = option.strategy_type === 'SELLING_PUT_WHEEL' ? 'WHEEL' : 'STOCKPILING'
     
     // Start transaction: Close option and create stock position
-    // 1. Close the option with $0 close price (assignment = max loss)
+    // 1. Close the option with $0 close price (assignment = max profit for short put)
+    // When assigned: you keep all the premium collected (minus commission)
+    const grossPremium = option.premium * option.quantity * 100
+    const openCommission = parseFloat(option.commission || 0)
+    const profitLoss = grossPremium - openCommission // Max profit: premium collected minus commission paid
+    
     await DB.prepare(`
       UPDATE option_trades
       SET is_open = 0,
@@ -3931,7 +3936,7 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
       WHERE id = ? AND user_id = ?
     `).bind(
       data.assignment_date,
-      -((strikePrice * option.quantity * 100) - (option.premium * option.quantity * 100) + (option.commission || 0)),
+      profitLoss,
       option.notes ? `${option.notes}\n\nASSIGNED: ${data.notes || 'Stock position created from assignment'}` : `ASSIGNED: ${data.notes || 'Stock position created from assignment'}`,
       optionId,
       userId
@@ -4002,9 +4007,8 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
     // 4. Create cost basis adjustment for premium collected
     // Premium reduces the cost basis - this is the key advantage of the Wheel strategy
     // Cost basis adjustment = (Premium per share * contracts * 100) - commission paid
-    const grossPremium = option.premium * option.quantity * 100 // Premium per share * contracts * 100 shares
-    const commission = parseFloat(option.commission || 0)
-    const netProceeds = grossPremium - commission // Net proceeds after commission
+    // Note: grossPremium and openCommission already calculated above
+    const netProceeds = grossPremium - openCommission // Net proceeds after commission
     
     await DB.prepare(`
       INSERT INTO cost_basis_adjustments (
@@ -4015,7 +4019,7 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
       holdingId,
       netProceeds,
       data.assignment_date,
-      `Premium from assigned ${option.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : 'Stockpiling'} put: ${option.quantity} contract(s) @ $${option.premium}/share = $${grossPremium.toFixed(2)}${commission > 0 ? ` - $${commission.toFixed(2)} commission = $${netProceeds.toFixed(2)}` : ''}`
+      `Premium from assigned ${option.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : 'Stockpiling'} put: ${option.quantity} contract(s) @ $${option.premium}/share = $${grossPremium.toFixed(2)}${openCommission > 0 ? ` - $${openCommission.toFixed(2)} commission = $${netProceeds.toFixed(2)}` : ''}`
     ).run()
     
     return c.json({ 
