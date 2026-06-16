@@ -6139,8 +6139,8 @@ async function assignStockPosition(optionId) {
                                 <i class="fas fa-check-circle mr-2"></i>What Will Happen
                             </h5>
                             <ul class="text-sm text-green-900 space-y-1">
-                                <li>✓ Option position will be closed with $0 close price (assignment = max loss)</li>
-                                <li>✓ Stock position will be created: ${shares} shares @ $${strikePrice.toFixed(2)}</li>
+                                <li>✓ Option position will be closed with $0 close price (assignment = max profit)</li>
+                                <li>✓ Stock position will be created: ${shares} shares @ $${strikePrice.toFixed(2)} = $${(shares * strikePrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</li>
                                 <li>✓ Strategy type will be set to: <strong>${strategyType === 'WHEEL' ? 'Wheel Strategy' : 'Stockpiling'}</strong></li>
                                 <li>✓ Account will remain: ${accountDisplay}</li>
                             </ul>
