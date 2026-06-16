@@ -4001,7 +4001,10 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
     
     // 4. Create cost basis adjustment for premium collected
     // Premium reduces the cost basis - this is the key advantage of the Wheel strategy
-    const totalPremium = option.premium * option.quantity * 100 // Premium per share * contracts * 100 shares
+    // Cost basis adjustment = (Premium per share * contracts * 100) - commission paid
+    const grossPremium = option.premium * option.quantity * 100 // Premium per share * contracts * 100 shares
+    const commission = parseFloat(option.commission || 0)
+    const netProceeds = grossPremium - commission // Net proceeds after commission
     
     await DB.prepare(`
       INSERT INTO cost_basis_adjustments (
@@ -4010,9 +4013,9 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
     `).bind(
       userId,
       holdingId,
-      totalPremium,
+      netProceeds,
       data.assignment_date,
-      `Premium from assigned ${option.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : 'Stockpiling'} put: ${option.quantity} contract(s) @ $${option.premium}/share = $${totalPremium.toFixed(2)}`
+      `Premium from assigned ${option.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : 'Stockpiling'} put: ${option.quantity} contract(s) @ $${option.premium}/share = $${grossPremium.toFixed(2)}${commission > 0 ? ` - $${commission.toFixed(2)} commission = $${netProceeds.toFixed(2)}` : ''}`
     ).run()
     
     return c.json({ 
@@ -4023,7 +4026,9 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
       shares: shares,
       price: strikePrice,
       strategy_type: strategyType,
-      premium_adjustment: totalPremium
+      premium_adjustment: netProceeds,
+      gross_premium: grossPremium,
+      commission: commission
     })
     
   } catch (error) {

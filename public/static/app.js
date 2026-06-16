@@ -6105,9 +6105,12 @@ async function assignStockPosition(optionId) {
         const strikePrice = parseFloat(option.strike_price)
         
         // Calculate premium collected (reduces cost basis)
+        // Net proceeds = (Premium per share * contracts * 100) - commission
         const premium = parseFloat(option.premium)
-        const totalPremium = premium * option.quantity * 100
-        const adjustedCostBasis = strikePrice - premium
+        const commission = parseFloat(option.commission || 0)
+        const grossPremium = premium * option.quantity * 100
+        const netProceeds = grossPremium - commission
+        const adjustedCostBasis = strikePrice - (netProceeds / shares)
         
         // Determine strategy type based on option strategy
         const strategyType = option.strategy_type === 'SELLING_PUT_WHEEL' ? 'WHEEL' : 'STOCKPILING'
@@ -6197,7 +6200,7 @@ async function assignStockPosition(optionId) {
                             <ul class="text-sm text-green-900 space-y-1">
                                 <li>✓ Option position will be closed with $0 close price (assignment = max profit)</li>
                                 <li>✓ Stock position will be created: ${shares} shares @ $${strikePrice.toFixed(2)} = $${(shares * strikePrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</li>
-                                <li>✓ <strong>Cost basis adjustment:</strong> Premium collected ($${totalPremium.toFixed(2)}) reduces cost basis to $${adjustedCostBasis.toFixed(2)}/share</li>
+                                <li>✓ <strong>Cost basis adjustment:</strong> Premium collected $${grossPremium.toFixed(2)}${commission > 0 ? ` - $${commission.toFixed(2)} commission = $${netProceeds.toFixed(2)}` : ''} reduces cost basis to $${adjustedCostBasis.toFixed(2)}/share</li>
                                 <li>✓ Strategy type will be set to: <strong>${strategyType === 'WHEEL' ? 'Wheel Strategy' : 'Stockpiling'}</strong></li>
                                 <li>✓ Account will remain: ${accountDisplay}</li>
                             </ul>
