@@ -141,6 +141,22 @@
      - **Summary Metrics**: Total dividends, payment count
      - **Detailed Table**: Sortable view with dividend counts and totals
      - **Gold-themed UI**: Brand-consistent design with coins icon
+   - **Monthly Income Report** ✨ NEW:
+     - **Comprehensive Income Tracking**: All income sources for a selected month organized by strategy
+     - **Stock Investments Section**:
+       - Dividend ETFs: Closed P/L, Covered Calls, Dividends (by ticker)
+       - Stockpiling: Closed P/L, Covered Calls, Dividends (by ticker)
+       - Wheel Strategy: Closed P/L, Covered Calls, Dividends (by ticker)
+     - **Option Trades Section**:
+       - Short Puts (Wheel): Closed P/L by ticker
+       - Short Puts (Stockpiling): Closed P/L by ticker
+       - Short Puts (Long Term): Closed P/L by ticker
+       - 0DTE SPX Trades: Total P/L and trade count (no ticker breakdown)
+     - **Month/Year Selector**: Choose any month from last 5 years
+     - **Strategy Totals**: Subtotals for each strategy with ticker-level detail
+     - **Grand Total**: Total monthly income across all sources
+     - **Color-Coded Results**: Green for profits, red for losses
+     - **Empty State Handling**: Shows "No activity" for strategies with no trades
    - Interactive ApexCharts visualizations
    - Real-time metrics and performance indicators
 
@@ -237,6 +253,12 @@
   - Group by: `account` or `stock`
   - Period: `mtd`, `ytd`, or `all`
   - Returns: Total dividends, payment counts, detailed breakdown
+- `GET /api/reports/monthly-income?year=2026&month=1` - Get Monthly Income Report ✨ NEW
+  - Query params: `year` (YYYY), `month` (1-12)
+  - Returns: Comprehensive income breakdown by strategy:
+    - Stock Investments: Dividend ETFs, Stockpiling, Wheel (each with closed P/L, covered calls, dividends by ticker)
+    - Option Trades: Short Puts (3 strategies) by ticker, 0DTE SPX total
+  - All amounts include ticker-level detail except 0DTE trades
 - `GET /api/reports/export?type=stocks&year=2026` - Export CSV
 
 ### 🔄 Features Ready for Implementation (See COMPLETE_IMPLEMENTATION_SPEC.md)
