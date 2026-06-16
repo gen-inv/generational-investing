@@ -6053,6 +6053,11 @@ async function assignStockPosition(optionId) {
         // Strike price becomes stock purchase price
         const strikePrice = parseFloat(option.strike_price)
         
+        // Calculate premium collected (reduces cost basis)
+        const premium = parseFloat(option.premium)
+        const totalPremium = premium * option.quantity * 100
+        const adjustedCostBasis = strikePrice - premium
+        
         // Determine strategy type based on option strategy
         const strategyType = option.strategy_type === 'SELLING_PUT_WHEEL' ? 'WHEEL' : 'STOCKPILING'
         
@@ -6141,6 +6146,7 @@ async function assignStockPosition(optionId) {
                             <ul class="text-sm text-green-900 space-y-1">
                                 <li>✓ Option position will be closed with $0 close price (assignment = max profit)</li>
                                 <li>✓ Stock position will be created: ${shares} shares @ $${strikePrice.toFixed(2)} = $${(shares * strikePrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</li>
+                                <li>✓ <strong>Cost basis adjustment:</strong> Premium collected ($${totalPremium.toFixed(2)}) reduces cost basis to $${adjustedCostBasis.toFixed(2)}/share</li>
                                 <li>✓ Strategy type will be set to: <strong>${strategyType === 'WHEEL' ? 'Wheel Strategy' : 'Stockpiling'}</strong></li>
                                 <li>✓ Account will remain: ${accountDisplay}</li>
                             </ul>
@@ -6191,8 +6197,11 @@ async function assignStockPosition(optionId) {
                 await loadStocks()
                 await loadDashboard()
                 
-                // Show success message
-                alert(`✓ Assignment completed successfully!\n\nOption closed and ${shares} shares of ${option.ticker} added to your portfolio.`)
+                // Show success message with cost basis adjustment info
+                const premiumAdjustment = response.data.premium_adjustment || 0
+                const adjustedCostBasis = strikePrice - (premiumAdjustment / shares)
+                
+                alert(`✓ Assignment completed successfully!\n\nOption closed and ${shares} shares of ${option.ticker} added to your portfolio.\n\nPurchase Price: $${strikePrice.toFixed(2)}/share\nPremium Credit: $${premiumAdjustment.toFixed(2)} total\nAdjusted Cost Basis: $${adjustedCostBasis.toFixed(2)}/share\n\nThe premium collected reduces your cost basis - this is the power of the Wheel!`)
                 
             } catch (error) {
                 console.error('Assignment error:', error)

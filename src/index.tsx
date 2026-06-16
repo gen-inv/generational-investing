@@ -3921,6 +3921,22 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
       `Assigned from option: ${shares} shares @ $${strikePrice}`
     ).run()
     
+    // 4. Create cost basis adjustment for premium collected
+    // Premium reduces the cost basis - this is the key advantage of the Wheel strategy
+    const totalPremium = option.premium * option.quantity * 100 // Premium per share * contracts * 100 shares
+    
+    await DB.prepare(`
+      INSERT INTO cost_basis_adjustments (
+        user_id, holding_id, adjustment_type, amount, adjustment_date, notes
+      ) VALUES (?, ?, 'SELLING_PUT', ?, ?, ?)
+    `).bind(
+      userId,
+      holdingId,
+      totalPremium,
+      data.assignment_date,
+      `Premium from assigned ${option.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : 'Stockpiling'} put: ${option.quantity} contract(s) @ $${option.premium}/share = $${totalPremium.toFixed(2)}`
+    ).run()
+    
     return c.json({ 
       success: true,
       message: 'Stock position assigned successfully',
@@ -3928,7 +3944,8 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
       stock_created: true,
       shares: shares,
       price: strikePrice,
-      strategy_type: strategyType
+      strategy_type: strategyType,
+      premium_adjustment: totalPremium
     })
     
   } catch (error) {
