@@ -2377,7 +2377,7 @@ async function loadStocks() {
             // Wheel Strategy indicator
             let wheelBadge = ''
             if (stock.strategy_type === 'WHEEL') {
-                wheelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-600 text-white ml-1" title="Wheel Strategy"><i class="fas fa-dharmachakra mr-1"></i>Wheel</span>`
+                wheelBadge = `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-600 text-white ml-1" title="Wheel Strategy"><i class="fas fa-dharmachakra"></i></span>`
             }
             
             table.innerHTML += `
@@ -5338,6 +5338,7 @@ async function showOptionForm(optionId = null) {
                                     <select name="strategy_type" id="strategy_type_select" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-purple-600 focus:ring-1 focus:ring-purple-600 focus:outline-none transition text-sm" required>
                                         <option value="">Select Strategy...</option>
                                         <option value="SELLING_PUT">Short Put (Stockpiling)</option>
+                                        <option value="SELLING_PUT_WHEEL">Short Put (Wheel)</option>
                                         <option value="SELLING_PUT_LONG_TERM">Short Put (Long Term)</option>
                                         <option value="BUYING_PUT">Long Put</option>
                                         <option value="LONG_CALL">Long Call</option>
@@ -5431,6 +5432,20 @@ async function showOptionForm(optionId = null) {
     // Strategy field configurations
     const strategyConfigs = {
         'SELLING_PUT': {
+            legs: 1,
+            fields: ['strike_price', 'premium', 'commission'],
+            labels: { strike_price: 'Strike Price', premium: 'Premium/Share', commission: 'Open Commission' },
+            riskCalc: (data) => {
+                const strike = parseFloat(data.strike_price) || 0
+                const premium = parseFloat(data.premium) || 0
+                const quantity = parseInt(data.quantity) || 0
+                const commission = parseFloat(data.commission) || 0
+                const totalRisk = (strike * quantity * 100) - (premium * quantity * 100) + commission
+                const maxProfit = (premium * quantity * 100) - commission
+                return { totalRisk, maxProfit, isPremiumCredit: true }
+            }
+        },
+        'SELLING_PUT_WHEEL': {
             legs: 1,
             fields: ['strike_price', 'premium', 'commission'],
             labels: { strike_price: 'Strike Price', premium: 'Premium/Share', commission: 'Open Commission' },
