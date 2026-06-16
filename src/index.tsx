@@ -2556,6 +2556,84 @@ app.delete('/api/stocks/:id', authMiddleware, async (c) => {
   }
 })
 
+// Get cost basis adjustments for a stock holding
+app.get('/api/stocks/:id/cost-basis-adjustments', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const holdingId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Verify holding belongs to user
+    const holding = await DB.prepare(`
+      SELECT id FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).first()
+    
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
+    }
+    
+    // Get all cost basis adjustments
+    const adjustments = await DB.prepare(`
+      SELECT * FROM cost_basis_adjustments
+      WHERE holding_id = ?
+      ORDER BY adjustment_date DESC
+    `).bind(holdingId).all()
+    
+    return c.json(adjustments.results || [])
+  } catch (error) {
+    console.error('Get cost basis adjustments error:', error)
+    return c.json({ error: 'Failed to fetch cost basis adjustments' }, 500)
+  }
+})
+
+// Get assignment history (short puts that created this stock position)
+app.get('/api/stocks/:id/assignment-history', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const holdingId = c.req.param('id')
+    const { DB } = c.env
+    
+    // Verify holding belongs to user
+    const holding = await DB.prepare(`
+      SELECT id, ticker, company_id FROM stock_holdings WHERE id = ? AND user_id = ?
+    `).bind(holdingId, userId).first() as any
+    
+    if (!holding) {
+      return c.json({ error: 'Holding not found' }, 404)
+    }
+    
+    // Find option trades that were assigned to create stock for this holding
+    // These are Short Put options that:
+    // 1. Match the company_id
+    // 2. Are closed (is_open = 0)
+    // 3. Have close_price = 0 (indicating assignment)
+    // 4. Have notes containing "ASSIGNED"
+    const assignments = await DB.prepare(`
+      SELECT 
+        ot.*,
+        cba.amount as premium_adjustment,
+        cba.adjustment_date
+      FROM option_trades ot
+      LEFT JOIN cost_basis_adjustments cba 
+        ON cba.holding_id = ? 
+        AND cba.adjustment_type = 'SELLING_PUT'
+        AND cba.notes LIKE '%' || ot.quantity || ' contract%'
+      WHERE ot.user_id = ?
+        AND ot.company_id = ?
+        AND ot.is_open = 0
+        AND ot.close_price = 0
+        AND (ot.strategy_type = 'SELLING_PUT' OR ot.strategy_type = 'SELLING_PUT_WHEEL')
+        AND (ot.notes LIKE '%ASSIGNED%' OR ot.notes LIKE '%assigned%')
+      ORDER BY ot.close_date DESC
+    `).bind(holdingId, userId, holding.company_id).all()
+    
+    return c.json(assignments.results || [])
+  } catch (error) {
+    console.error('Get assignment history error:', error)
+    return c.json({ error: 'Failed to fetch assignment history' }, 500)
+  }
+})
+
 // ============================================================================
 // STOCK TRADE - DIVIDENDS & COVERED CALLS
 // ============================================================================
