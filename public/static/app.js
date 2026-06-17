@@ -5669,6 +5669,15 @@ async function showOptionForm(optionId = null) {
         
         const config = strategyConfigs[strategy]
         
+        // Save current field values before re-rendering
+        const currentValues = {}
+        config.fields.forEach(field => {
+            const input = document.getElementById(`${field}_input`)
+            if (input) {
+                currentValues[field] = input.value
+            }
+        })
+        
         // Organize fields by leg
         let legStructure = []
         
@@ -5758,6 +5767,16 @@ async function showOptionForm(optionId = null) {
         `
         
         container.innerHTML = html
+        
+        // Restore saved field values
+        config.fields.forEach(field => {
+            if (currentValues[field] !== undefined) {
+                const input = document.getElementById(`${field}_input`)
+                if (input) {
+                    input.value = currentValues[field]
+                }
+            }
+        })
         
         // Add input listeners for real-time calculation
         document.querySelectorAll('.strategy-field, #quantity_input').forEach(input => {
