@@ -6287,6 +6287,7 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     const { DB } = c.env
     const year = c.req.query('year') || new Date().getFullYear().toString()
     const month = c.req.query('month') || (new Date().getMonth() + 1).toString()
+    const accountId = c.req.query('account_id') // Optional account filter
     
     // Calculate date range for the month
     const startDate = `${year}-${month.padStart(2, '0')}-01`
@@ -6301,10 +6302,11 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       FROM stock_transactions st
       INNER JOIN stock_holdings sh ON st.holding_id = sh.id
       WHERE st.user_id = ? AND sh.strategy_type = 'DIVIDEND_ETFS'
+        ${accountId ? 'AND sh.account_id = ?' : ''}
         AND st.transaction_type = 'SELL'
         AND st.transaction_date >= ? AND st.transaction_date < ?
       GROUP BY sh.ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     const dividendETFsCoveredCalls = await DB.prepare(`
       SELECT ot.ticker, SUM(ot.profit_loss) as amount
@@ -6312,9 +6314,10 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
       WHERE ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
         AND sh.strategy_type = 'DIVIDEND_ETFS'
+        ${accountId ? 'AND ot.account_id = ?' : ''}
         AND ot.is_open = 0 AND ot.close_date >= ? AND ot.close_date < ?
       GROUP BY ot.ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     const dividendETFsDividends = await DB.prepare(`
       SELECT sh.ticker, SUM(cba.amount) as amount
@@ -6322,9 +6325,10 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
       WHERE cba.user_id = ? AND cba.adjustment_type = 'DIVIDEND'
         AND sh.strategy_type = 'DIVIDEND_ETFS'
+        ${accountId ? 'AND sh.account_id = ?' : ''}
         AND cba.adjustment_date >= ? AND cba.adjustment_date < ?
       GROUP BY sh.ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // Stockpiling
     const stockpilingClosedPL = await DB.prepare(`
@@ -6332,10 +6336,11 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       FROM stock_transactions st
       INNER JOIN stock_holdings sh ON st.holding_id = sh.id
       WHERE st.user_id = ? AND sh.strategy_type = 'STOCKPILING'
+        ${accountId ? 'AND sh.account_id = ?' : ''}
         AND st.transaction_type = 'SELL'
         AND st.transaction_date >= ? AND st.transaction_date < ?
       GROUP BY sh.ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     const stockpilingCoveredCalls = await DB.prepare(`
       SELECT ot.ticker, SUM(ot.profit_loss) as amount
@@ -6343,9 +6348,10 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
       WHERE ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
         AND sh.strategy_type = 'STOCKPILING'
+        ${accountId ? 'AND ot.account_id = ?' : ''}
         AND ot.is_open = 0 AND ot.close_date >= ? AND ot.close_date < ?
       GROUP BY ot.ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     const stockpilingDividends = await DB.prepare(`
       SELECT sh.ticker, SUM(cba.amount) as amount
@@ -6353,9 +6359,10 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
       WHERE cba.user_id = ? AND cba.adjustment_type = 'DIVIDEND'
         AND sh.strategy_type = 'STOCKPILING'
+        ${accountId ? 'AND sh.account_id = ?' : ''}
         AND cba.adjustment_date >= ? AND cba.adjustment_date < ?
       GROUP BY sh.ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // Wheel Stock
     const wheelClosedPL = await DB.prepare(`
@@ -6363,10 +6370,11 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       FROM stock_transactions st
       INNER JOIN stock_holdings sh ON st.holding_id = sh.id
       WHERE st.user_id = ? AND sh.strategy_type = 'WHEEL'
+        ${accountId ? 'AND sh.account_id = ?' : ''}
         AND st.transaction_type = 'SELL'
         AND st.transaction_date >= ? AND st.transaction_date < ?
       GROUP BY sh.ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     const wheelCoveredCalls = await DB.prepare(`
       SELECT ot.ticker, SUM(ot.profit_loss) as amount
@@ -6374,9 +6382,10 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
       WHERE ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
         AND sh.strategy_type = 'WHEEL'
+        ${accountId ? 'AND ot.account_id = ?' : ''}
         AND ot.is_open = 0 AND ot.close_date >= ? AND ot.close_date < ?
       GROUP BY ot.ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     const wheelDividends = await DB.prepare(`
       SELECT sh.ticker, SUM(cba.amount) as amount
@@ -6384,9 +6393,10 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
       WHERE cba.user_id = ? AND cba.adjustment_type = 'DIVIDEND'
         AND sh.strategy_type = 'WHEEL'
+        ${accountId ? 'AND sh.account_id = ?' : ''}
         AND cba.adjustment_date >= ? AND cba.adjustment_date < ?
       GROUP BY sh.ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // Option Trades Income
     // Short Puts (Wheel)
@@ -6394,35 +6404,39 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       SELECT ticker, SUM(profit_loss) as profit_loss
       FROM option_trades
       WHERE user_id = ? AND strategy_type = 'SELLING_PUT_WHEEL'
+        ${accountId ? 'AND account_id = ?' : ''}
         AND is_open = 0 AND close_date >= ? AND close_date < ?
       GROUP BY ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // Short Puts (Stockpiling)
     const shortPutsStockpiling = await DB.prepare(`
       SELECT ticker, SUM(profit_loss) as profit_loss
       FROM option_trades
       WHERE user_id = ? AND strategy_type = 'SELLING_PUT'
+        ${accountId ? 'AND account_id = ?' : ''}
         AND is_open = 0 AND close_date >= ? AND close_date < ?
       GROUP BY ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // Short Puts (Long Term)
     const shortPutsLongTerm = await DB.prepare(`
       SELECT ticker, SUM(profit_loss) as profit_loss
       FROM option_trades
       WHERE user_id = ? AND strategy_type = 'SELLING_PUT_LONG_TERM'
+        ${accountId ? 'AND account_id = ?' : ''}
         AND is_open = 0 AND close_date >= ? AND close_date < ?
       GROUP BY ticker
-    `).bind(userId, startDate, endDate).all()
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // 0 DTE SPX Trades
     const dteTrades = await DB.prepare(`
       SELECT SUM(profit_loss) as profit_loss, COUNT(*) as trade_count
       FROM daily_trades
       WHERE user_id = ? AND is_open = 0
+        ${accountId ? 'AND account_id = ?' : ''}
         AND trade_date >= ? AND trade_date < ?
-    `).bind(userId, startDate, endDate).first() as any
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).first() as any
     
     return c.json({
       year: parseInt(year),

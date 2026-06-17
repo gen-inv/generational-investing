@@ -1,0 +1,9 @@
+Add account filtering logic:
+
+1. Get account_id from query parameter
+2. For stock_holdings queries: add "AND sh.account_id = ?" 
+3. For option_trades queries: add "AND ot.account_id = ?"
+4. For daily_trades queries: add "AND account_id = ?"
+5. Update all .bind() calls to include accountId when accountId is present
+
+Add conditional binding based on whether accountId exists.

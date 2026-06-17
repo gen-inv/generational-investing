@@ -13319,6 +13319,9 @@ async function initializeMonthlyIncome() {
             monthSelect.appendChild(option)
         }
         
+        // Populate account tabs
+        await populateMonthlyIncomeAccountTabs()
+        
         // Load current month data
         await loadMonthlyIncome()
         
@@ -13326,6 +13329,66 @@ async function initializeMonthlyIncome() {
         console.error('Error initializing monthly income report:', error)
         showNotification('Failed to initialize monthly income report', 'error')
     }
+}
+
+// Populate account filter tabs
+async function populateMonthlyIncomeAccountTabs() {
+    try {
+        // Get user's accounts
+        const response = await api.get('/api/accounts')
+        const accounts = response.data
+        
+        const tabsContainer = document.getElementById('monthly-income-account-tabs')
+        let html = `
+            <!-- ALL tab -->
+            <button onclick="selectMonthlyIncomeAccount(null)" 
+                    data-account-id="all"
+                    class="monthly-income-account-tab px-4 py-2 font-semibold text-gray-600 hover:text-brand-teal border-b-2 border-transparent transition-colors">
+                ALL
+            </button>
+        `
+        
+        // Add tab for each account
+        accounts.forEach(account => {
+            html += `
+                <button onclick="selectMonthlyIncomeAccount(${account.id})"
+                        data-account-id="${account.id}"
+                        class="monthly-income-account-tab px-4 py-2 font-semibold text-gray-600 hover:text-brand-teal border-b-2 border-transparent transition-colors whitespace-nowrap">
+                    ${account.account_name}
+                </button>
+            `
+        })
+        
+        tabsContainer.innerHTML = html
+        
+        // Set ALL as active by default
+        selectMonthlyIncomeAccount(null)
+        
+    } catch (error) {
+        console.error('Error loading accounts for monthly income tabs:', error)
+    }
+}
+
+// Select account tab
+function selectMonthlyIncomeAccount(accountId) {
+    // Update active tab styling
+    document.querySelectorAll('.monthly-income-account-tab').forEach(tab => {
+        tab.classList.remove('text-brand-teal', 'border-brand-teal')
+        tab.classList.add('text-gray-600', 'border-transparent')
+    })
+    
+    const selector = accountId ? `[data-account-id="${accountId}"]` : '[data-account-id="all"]'
+    const activeTab = document.querySelector(`.monthly-income-account-tab${selector}`)
+    if (activeTab) {
+        activeTab.classList.remove('text-gray-600', 'border-transparent')
+        activeTab.classList.add('text-brand-teal', 'border-brand-teal')
+    }
+    
+    // Store selected account ID
+    window.selectedMonthlyIncomeAccountId = accountId
+    
+    // Reload data
+    loadMonthlyIncome()
 }
 
 // Load monthly income data for selected month/year
@@ -13348,8 +13411,15 @@ async function loadMonthlyIncome() {
             </div>
         `
         
+        // Build URL with account filter if selected
+        const accountId = window.selectedMonthlyIncomeAccountId
+        let url = `/api/reports/monthly-income?year=${year}&month=${month}`
+        if (accountId) {
+            url += `&account_id=${accountId}`
+        }
+        
         // Fetch data from API
-        const response = await api.get(`/api/reports/monthly-income?year=${year}&month=${month}`)
+        const response = await api.get(url)
         const data = response.data
         
         // Render the report
