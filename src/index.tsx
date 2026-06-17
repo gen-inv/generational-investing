@@ -6307,7 +6307,7 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     `).bind(userId, startDate, endDate).all()
     
     const dividendETFsCoveredCalls = await DB.prepare(`
-      SELECT ot.ticker, SUM(ot.profit_loss) as profit_loss
+      SELECT ot.ticker, SUM(ot.profit_loss) as amount
       FROM option_trades ot
       INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
       WHERE ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
@@ -6338,7 +6338,7 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     `).bind(userId, startDate, endDate).all()
     
     const stockpilingCoveredCalls = await DB.prepare(`
-      SELECT ot.ticker, SUM(ot.profit_loss) as profit_loss
+      SELECT ot.ticker, SUM(ot.profit_loss) as amount
       FROM option_trades ot
       INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
       WHERE ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
@@ -6369,7 +6369,7 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     `).bind(userId, startDate, endDate).all()
     
     const wheelCoveredCalls = await DB.prepare(`
-      SELECT ot.ticker, SUM(ot.profit_loss) as profit_loss
+      SELECT ot.ticker, SUM(ot.profit_loss) as amount
       FROM option_trades ot
       INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
       WHERE ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
@@ -6421,7 +6421,7 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       SELECT SUM(profit_loss) as profit_loss, COUNT(*) as trade_count
       FROM daily_trades
       WHERE user_id = ? AND is_open = 0
-        AND close_date >= ? AND close_date < ?
+        AND trade_date >= ? AND trade_date < ?
     `).bind(userId, startDate, endDate).first() as any
     
     return c.json({
@@ -6431,25 +6431,25 @@ app.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       endDate,
       stockInvestments: {
         dividendETFs: {
-          closedPL: dividendETFsClosedPL.results || [],
-          coveredCalls: dividendETFsCoveredCalls.results || [],
-          dividends: dividendETFsDividends.results || []
+          closedPL: { results: dividendETFsClosedPL.results || [] },
+          coveredCalls: { results: dividendETFsCoveredCalls.results || [] },
+          dividends: { results: dividendETFsDividends.results || [] }
         },
         stockpiling: {
-          closedPL: stockpilingClosedPL.results || [],
-          coveredCalls: stockpilingCoveredCalls.results || [],
-          dividends: stockpilingDividends.results || []
+          closedPL: { results: stockpilingClosedPL.results || [] },
+          coveredCalls: { results: stockpilingCoveredCalls.results || [] },
+          dividends: { results: stockpilingDividends.results || [] }
         },
         wheel: {
-          closedPL: wheelClosedPL.results || [],
-          coveredCalls: wheelCoveredCalls.results || [],
-          dividends: wheelDividends.results || []
+          closedPL: { results: wheelClosedPL.results || [] },
+          coveredCalls: { results: wheelCoveredCalls.results || [] },
+          dividends: { results: wheelDividends.results || [] }
         }
       },
       optionTrades: {
-        shortPutsWheel: shortPutsWheel.results || [],
-        shortPutsStockpiling: shortPutsStockpiling.results || [],
-        shortPutsLongTerm: shortPutsLongTerm.results || [],
+        shortPutsWheel: { results: shortPutsWheel.results || [] },
+        shortPutsStockpiling: { results: shortPutsStockpiling.results || [] },
+        shortPutsLongTerm: { results: shortPutsLongTerm.results || [] },
         dteTrades: {
           profitLoss: dteTrades?.profit_loss || 0,
           tradeCount: dteTrades?.trade_count || 0
