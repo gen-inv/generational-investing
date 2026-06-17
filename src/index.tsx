@@ -10173,6 +10173,11 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 </div>
                             </div>
                             
+                            <!-- Account Filter Tabs -->
+                            <div id="monthly-income-account-tabs" class="flex gap-2 mb-6 border-b border-gray-200 overflow-x-auto">
+                                <!-- Populated dynamically with ALL + user accounts -->
+                            </div>
+                            
                             <div id="monthly-income-content">
                                 <p class="text-center text-gray-500 py-8">Select a month to view income details</p>
                             </div>
