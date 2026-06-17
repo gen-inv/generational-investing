@@ -13265,6 +13265,511 @@ function formatResearchNumber(value, decimals = 2) {
 
 console.log('[RESEARCH] Research modal functions loaded')
 
+// =============================================================================
+// MONTHLY INCOME REPORT
+// =============================================================================
+
+// Initialize Monthly Income report - populate dropdowns and load current month
+async function initializeMonthlyIncome() {
+    try {
+        const now = new Date()
+        const currentYear = now.getFullYear()
+        const currentMonth = now.getMonth() + 1 // 1-12
+        
+        // Populate year dropdown (current year and 2 years back)
+        const yearSelect = document.getElementById('monthly-income-year')
+        yearSelect.innerHTML = ''
+        for (let year = currentYear; year >= currentYear - 2; year--) {
+            const option = document.createElement('option')
+            option.value = year
+            option.textContent = year
+            if (year === currentYear) option.selected = true
+            yearSelect.appendChild(option)
+        }
+        
+        // Populate month dropdown
+        const monthSelect = document.getElementById('monthly-income-month')
+        monthSelect.innerHTML = ''
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December']
+        for (let m = 1; m <= 12; m++) {
+            const option = document.createElement('option')
+            option.value = m
+            option.textContent = monthNames[m - 1]
+            if (m === currentMonth) option.selected = true
+            monthSelect.appendChild(option)
+        }
+        
+        // Load current month data
+        await loadMonthlyIncome()
+        
+    } catch (error) {
+        console.error('Error initializing monthly income report:', error)
+        showNotification('Failed to initialize monthly income report', 'error')
+    }
+}
+
+// Load monthly income data for selected month/year
+async function loadMonthlyIncome() {
+    try {
+        const year = document.getElementById('monthly-income-year').value
+        const month = document.getElementById('monthly-income-month').value
+        
+        if (!year || !month) {
+            document.getElementById('monthly-income-content').innerHTML = `
+                <p class="text-center text-gray-500 py-8">Select a month to view income details</p>
+            `
+            return
+        }
+        
+        // Show loading state
+        document.getElementById('monthly-income-content').innerHTML = `
+            <div class="flex justify-center items-center py-12">
+                <i class="fas fa-spinner fa-spin text-4xl text-brand-teal"></i>
+            </div>
+        `
+        
+        // Fetch data from API
+        const response = await api.get(`/api/reports/monthly-income?year=${year}&month=${month}`)
+        const data = response.data
+        
+        // Render the report
+        renderMonthlyIncomeReport(data)
+        
+    } catch (error) {
+        console.error('Error loading monthly income:', error)
+        document.getElementById('monthly-income-content').innerHTML = `
+            <div class="text-center text-red-600 py-8">
+                <i class="fas fa-exclamation-triangle text-4xl mb-4"></i>
+                <p>Failed to load monthly income data</p>
+            </div>
+        `
+        showNotification('Failed to load monthly income data', 'error')
+    }
+}
+
+// Render the complete monthly income report
+function renderMonthlyIncomeReport(data) {
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December']
+    const monthName = monthNames[data.month - 1]
+    
+    let html = `
+        <div class="space-y-8">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-teal-50 to-blue-50 p-6 rounded-lg border border-teal-200">
+                <h4 class="text-xl font-bold text-gray-800 mb-2">
+                    <i class="fas fa-calendar-alt mr-2 text-teal-600"></i>
+                    ${monthName} ${data.year} Income Summary
+                </h4>
+                <p class="text-sm text-gray-600">Period: ${data.startDate} to ${data.endDate}</p>
+            </div>
+    `
+    
+    // Calculate grand totals
+    let grandTotal = 0
+    
+    // STOCK INVESTMENTS SECTION
+    html += renderStockInvestmentsSection(data.stockInvestments)
+    grandTotal += calculateStockInvestmentsTotal(data.stockInvestments)
+    
+    // OPTION TRADES SECTION
+    html += renderOptionTradesSection(data.optionTrades)
+    grandTotal += calculateOptionTradesTotal(data.optionTrades)
+    
+    // GRAND TOTAL
+    html += `
+            <!-- Grand Total -->
+            <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-6 rounded-lg border-2 border-green-300">
+                <div class="flex justify-between items-center">
+                    <h4 class="text-2xl font-bold text-gray-800">
+                        <i class="fas fa-trophy mr-2 text-yellow-500"></i>
+                        Total Income for ${monthName} ${data.year}
+                    </h4>
+                    <div class="text-3xl font-bold ${grandTotal >= 0 ? 'text-green-600' : 'text-red-600'}">
+                        ${formatCurrency(grandTotal)}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `
+    
+    document.getElementById('monthly-income-content').innerHTML = html
+}
+
+// Render Stock Investments section
+function renderStockInvestmentsSection(stockInvestments) {
+    let html = `
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="bg-gradient-to-r from-teal-600 to-teal-700 px-6 py-4">
+                <h4 class="text-xl font-bold text-white">
+                    <i class="fas fa-chart-line mr-2"></i>Stock Investments
+                </h4>
+            </div>
+            <div class="p-6 space-y-6">
+    `
+    
+    // Dividend ETFs
+    html += renderStrategySubsection('Dividend ETFs', '💰', 'green', stockInvestments.dividendETFs)
+    
+    // Stockpiling
+    html += renderStrategySubsection('Stockpiling', '📦', 'blue', stockInvestments.stockpiling)
+    
+    // Wheel
+    html += renderStrategySubsection('Wheel Strategy', '🎯', 'purple', stockInvestments.wheel)
+    
+    // Stock Investments Total
+    const stockTotal = calculateStockInvestmentsTotal(stockInvestments)
+    html += `
+                <div class="border-t-2 border-gray-300 pt-4 mt-6">
+                    <div class="flex justify-between items-center">
+                        <h5 class="text-lg font-bold text-gray-800">Stock Investments Total</h5>
+                        <div class="text-2xl font-bold ${stockTotal >= 0 ? 'text-green-600' : 'text-red-600'}">
+                            ${formatCurrency(stockTotal)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `
+    
+    return html
+}
+
+// Render a single strategy subsection (for stocks)
+function renderStrategySubsection(title, icon, color, strategyData) {
+    const { closedPL, coveredCalls, dividends } = strategyData
+    
+    // Calculate strategy total
+    const closedTotal = closedPL.results?.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) || 0
+    const callsTotal = coveredCalls.results?.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) || 0
+    const divsTotal = dividends.results?.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) || 0
+    const strategyTotal = closedTotal + callsTotal + divsTotal
+    
+    if (strategyTotal === 0) {
+        return `
+            <div class="mb-6">
+                <h5 class="text-lg font-semibold text-gray-700 mb-2">
+                    <span class="text-2xl mr-2">${icon}</span>${title}
+                </h5>
+                <p class="text-sm text-gray-500 ml-10">No income this month</p>
+            </div>
+        `
+    }
+    
+    let html = `
+        <div class="mb-6">
+            <div class="flex justify-between items-center mb-3">
+                <h5 class="text-lg font-semibold text-gray-700">
+                    <span class="text-2xl mr-2">${icon}</span>${title}
+                </h5>
+                <div class="text-lg font-bold ${strategyTotal >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${formatCurrency(strategyTotal)}
+                </div>
+            </div>
+            <div class="ml-10 space-y-4">
+    `
+    
+    // Closed P/L
+    if (closedPL.results && closedPL.results.length > 0) {
+        html += `
+                <div>
+                    <h6 class="text-sm font-semibold text-gray-600 mb-2">Closed Positions</h6>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-700">Ticker</th>
+                                    <th class="px-3 py-2 text-right font-medium text-gray-700">P/L</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+        `
+        closedPL.results.forEach(item => {
+            const pl = parseFloat(item.profit_loss || 0)
+            html += `
+                                <tr>
+                                    <td class="px-3 py-2 text-left font-medium">${item.ticker}</td>
+                                    <td class="px-3 py-2 text-right font-semibold ${pl >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                        ${formatCurrency(pl)}
+                                    </td>
+                                </tr>
+            `
+        })
+        html += `
+                                <tr class="bg-gray-50 font-bold">
+                                    <td class="px-3 py-2 text-left">Subtotal</td>
+                                    <td class="px-3 py-2 text-right ${closedTotal >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                        ${formatCurrency(closedTotal)}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+        `
+    }
+    
+    // Covered Calls
+    if (coveredCalls.results && coveredCalls.results.length > 0) {
+        html += `
+                <div>
+                    <h6 class="text-sm font-semibold text-gray-600 mb-2">Covered Calls</h6>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-700">Ticker</th>
+                                    <th class="px-3 py-2 text-right font-medium text-gray-700">Premium</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+        `
+        coveredCalls.results.forEach(item => {
+            const amount = parseFloat(item.amount || 0)
+            html += `
+                                <tr>
+                                    <td class="px-3 py-2 text-left font-medium">${item.ticker}</td>
+                                    <td class="px-3 py-2 text-right font-semibold text-green-600">
+                                        ${formatCurrency(amount)}
+                                    </td>
+                                </tr>
+            `
+        })
+        html += `
+                                <tr class="bg-gray-50 font-bold">
+                                    <td class="px-3 py-2 text-left">Subtotal</td>
+                                    <td class="px-3 py-2 text-right text-green-600">
+                                        ${formatCurrency(callsTotal)}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+        `
+    }
+    
+    // Dividends
+    if (dividends.results && dividends.results.length > 0) {
+        html += `
+                <div>
+                    <h6 class="text-sm font-semibold text-gray-600 mb-2">Dividends</h6>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-3 py-2 text-left font-medium text-gray-700">Ticker</th>
+                                    <th class="px-3 py-2 text-right font-medium text-gray-700">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+        `
+        dividends.results.forEach(item => {
+            const amount = parseFloat(item.amount || 0)
+            html += `
+                                <tr>
+                                    <td class="px-3 py-2 text-left font-medium">${item.ticker}</td>
+                                    <td class="px-3 py-2 text-right font-semibold text-green-600">
+                                        ${formatCurrency(amount)}
+                                    </td>
+                                </tr>
+            `
+        })
+        html += `
+                                <tr class="bg-gray-50 font-bold">
+                                    <td class="px-3 py-2 text-left">Subtotal</td>
+                                    <td class="px-3 py-2 text-right text-green-600">
+                                        ${formatCurrency(divsTotal)}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+        `
+    }
+    
+    html += `
+            </div>
+        </div>
+    `
+    
+    return html
+}
+
+// Render Option Trades section
+function renderOptionTradesSection(optionTrades) {
+    let html = `
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="bg-gradient-to-r from-purple-600 to-purple-700 px-6 py-4">
+                <h4 class="text-xl font-bold text-white">
+                    <i class="fas fa-layer-group mr-2"></i>Option Trades
+                </h4>
+            </div>
+            <div class="p-6 space-y-6">
+    `
+    
+    // Short Puts - Wheel
+    html += renderOptionStrategySubsection('Short Puts (Wheel)', '🎯', optionTrades.shortPutsWheel)
+    
+    // Short Puts - Stockpiling
+    html += renderOptionStrategySubsection('Short Puts (Stockpiling)', '📦', optionTrades.shortPutsStockpiling)
+    
+    // Short Puts - Long Term
+    html += renderOptionStrategySubsection('Short Puts (Long Term)', '📅', optionTrades.shortPutsLongTerm)
+    
+    // 0DTE SPX Trades (no ticker breakdown)
+    const dtePL = parseFloat(optionTrades.dteTrades?.profitLoss || 0)
+    const dteCount = parseInt(optionTrades.dteTrades?.tradeCount || 0)
+    
+    if (dteCount > 0) {
+        html += `
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <h5 class="text-lg font-semibold text-gray-700">
+                            <span class="text-2xl mr-2">⚡</span>0DTE SPX Trades
+                        </h5>
+                        <div class="text-lg font-bold ${dtePL >= 0 ? 'text-green-600' : 'text-red-600'}">
+                            ${formatCurrency(dtePL)}
+                        </div>
+                    </div>
+                    <div class="ml-10">
+                        <p class="text-sm text-gray-600">Total trades: ${dteCount}</p>
+                    </div>
+                </div>
+        `
+    } else {
+        html += `
+                <div class="mb-6">
+                    <h5 class="text-lg font-semibold text-gray-700 mb-2">
+                        <span class="text-2xl mr-2">⚡</span>0DTE SPX Trades
+                    </h5>
+                    <p class="text-sm text-gray-500 ml-10">No trades this month</p>
+                </div>
+        `
+    }
+    
+    // Option Trades Total
+    const optionsTotal = calculateOptionTradesTotal(optionTrades)
+    html += `
+                <div class="border-t-2 border-gray-300 pt-4 mt-6">
+                    <div class="flex justify-between items-center">
+                        <h5 class="text-lg font-bold text-gray-800">Option Trades Total</h5>
+                        <div class="text-2xl font-bold ${optionsTotal >= 0 ? 'text-green-600' : 'text-red-600'}">
+                            ${formatCurrency(optionsTotal)}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `
+    
+    return html
+}
+
+// Render a single option strategy subsection
+function renderOptionStrategySubsection(title, icon, trades) {
+    if (!trades || !trades.results || trades.results.length === 0) {
+        return `
+            <div class="mb-6">
+                <h5 class="text-lg font-semibold text-gray-700 mb-2">
+                    <span class="text-2xl mr-2">${icon}</span>${title}
+                </h5>
+                <p class="text-sm text-gray-500 ml-10">No closed trades this month</p>
+            </div>
+        `
+    }
+    
+    const total = trades.results.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0)
+    
+    let html = `
+        <div class="mb-6">
+            <div class="flex justify-between items-center mb-3">
+                <h5 class="text-lg font-semibold text-gray-700">
+                    <span class="text-2xl mr-2">${icon}</span>${title}
+                </h5>
+                <div class="text-lg font-bold ${total >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${formatCurrency(total)}
+                </div>
+            </div>
+            <div class="ml-10">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left font-medium text-gray-700">Ticker</th>
+                                <th class="px-3 py-2 text-right font-medium text-gray-700">P/L</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+    `
+    
+    trades.results.forEach(item => {
+        const pl = parseFloat(item.profit_loss || 0)
+        html += `
+                            <tr>
+                                <td class="px-3 py-2 text-left font-medium">${item.ticker}</td>
+                                <td class="px-3 py-2 text-right font-semibold ${pl >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                    ${formatCurrency(pl)}
+                                </td>
+                            </tr>
+        `
+    })
+    
+    html += `
+                            <tr class="bg-gray-50 font-bold">
+                                <td class="px-3 py-2 text-left">Subtotal</td>
+                                <td class="px-3 py-2 text-right ${total >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                    ${formatCurrency(total)}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `
+    
+    return html
+}
+
+// Calculate total for stock investments
+function calculateStockInvestmentsTotal(stockInvestments) {
+    let total = 0
+    
+    // Dividend ETFs
+    total += stockInvestments.dividendETFs.closedPL.results?.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) || 0
+    total += stockInvestments.dividendETFs.coveredCalls.results?.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) || 0
+    total += stockInvestments.dividendETFs.dividends.results?.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) || 0
+    
+    // Stockpiling
+    total += stockInvestments.stockpiling.closedPL.results?.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) || 0
+    total += stockInvestments.stockpiling.coveredCalls.results?.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) || 0
+    total += stockInvestments.stockpiling.dividends.results?.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) || 0
+    
+    // Wheel
+    total += stockInvestments.wheel.closedPL.results?.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) || 0
+    total += stockInvestments.wheel.coveredCalls.results?.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) || 0
+    total += stockInvestments.wheel.dividends.results?.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0) || 0
+    
+    return total
+}
+
+// Calculate total for option trades
+function calculateOptionTradesTotal(optionTrades) {
+    let total = 0
+    
+    total += optionTrades.shortPutsWheel.results?.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) || 0
+    total += optionTrades.shortPutsStockpiling.results?.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) || 0
+    total += optionTrades.shortPutsLongTerm.results?.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) || 0
+    total += parseFloat(optionTrades.dteTrades?.profitLoss || 0)
+    
+    return total
+}
+
+console.log('[MONTHLY-INCOME] Monthly Income report functions loaded')
+
 // ===========================
 // MONTHLY INCOME REPORT
 // ===========================
