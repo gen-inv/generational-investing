@@ -13336,7 +13336,7 @@ async function populateMonthlyIncomeAccountTabs() {
     try {
         // Get user's accounts
         const response = await api.get('/api/accounts')
-        const accounts = response.data
+        const accounts = response.data.accounts || response.data
         
         const tabsContainer = document.getElementById('monthly-income-account-tabs')
         let html = `
