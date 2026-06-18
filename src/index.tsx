@@ -2086,28 +2086,53 @@ app.get('/api/stocks/:id', authMiddleware, async (c) => {
     let closeDate = null
     
     if (holding.is_open === 0) {
-      let totalBuyValue = 0
-      let totalBuyCommissions = 0
-      let totalSellValue = 0
-      let totalSellCommissions = 0
-      let totalSellShares = 0
+      // Find the closing SELL transaction (created by close endpoint)
+      const closingSell = transactions.results.find((tx: any) => 
+        tx.transaction_type === 'SELL' && 
+        (tx.notes === 'Position closed' || tx.notes?.includes('Position closed'))
+      ) as any
       
-      transactions.results.forEach((tx: any) => {
-        if (tx.transaction_type === 'BUY') {
-          totalBuyValue += tx.shares * tx.price_per_share
-          totalBuyCommissions += tx.commission || 0
-        } else if (tx.transaction_type === 'SELL') {
-          totalSellValue += tx.shares * tx.price_per_share
-          totalSellCommissions += tx.commission || 0
-          totalSellShares += tx.shares
-          // Use the last SELL transaction for close details
-          closePrice = tx.price_per_share
-          closeCommission = tx.commission || 0
-          closeDate = tx.transaction_date
-        }
-      })
-      
-      profitLoss = totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
+      if (closingSell) {
+        // Use ONLY the closing SELL for P/L calculation
+        let totalBuyValue = 0
+        let totalBuyCommissions = 0
+        
+        transactions.results.forEach((tx: any) => {
+          if (tx.transaction_type === 'BUY') {
+            totalBuyValue += tx.shares * tx.price_per_share
+            totalBuyCommissions += tx.commission || 0
+          }
+        })
+        
+        const totalSellValue = closingSell.shares * closingSell.price_per_share
+        const totalSellCommissions = closingSell.commission || 0
+        
+        profitLoss = totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
+        closePrice = closingSell.price_per_share
+        closeCommission = closingSell.commission || 0
+        closeDate = closingSell.transaction_date
+      } else {
+        // Fallback: Use last SELL transaction (for legacy closed positions)
+        let totalBuyValue = 0
+        let totalBuyCommissions = 0
+        let totalSellValue = 0
+        let totalSellCommissions = 0
+        
+        transactions.results.forEach((tx: any) => {
+          if (tx.transaction_type === 'BUY') {
+            totalBuyValue += tx.shares * tx.price_per_share
+            totalBuyCommissions += tx.commission || 0
+          } else if (tx.transaction_type === 'SELL') {
+            totalSellValue = tx.shares * tx.price_per_share
+            totalSellCommissions = tx.commission || 0
+            closePrice = tx.price_per_share
+            closeCommission = tx.commission || 0
+            closeDate = tx.transaction_date
+          }
+        })
+        
+        profitLoss = totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
+      }
     }
     
     // Get the first transaction to determine trade_type
@@ -2507,9 +2532,11 @@ app.put('/api/stocks/:id/reopen', authMiddleware, async (c) => {
     }
     
     // Delete the SELL transaction that closed this position
+    // This includes both regular closes and backfilled closes
     await DB.prepare(`
       DELETE FROM stock_transactions
-      WHERE holding_id = ? AND transaction_type = 'SELL' AND notes = 'Position closed'
+      WHERE holding_id = ? AND transaction_type = 'SELL' 
+        AND (notes = 'Position closed' OR notes LIKE '%Position closed%')
     `).bind(holdingId).run()
     
     // Re-open the holding
