@@ -8,7 +8,7 @@
 ## URLs
 - **Production**: https://app.generationalinvesting.ca
 - **Production (Pages.dev)**: https://generational-investing.pages.dev
-- **Latest Deploy**: https://3fb24e07.generational-investing.pages.dev
+- **Latest Deploy**: https://94f8bc76.generational-investing.pages.dev
 - **Development**: https://3000-imi5lx8i4w7yx1t3dzzid-583b4d74.sandbox.novita.ai
 - **GitHub**: https://github.com/ericrrichards/generational-investing
 
@@ -48,9 +48,16 @@
      - **Stockpiling**: Track stocks for long-term hold strategy
      - Visual badges for Wheel positions with wagon wheel icon
      - Editable strategy types on existing positions
+   - **Dividend Detection System** 🆕:
+     - **Dividend Repository**: Central database of all dividend data from external APIs
+     - **Missing Dividends Detection**: Automatic detection of unrecorded dividends
+     - **DIV Badges**: Blue "DIV" badges appear on holdings with missing dividends
+     - **Smart Share Calculation**: Uses stock_transactions when available, falls back to stock_holdings.total_shares
+     - **Quick-Add Buttons**: One-click recording of missing dividends with withholding tax auto-adjustment
+     - **Handles Edge Cases**: Works correctly even when transaction history is incomplete
    - Cost basis adjustments for:
      - Dividends received
-     - Covered call premiums
+     - Covered call premiums (recorded when calls close, not when opened)
      - Selling put premiums
    - Multi-account support
 
@@ -875,9 +882,12 @@ npx wrangler d1 execute webapp-production --local --command="SELECT * FROM compa
 Proprietary - All rights reserved
 
 ## Last Updated
-June 15, 2026
+June 18, 2026
 
 ## Recent Updates
+- **June 18, 2026**: Fixed dividend detection logic - DIV badges and missing dividends now work with empty stock_transactions table
+- **June 18, 2026**: Covered call cost basis adjustments now recorded only when closed (not when opened)
+- **June 18, 2026**: Backfilled 37 closed covered calls with cost basis adjustments ($41,541.24 total)
 - **June 16, 2026**: Added Wheel trading strategy with stock assignment from Short Put options
 - **June 15, 2026**: Fixed closed stock trade editing modal to show profit/loss and trade summary
 - **April 2, 2026**: Dashboard YTD P/L calculation aligned with Reports P/L Summary
