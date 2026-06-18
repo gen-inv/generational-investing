@@ -13334,11 +13334,15 @@ async function initializeMonthlyIncome() {
 // Populate account filter tabs
 async function populateMonthlyIncomeAccountTabs() {
     try {
+        console.log('Loading monthly income account tabs...')
         // Get user's accounts
         const response = await api.get('/api/accounts')
+        console.log('Accounts API response:', response.data)
         const accounts = response.data.accounts || response.data
+        console.log('Accounts array:', accounts)
         
         const tabsContainer = document.getElementById('monthly-income-account-tabs')
+        console.log('Tabs container found:', !!tabsContainer)
         let html = `
             <!-- ALL tab -->
             <button onclick="selectMonthlyIncomeAccount(null)" 
@@ -13857,81 +13861,3 @@ function calculateOptionTradesTotal(optionTrades) {
     return total
 }
 
-console.log('[MONTHLY-INCOME] Monthly Income report functions loaded')
-
-// ===========================
-// MONTHLY INCOME REPORT
-// ===========================
-
-// Initialize monthly income report with current month/year
-function initializeMonthlyIncome() {
-    const now = new Date()
-    const currentMonth = now.getMonth() + 1
-    const currentYear = now.getFullYear()
-    
-    // Populate year dropdown (last 5 years)
-    const yearSelect = document.getElementById('monthly-income-year')
-    yearSelect.innerHTML = ''
-    for (let i = 0; i < 5; i++) {
-        const year = currentYear - i
-        const option = document.createElement('option')
-        option.value = year
-        option.textContent = year
-        if (year === currentYear) option.selected = true
-        yearSelect.appendChild(option)
-    }
-    
-    // Populate month dropdown
-    const monthSelect = document.getElementById('monthly-income-month')
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                        'July', 'August', 'September', 'October', 'November', 'December']
-    monthSelect.innerHTML = ''
-    monthNames.forEach((name, index) => {
-        const option = document.createElement('option')
-        option.value = index + 1
-        option.textContent = name
-        if (index + 1 === currentMonth) option.selected = true
-        monthSelect.appendChild(option)
-    })
-    
-    // Load initial data
-    loadMonthlyIncome()
-}
-
-// Load monthly income data
-async function loadMonthlyIncome() {
-    try {
-        const year = document.getElementById('monthly-income-year').value
-        const month = document.getElementById('monthly-income-month').value
-        const monthName = document.getElementById('monthly-income-month').selectedOptions[0].text
-        
-        // Show loading indicator
-        document.getElementById('monthly-income-content').innerHTML = `
-            <div class="flex items-center justify-center py-12">
-                <div class="text-center">
-                    <i class="fas fa-spinner fa-spin text-4xl text-brand-teal mb-4"></i>
-                    <p class="text-gray-600">Loading income data for ${monthName} ${year}...</p>
-                </div>
-            </div>
-        `
-        
-        // Fetch data from API
-        const response = await api.get(`/api/reports/monthly-income?year=${year}&month=${month}`)
-        const data = response.data
-        
-        // Render the report
-        renderMonthlyIncomeReport(data, monthName, year)
-        
-    } catch (error) {
-        console.error('Error loading monthly income:', error)
-        document.getElementById('monthly-income-content').innerHTML = `
-            <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-                <i class="fas fa-exclamation-circle text-red-500 text-3xl mb-3"></i>
-                <p class="text-red-700 font-semibold">Failed to load monthly income report</p>
-                <p class="text-red-600 text-sm mt-2">${error.response?.data?.error || error.message}</p>
-            </div>
-        `
-    }
-}
-
-console.log('[MONTHLY-INCOME] Monthly income report functions loaded')
