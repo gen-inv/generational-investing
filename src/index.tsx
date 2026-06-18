@@ -6742,8 +6742,9 @@ async function performDividendFetchInternal(
         await respectRateLimit()
         
         // Call Massive (Polygon.io) API
-        // Endpoint: GET /v3/reference/dividends?ticker={ticker}&apiKey={key}
-        const response = await fetch(`https://api.polygon.io/v3/reference/dividends?ticker=${holding.ticker}&apiKey=${MASSIVE_API_KEY}`, {
+        // Endpoint: GET /v3/reference/dividends?ticker={ticker}&ex_dividend_date.gte={date}&apiKey={key}
+        // Filter dividends from 2025-01-01 onwards
+        const response = await fetch(`https://api.polygon.io/v3/reference/dividends?ticker=${holding.ticker}&ex_dividend_date.gte=2025-01-01&apiKey=${MASSIVE_API_KEY}`, {
           method: 'GET'
         })
         
@@ -6784,7 +6785,7 @@ async function performDividendFetchInternal(
           debugInfo.push(`${holding.ticker}: Canadian stock with 0 results, trying EODHD fallback...`)
           
           try {
-            const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2000-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
+            const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2025-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
               method: 'GET'
             })
             
@@ -7191,7 +7192,7 @@ async function performDividendFetch(DB: any, targetUserId: number, startTime: nu
         
         // Fetch from Massive (Polygon.io) for US stocks
         if (!isCanadian) {
-          const massiveUrl = `https://api.polygon.io/v3/reference/dividends?ticker=${ticker}&limit=100&apiKey=${MASSIVE_API_KEY}`
+          const massiveUrl = `https://api.polygon.io/v3/reference/dividends?ticker=${ticker}&ex_dividend_date.gte=2025-01-01&limit=100&apiKey=${MASSIVE_API_KEY}`
           
           try {
             const massiveResponse = await fetch(massiveUrl)
@@ -11086,7 +11087,8 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             tickersProcessed.push(holding.ticker)
             
             // Call Massive (Polygon.io) API
-            const response = await fetch(`https://api.polygon.io/v3/reference/dividends?ticker=${holding.ticker}&apiKey=${MASSIVE_API_KEY}`, {
+            // Filter dividends from 2025-01-01 onwards
+            const response = await fetch(`https://api.polygon.io/v3/reference/dividends?ticker=${holding.ticker}&ex_dividend_date.gte=2025-01-01&apiKey=${MASSIVE_API_KEY}`, {
               method: 'GET'
             })
             
@@ -11114,7 +11116,7 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
               console.log(`${holding.ticker}: Canadian stock with 0 results, trying EODHD fallback...`)
               
               try {
-                const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2000-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
+                const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2025-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
                   method: 'GET'
                 })
                 
