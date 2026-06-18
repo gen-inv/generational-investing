@@ -3220,20 +3220,8 @@ app.post('/api/stocks/:id/covered-calls', authMiddleware, async (c) => {
       data.notes || null
     ).run()
     
-    // Also record as cost basis adjustment (premium received reduces cost basis)
-    // Premium is per share, so: Total = Premium × Contracts × 100 shares/contract
-    const totalPremium = data.premium * data.quantity * 100
-    await DB.prepare(`
-      INSERT INTO cost_basis_adjustments (
-        user_id, holding_id, adjustment_type, amount, adjustment_date, notes
-      ) VALUES (?, ?, 'COVERED_CALL', ?, ?, ?)
-    `).bind(
-      userId,
-      holdingId,
-      totalPremium,
-      data.trade_date,
-      `Covered call: ${data.quantity} contracts @ $${data.strike_price} strike, premium $${data.premium}/share ($${totalPremium} total), exp ${data.expiration_date}`
-    ).run()
+    // NOTE: Cost basis adjustment is NOT created when opening a covered call
+    // It will be created when the covered call is closed, using the actual net P/L
     
     return c.json({
       id: optionResult.meta.last_row_id,
@@ -3299,51 +3287,19 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
       userId
     ).run()
     
-    // Update the existing cost basis adjustment with the net P/L
-    // When the covered call was opened, we created an adjustment with the premium received
-    // Now we need to update it to reflect the actual profit/loss after closing
+    // Create cost basis adjustment when closing the covered call
+    // The profit/loss from the covered call reduces the cost basis
     if (cc.holding_id && profitLoss !== undefined) {
-      // Find the existing adjustment created when this covered call was opened
-      const existingAdjustment = await DB.prepare(`
-        SELECT id, amount FROM cost_basis_adjustments
-        WHERE holding_id = ? 
-          AND adjustment_type = 'COVERED_CALL'
-          AND notes LIKE ?
-        ORDER BY created_at DESC
-        LIMIT 1
+      await DB.prepare(`
+        INSERT INTO cost_basis_adjustments (user_id, holding_id, adjustment_type, amount, adjustment_date, notes)
+        VALUES (?, ?, 'COVERED_CALL', ?, ?, ?)
       `).bind(
+        userId,
         cc.holding_id,
-        `%${cc.quantity} contracts%$${cc.strike_price} strike%`
-      ).first()
-      
-      if (existingAdjustment) {
-        // Update the existing adjustment to reflect the net P/L
-        await DB.prepare(`
-          UPDATE cost_basis_adjustments SET
-            amount = ?,
-            adjustment_date = ?,
-            notes = ?,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(
-          profitLoss, // Net P/L (premium - close cost - commission)
-          data.close_date || new Date().toISOString().split('T')[0],
-          `Covered call closed - Net P/L: $${profitLoss.toFixed(2)} (${cc.quantity} contracts @ $${cc.strike_price}, closed @ $${data.close_price})`,
-          existingAdjustment.id
-        ).run()
-      } else {
-        // If no existing adjustment found, create a new one
-        await DB.prepare(`
-          INSERT INTO cost_basis_adjustments (user_id, holding_id, adjustment_type, amount, adjustment_date, notes)
-          VALUES (?, ?, 'COVERED_CALL', ?, ?, ?)
-        `).bind(
-          userId,
-          cc.holding_id,
-          profitLoss,
-          data.close_date || new Date().toISOString().split('T')[0],
-          `Covered call closed - P/L: $${profitLoss.toFixed(2)}`
-        ).run()
-      }
+        profitLoss,
+        data.close_date || new Date().toISOString().split('T')[0],
+        `Covered call closed - Net P/L: $${profitLoss.toFixed(2)} (${cc.quantity} contracts @ $${cc.strike_price}, closed @ $${data.close_price})`
+      ).run()
     }
     
     return c.json({ 
