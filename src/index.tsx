@@ -6779,10 +6779,11 @@ async function performDividendFetchInternal(
         debugInfo.push(`${holding.ticker}: Found ${dividends.length} dividends in API response`)
         console.log(`${holding.ticker}: Found ${dividends.length} dividends in API response`)
         
-        // Fallback to EODHD for Canadian stocks if Massive returns 0 results
+        // Fallback to EODHD if Massive returns 0 results
+        // This includes Canadian stocks (.TO, .V) and US stocks with incomplete Polygon.io data
         let eodhd_dividends = []
-        if (dividends.length === 0 && (holding.ticker.endsWith('.TO') || holding.ticker.endsWith('.V'))) {
-          debugInfo.push(`${holding.ticker}: Canadian stock with 0 results, trying EODHD fallback...`)
+        if (dividends.length === 0) {
+          debugInfo.push(`${holding.ticker}: Polygon.io returned 0 results, trying EODHD fallback...`)
           
           try {
             const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2025-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
@@ -11108,12 +11109,13 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             const dividendData = await response.json() as any
             const dividends = dividendData.results || []
             
-            // Fallback to EODHD for Canadian stocks if Massive returns 0 results
+            // Fallback to EODHD if Massive returns 0 results
+            // This includes Canadian stocks (.TO, .V) and US stocks with incomplete Polygon.io data
             const EODHD_API_KEY = '69bc75c1788da8.83960172'
             let eodhd_dividends = []
             
-            if (dividends.length === 0 && (holding.ticker.endsWith('.TO') || holding.ticker.endsWith('.V'))) {
-              console.log(`${holding.ticker}: Canadian stock with 0 results, trying EODHD fallback...`)
+            if (dividends.length === 0) {
+              console.log(`${holding.ticker}: Polygon.io returned 0 results, trying EODHD fallback...`)
               
               try {
                 const eodhd_response = await fetch(`https://eodhd.com/api/div/${holding.ticker}?from=2025-01-01&api_token=${EODHD_API_KEY}&fmt=json`, {
