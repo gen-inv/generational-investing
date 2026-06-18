@@ -1,5 +1,24 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 
+/**
+ * API Regression Test Suite
+ * 
+ * IMPORTANT: These tests DO NOT make external API calls.
+ * All endpoints tested use local database operations only.
+ * 
+ * Endpoints that make external API calls (NOT tested here):
+ * - /api/exchange-rate (Bank of Canada, Exchange Rate API)
+ * - /api/dividend-repository/fetch (Polygon.io, EODHD)
+ * - /api/cron/dividend-repository/fetch/* (Cron endpoints)
+ * 
+ * We trust third-party services to function correctly and avoid
+ * testing them to prevent:
+ * - API rate limit consumption
+ * - Test failures due to external service outages
+ * - Slow test execution
+ * - API key exposure in CI/CD environments
+ */
+
 const BASE_URL = 'http://localhost:3000'
 let authToken = ''
 let testUserId = null

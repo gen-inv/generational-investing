@@ -4,6 +4,70 @@
 
 Comprehensive regression test suite for the Generational Investing Portfolio Management System. Tests all critical functionality including authentication, stock trades, option trades, Wheel strategy, assignments, and cost basis calculations.
 
+**IMPORTANT**: This test suite **DOES NOT** make external API calls to third-party services. All tests use local database operations only.
+
+## External API Isolation
+
+### Endpoints NOT Tested (External Dependencies)
+The following endpoints are intentionally excluded from tests because they call external APIs:
+
+1. **`/api/exchange-rate`**
+   - Calls: Bank of Canada API, Exchange Rate API
+   - Purpose: Fetches USD/CAD exchange rates
+   - Why not tested: Avoids API rate limits and external service dependency
+
+2. **`/api/dividend-repository/fetch`**
+   - Calls: Polygon.io (Massive API), EODHD
+   - Purpose: Fetches dividend data for stocks
+   - Why not tested: Expensive API calls, rate limited, external dependency
+
+3. **`/api/cron/dividend-repository/fetch/*`**
+   - Calls: Same as above (cron variants)
+   - Purpose: Scheduled dividend fetching
+   - Why not tested: External dependency, rate limits
+
+### Why We Don't Test External APIs
+
+1. **Rate Limits**: Consuming API quotas during testing
+2. **Cost**: Some APIs charge per request
+3. **Reliability**: External services may be down or slow
+4. **Speed**: Tests would be much slower
+5. **Security**: Avoid exposing API keys in CI/CD
+6. **Control**: We can't control third-party service behavior
+
+### Testing Philosophy
+
+We **trust** that third-party services function correctly and focus our tests on:
+- ✅ Our business logic
+- ✅ Our database operations
+- ✅ Our data transformations
+- ✅ Our API contracts
+- ✅ Our error handling
+
+If external APIs fail in production, that's a monitoring/alerting concern, not a test concern.
+
+### Endpoints Tested (Local Operations Only)
+
+All tested endpoints use only local database operations:
+
+- ✅ `/api/auth/register` - User registration
+- ✅ `/api/auth/login` - User authentication
+- ✅ `/api/companies` - Company CRUD operations
+- ✅ `/api/accounts` - Account management
+- ✅ `/api/accounts/create` - Create new account
+- ✅ `/api/stocks` - Stock holdings CRUD
+- ✅ `/api/stocks/:id/purchase-history` - Transaction history
+- ✅ `/api/stocks/:id/dividends` - Dividend operations
+- ✅ `/api/stocks/:id/missing-dividends` - Dividend matching
+- ✅ `/api/stocks/:id/covered-calls` - Covered call history
+- ✅ `/api/stocks/:id/cost-basis-adjustments` - Cost basis tracking
+- ✅ `/api/stocks/:id/close` - Position closing
+- ✅ `/api/options` - Option trades CRUD
+- ✅ `/api/options/:id/assign` - Option assignment to stock
+- ✅ `/api/options/:id/close` - Close option position
+
+**Zero external API calls in any tested endpoint.**
+
 ## Test Coverage
 
 ### 1. Authentication Tests
