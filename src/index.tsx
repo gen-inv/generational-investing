@@ -3581,7 +3581,12 @@ app.get('/api/options', authMiddleware, async (c) => {
     params.push(isClosed === 'true' ? 0 : 1)
   }
   
-  query += ' ORDER BY ot.trade_date DESC'
+  // Order by close_date for closed trades, trade_date for open/all trades
+  if (isClosed === 'true') {
+    query += ' ORDER BY ot.close_date DESC, ot.trade_date DESC'
+  } else {
+    query += ' ORDER BY ot.trade_date DESC'
+  }
   
   const stmt = c.env.DB.prepare(query)
   const options = await stmt.bind(...params).all()
@@ -10244,7 +10249,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                         <table class="w-full text-sm">
                                             <thead>
                                                 <tr class="bg-gray-100">
-                                                    <th class="px-4 py-3 text-left">Trade Date</th>
+                                                    <th class="px-4 py-3 text-left">Close Date</th>
                                                     <th class="px-4 py-3 text-left">Ticker</th>
                                                     <th class="px-4 py-3 text-left">Strategy</th>
                                                     <th class="px-4 py-3 text-right">Strike</th>

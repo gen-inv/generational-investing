@@ -7671,7 +7671,7 @@ async function loadClosedTrades() {
                     const strategyLabel = STRATEGY_TYPES.find(st => st.value === option.strategy_type)?.label || option.strategy_type.replace(/_/g, ' ')
                     return `
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-4 py-3">${option.trade_date}</td>
+                            <td class="px-4 py-3">${option.close_date || '-'}</td>
                             <td class="px-4 py-3 font-semibold text-brand-teal">${option.ticker}</td>
                             <td class="px-4 py-3">${strategyLabel}</td>
                             <td class="px-4 py-3 text-right">$${parseFloat(option.strike_price).toFixed(2)}</td>
