@@ -1952,6 +1952,16 @@ app.get('/api/stocks', authMiddleware, async (c) => {
         `).bind(stock.id).all()
         
         const getSharesOnDate = (targetDate: string) => {
+          // If no transactions exist, use total_shares from stock_holdings as fallback
+          if (!txns.results || txns.results.length === 0) {
+            // Use total_shares for all dates >= opened_date
+            if (targetDate >= stock.opened_date) {
+              return stock.total_shares || 0
+            }
+            return 0
+          }
+          
+          // Calculate shares from transactions
           let shares = 0
           for (const tx of (txns.results || [])) {
             const t = tx as any
@@ -2675,11 +2685,11 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
     const holdingId = c.req.param('id')
     const { DB } = c.env
     
-    // Get holding details including ticker, account, opened/closed dates
+    // Get holding details including ticker, account, opened/closed dates, and total_shares
     const holding = await DB.prepare(`
       SELECT 
         sh.id, sh.user_id, sh.opened_date, sh.closed_date,
-        sh.ticker, a.account_type
+        sh.ticker, sh.total_shares, a.account_type
       FROM stock_holdings sh
       JOIN accounts a ON sh.account_id = a.id
       WHERE sh.id = ? AND sh.user_id = ?
@@ -2835,6 +2845,17 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
     
     // Calculate shares held on a given date
     const getSharesHeldOnDate = (targetDate: string) => {
+      // If no transactions exist, fallback to stock_holdings.total_shares
+      // This handles cases where holdings exist but transactions weren't recorded
+      if (!transactions.results || transactions.results.length === 0) {
+        // Use total_shares from holding for all dates >= opened_date
+        if (targetDate >= holding.opened_date) {
+          return holding.total_shares || 0
+        }
+        return 0
+      }
+      
+      // Calculate shares from transactions
       let sharesHeld = 0
       for (const tx of (transactions.results || [])) {
         const txData = tx as any
