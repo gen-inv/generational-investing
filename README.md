@@ -8,9 +8,9 @@
 ## URLs
 - **Production**: https://app.generationalinvesting.ca
 - **Production (Pages.dev)**: https://generational-investing.pages.dev
-- **Latest Deploy**: https://94f8bc76.generational-investing.pages.dev
+- **Latest Deploy**: https://6bc99a69.generational-investing.pages.dev
 - **Development**: https://3000-imi5lx8i4w7yx1t3dzzid-583b4d74.sandbox.novita.ai
-- **GitHub**: https://github.com/ericrrichards/generational-investing
+- **GitHub**: https://github.com/gen-inv/generational-investing
 
 ## Demo Account
 - **Email**: demo@generationalinvesting.ca
@@ -885,6 +885,7 @@ Proprietary - All rights reserved
 June 18, 2026
 
 ## Recent Updates
+- **June 18, 2026**: Fixed closed stock trade editing - backfilled 30 SELL transactions so close details display properly
 - **June 18, 2026**: Fixed dividend detection logic - DIV badges and missing dividends now work with empty stock_transactions table
 - **June 18, 2026**: Covered call cost basis adjustments now recorded only when closed (not when opened)
 - **June 18, 2026**: Backfilled 37 closed covered calls with cost basis adjustments ($41,541.24 total)
