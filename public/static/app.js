@@ -432,6 +432,16 @@ function showSection(sectionName) {
         content.classList.add('hidden')
     })
     
+    // Hide all utility tab contents (ensure utility tabs are reset when switching away)
+    document.querySelectorAll('.utility-content').forEach(content => {
+        content.classList.add('hidden')
+    })
+    
+    // Hide all report tab contents (ensure report tabs are reset when switching away)
+    document.querySelectorAll('.report-tab-content').forEach(content => {
+        content.classList.add('hidden')
+    })
+    
     // Remove active class from all nav links
     document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.remove('active')
