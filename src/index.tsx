@@ -6820,7 +6820,7 @@ async function performDividendFetchInternal(
             continue
           }
           
-          // Filter: only include dividends from 2026-01-01 onwards
+          // Filter: only include dividends from 2025-01-01 onwards
           if (exDate < MIN_DATE) {
             debugInfo.push(`${holding.ticker}: Skipping EODHD ${exDate} (before ${MIN_DATE})`)
             continue
@@ -6897,7 +6897,7 @@ async function performDividendFetchInternal(
             continue
           }
           
-          // Filter: only include dividends from 2026-01-01 onwards
+          // Filter: only include dividends from 2025-01-01 onwards
           if (exDate < MIN_DATE) {
             debugInfo.push(`${holding.ticker}: Skipping ${exDate} (before ${MIN_DATE})`)
             continue
@@ -8968,7 +8968,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 <div class="flex-1">
                                     <h3 class="text-xl font-bold text-gray-800 mb-2">Dividend Repository</h3>
                                     <p class="text-gray-600 mb-4">
-                                        Automatically fetch and track dividends for all your stock holdings from 2026 onwards. 
+                                        Automatically fetch and track dividends for all your stock holdings from 2025 onwards. 
                                         Uses a dual-API approach: <strong>Polygon.io (Massive)</strong> for US stocks and <strong>EODHD</strong> as automatic fallback for Canadian stocks (.TO, .V).
                                     </p>
                                     
@@ -9022,12 +9022,12 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                         </summary>
                                         <div class="mt-3">
                                             <p class="text-sm text-gray-700 mb-3">
-                                                This will check all your stock holdings for dividend payments since January 1, 2026. The system will:
+                                                This will check all your stock holdings for dividend payments since January 1, 2025. The system will:
                                             </p>
                                             <ul class="text-sm text-gray-700 space-y-1 mb-4 ml-4">
                                                 <li><i class="fas fa-check text-green-600 mr-2"></i>Try Polygon.io (Massive) first for all tickers</li>
                                                 <li><i class="fas fa-check text-green-600 mr-2"></i>Automatically fallback to EODHD for Canadian stocks</li>
-                                                <li><i class="fas fa-check text-green-600 mr-2"></i>Only include dividends from 2026 onwards</li>
+                                                <li><i class="fas fa-check text-green-600 mr-2"></i>Only include dividends from 2025 onwards</li>
                                                 <li><i class="fas fa-check text-green-600 mr-2"></i>Store results in global dividend repository</li>
                                                 <li><i class="fas fa-check text-green-600 mr-2"></i>Deduplicate tickers to minimize API calls</li>
                                             </ul>
@@ -11133,7 +11133,7 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
               }
             }
             
-            // Minimum date filter: only fetch dividends from 2026-01-01 onwards
+            // Minimum date filter: only fetch dividends from 2025-01-01 onwards
             const MIN_DATE = '2026-01-01'
             
             // Process EODHD dividends if available
@@ -11148,7 +11148,7 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
                 continue
               }
               
-              // Filter: only include dividends from 2026-01-01 onwards
+              // Filter: only include dividends from 2025-01-01 onwards
               if (exDate < MIN_DATE) {
                 continue
               }
@@ -11206,7 +11206,7 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
                 continue
               }
               
-              // Filter: only include dividends from 2026-01-01 onwards
+              // Filter: only include dividends from 2025-01-01 onwards
               if (exDate < MIN_DATE) {
                 continue
               }
