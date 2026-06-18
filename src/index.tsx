@@ -2679,9 +2679,8 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
     const holding = await DB.prepare(`
       SELECT 
         sh.id, sh.user_id, sh.opened_date, sh.closed_date,
-        c.ticker, a.account_type
+        sh.ticker, a.account_type
       FROM stock_holdings sh
-      JOIN companies c ON sh.company_id = c.id
       JOIN accounts a ON sh.account_id = a.id
       WHERE sh.id = ? AND sh.user_id = ?
     `).bind(holdingId, userId).first() as any
