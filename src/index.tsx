@@ -2531,12 +2531,11 @@ app.put('/api/stocks/:id/reopen', authMiddleware, async (c) => {
       return c.json({ error: 'Position is already open' }, 400)
     }
     
-    // Delete the SELL transaction that closed this position
-    // This includes both regular closes and backfilled closes
+    // Delete ALL SELL transactions for this holding
+    // User may need to reopen for various reasons: adding dividends, fixing data, etc.
     await DB.prepare(`
       DELETE FROM stock_transactions
-      WHERE holding_id = ? AND transaction_type = 'SELL' 
-        AND (notes = 'Position closed' OR notes LIKE '%Position closed%')
+      WHERE holding_id = ? AND transaction_type = 'SELL'
     `).bind(holdingId).run()
     
     // Re-open the holding
