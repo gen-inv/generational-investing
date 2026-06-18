@@ -6652,10 +6652,10 @@ async function performDividendFetchInternal(
     // Use EODHD API key for Canadian stocks fallback
     const EODHD_API_KEY = '69bc75c1788da8.83960172'
     
-    // Minimum date filter: only fetch dividends from 2026-01-01 onwards
-    const MIN_DATE = '2026-01-01'
+    // Minimum date filter: only fetch dividends from 2025-01-01 onwards
+    const MIN_DATE = '2025-01-01'
     
-    // Get all stock holdings for this user (including closed ones)
+    // Get all OPEN stock holdings for this user
     const holdings = await DB.prepare(`
       SELECT 
         sh.id as holding_id,
@@ -6665,7 +6665,7 @@ async function performDividendFetchInternal(
         sh.total_shares,
         sh.is_open
       FROM stock_holdings sh
-      WHERE sh.user_id = ?
+      WHERE sh.user_id = ? AND sh.is_open = 1
       ORDER BY sh.ticker
     `).bind(userId).all()
     
@@ -6804,8 +6804,8 @@ async function performDividendFetchInternal(
           }
         }
         
-        // Minimum date filter: only fetch dividends from 2026-01-01 onwards
-        const MIN_DATE = '2026-01-01'
+        // Minimum date filter: only fetch dividends from 2025-01-01 onwards
+        const MIN_DATE = '2025-01-01'
         
         // Process EODHD dividends if available
         for (const div of eodhd_dividends) {
