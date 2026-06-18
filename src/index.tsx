@@ -2869,19 +2869,18 @@ app.get('/api/stocks/:id/missing-dividends', authMiddleware, async (c) => {
       ORDER BY transaction_date ASC
     `).bind(holdingId).all()
     
-    // Calculate shares held on a given date
+    // Calculate shares held on a given date based on transaction history
     const getSharesHeldOnDate = (targetDate: string) => {
-      // If no transactions exist, fallback to stock_holdings.total_shares
-      // This handles cases where holdings exist but transactions weren't recorded
+      // CRITICAL: We MUST have transaction history to calculate accurate share ownership
+      // Using current total_shares for all historical dates is WRONG
+      // Example: If you bought 100 shares in Jan, then bought 100 more in March,
+      // a February dividend should only use 100 shares, not 200!
       if (!transactions.results || transactions.results.length === 0) {
-        // Use total_shares from holding for all dates >= opened_date
-        if (targetDate >= holding.opened_date) {
-          return holding.total_shares || 0
-        }
-        return 0
+        console.warn(`[DIVIDEND] No transaction history for holding ${holdingId}. Cannot calculate historical share ownership.`)
+        return 0  // Return 0 instead of using current total_shares
       }
       
-      // Calculate shares from transactions
+      // Calculate shares from transaction history
       let sharesHeld = 0
       for (const tx of (transactions.results || [])) {
         const txData = tx as any
