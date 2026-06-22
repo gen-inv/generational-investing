@@ -9627,8 +9627,10 @@ function updateClosePLPreview() {
         
         const profitLoss = entryCredit - exitDebit - entryCommission - closeCommission
         
-        // Calculate Dollars At Work (spread width × contracts × 100)
-        const strikeWidth = trade.strike_width || 5
+        // Calculate Dollars At Work: For both single spreads and iron condors,
+        // only ONE side can be at risk at a time, so use: strike_width × contracts × 100
+        // Get strike width from config (not from trade record, which may be outdated)
+        const strikeWidth = dailyTradeConfigCache?.strike_width || 5
         const dollarsAtWork = strikeWidth * trade.contracts * 100
         
         // Calculate RORC (Return on Risk Capital)
