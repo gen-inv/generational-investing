@@ -13635,7 +13635,7 @@ function renderStrategySubsection(title, icon, color, strategyData) {
             html += `
                                 <tr>
                                     <td class="px-3 py-2 text-left font-medium">${item.ticker}</td>
-                                    <td class="px-3 py-2 text-right font-semibold text-green-600">
+                                    <td class="px-3 py-2 text-right font-semibold ${amount >= 0 ? 'text-green-600' : 'text-red-600'}">
                                         ${formatCurrency(amount)}
                                     </td>
                                 </tr>
@@ -13644,7 +13644,7 @@ function renderStrategySubsection(title, icon, color, strategyData) {
         html += `
                                 <tr class="bg-gray-50 font-bold">
                                     <td class="px-3 py-2 text-left">Subtotal</td>
-                                    <td class="px-3 py-2 text-right text-green-600">
+                                    <td class="px-3 py-2 text-right ${callsTotal >= 0 ? 'text-green-600' : 'text-red-600'}">
                                         ${formatCurrency(callsTotal)}
                                     </td>
                                 </tr>
