@@ -1,0 +1,6 @@
+-- Intentionally empty. D1's remote HTTP API cannot execute CREATE TRIGGER statements
+-- containing multiple internal semicolons (each INSERT inside a BEGIN...END trigger body
+-- trips a statement-splitting bug) -- confirmed via SQLITE_ERROR "incomplete input" on
+-- 2026-08-04, works fine locally but fails consistently on --remote.
+-- research_notes_fts is kept in sync via application code instead (see the ingest
+-- endpoint), not database triggers.

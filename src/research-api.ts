@@ -1,0 +1,363 @@
+import { Hono } from 'hono'
+
+type Bindings = {
+  RESEARCH_DB: D1Database
+  RESEARCH_INGEST_TOKEN: string
+}
+
+const researchApp = new Hono<{ Bindings: Bindings }>()
+
+// --- Auth: separate, static bearer token for the SER8 research machine ---
+// NOT the same as the main site's user-login JWT auth (authMiddleware in index.tsx).
+async function researchAuthMiddleware(c: any, next: any) {
+  const authHeader = c.req.header('Authorization')
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  const token = authHeader.substring(7)
+  if (!c.env.RESEARCH_INGEST_TOKEN || token !== c.env.RESEARCH_INGEST_TOKEN) {
+    return c.json({ error: 'Invalid token' }, 401)
+  }
+  await next()
+}
+
+// --- Helper: find or create a company by ticker symbol, return its id ---
+async function getOrCreateCompanyId(db: D1Database, ticker: string, companyName?: string, sector?: string, industry?: string): Promise<number> {
+  const symbol = ticker.toUpperCase()
+  const existing = await db.prepare('SELECT id FROM companies WHERE symbol = ?').bind(symbol).first()
+  if (existing) {
+    await db.prepare(`
+      UPDATE companies SET name = COALESCE(?, name), sector = COALESCE(?, sector),
+        industry = COALESCE(?, industry), last_updated = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(companyName || null, sector || null, industry || null, existing.id).run()
+    return existing.id as number
+  }
+  const result = await db.prepare(`
+    INSERT INTO companies (symbol, name, sector, industry) VALUES (?, ?, ?, ?)
+  `).bind(symbol, companyName || null, sector || null, industry || null).run()
+  return result.meta.last_row_id as number
+}
+
+// --- POST /api/research/ingest ---
+// Phase 1: core singleton data per ticker (Quick-5, Valuation, Scoresheet, Anti-Fragile, FGR).
+// Phase 2 (later): inversions, events, guru_holdings, peer_comparisons, research_notes.
+researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
+  const body = await c.req.json()
+  if (!body.ticker) {
+    return c.json({ error: 'ticker is required' }, 400)
+  }
+  const db = c.env.RESEARCH_DB
+
+  try {
+    const companyId = await getOrCreateCompanyId(db, body.ticker, body.company_name, body.sector, body.industry)
+
+    // --- Quick-5 ---
+    if (body.quick_five) {
+      const q = body.quick_five
+      const existing = await db.prepare('SELECT id FROM quick_five_results WHERE company_id = ?').bind(companyId).first()
+      const params = [
+        q.status, q.disqualification_reason || null, q.debt_fcf_years ?? null, q.debt_fcf_status || null,
+        q.roic_avg ?? null, q.roic_slope ?? null, q.fcf_pct_earnings ?? null,
+        q.china_hq ? 1 : 0, q.possible_bank ? 1 : 0,
+        q.understand_easily_notes || null, q.understand_destroyers_notes || null,
+        q.overall_pass ? 1 : 0,
+      ]
+      if (existing) {
+        await db.prepare(`
+          UPDATE quick_five_results SET status=?, disqualification_reason=?, debt_fcf_years=?, debt_fcf_status=?,
+            roic_avg=?, roic_slope=?, fcf_pct_earnings=?, china_hq=?, possible_bank=?,
+            understand_easily_notes=?, understand_destroyers_notes=?, overall_pass=?, assessed_date=CURRENT_TIMESTAMP
+          WHERE company_id=?
+        `).bind(...params, companyId).run()
+      } else {
+        await db.prepare(`
+          INSERT INTO quick_five_results (company_id, status, disqualification_reason, debt_fcf_years, debt_fcf_status,
+            roic_avg, roic_slope, fcf_pct_earnings, china_hq, possible_bank,
+            understand_easily_notes, understand_destroyers_notes, overall_pass)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(companyId, ...params).run()
+      }
+    }
+
+    // --- Quick-5 override (append-only log, not upserted) ---
+    if (body.quick_five_override) {
+      const o = body.quick_five_override
+      await db.prepare(`
+        INSERT INTO quick_five_overrides (company_id, reason, original_disqualification_reason)
+        VALUES (?, ?, ?)
+      `).bind(companyId, o.reason, o.original_disqualification_reason || null).run()
+    }
+
+    // --- Valuation ---
+    if (body.valuation) {
+      const v = body.valuation
+      const existing = await db.prepare('SELECT id FROM valuations WHERE company_id = ?').bind(companyId).first()
+      const params = [
+        v.growth_classification || null, v.fgr_used ?? null, v.owner_earnings_price ?? null,
+        v.dfe_sticker ?? null, v.dfe_buy_price ?? null, v.payback_time_price ?? null, v.avg_fcf_ratio ?? null,
+        v.weight_dfe ?? null, v.weight_owner_earnings ?? null, v.weight_payback ?? null,
+        v.blended_sticker ?? null, v.blended_buy_price ?? null, v.rop_wheel_ceiling ?? null,
+        v.current_price ?? null, v.on_sale ? 1 : 0, v.exit_pe_used ?? null,
+        v.exit_pe_override_applied ? 1 : 0, v.exit_pe_override_justification || null, v.notes || null,
+      ]
+      if (existing) {
+        await db.prepare(`
+          UPDATE valuations SET growth_classification=?, fgr_used=?, owner_earnings_price=?, dfe_sticker=?,
+            dfe_buy_price=?, payback_time_price=?, avg_fcf_ratio=?, weight_dfe=?, weight_owner_earnings=?,
+            weight_payback=?, blended_sticker=?, blended_buy_price=?, rop_wheel_ceiling=?, current_price=?,
+            on_sale=?, exit_pe_used=?, exit_pe_override_applied=?, exit_pe_override_justification=?, notes=?,
+            valuation_date=CURRENT_TIMESTAMP
+          WHERE company_id=?
+        `).bind(...params, companyId).run()
+      } else {
+        await db.prepare(`
+          INSERT INTO valuations (company_id, growth_classification, fgr_used, owner_earnings_price, dfe_sticker,
+            dfe_buy_price, payback_time_price, avg_fcf_ratio, weight_dfe, weight_owner_earnings, weight_payback,
+            blended_sticker, blended_buy_price, rop_wheel_ceiling, current_price, on_sale, exit_pe_used,
+            exit_pe_override_applied, exit_pe_override_justification, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(companyId, ...params).run()
+      }
+    }
+
+    // --- Scoresheet ---
+    if (body.scoresheet) {
+      const s = body.scoresheet
+      const existing = await db.prepare('SELECT id FROM scoresheet WHERE company_id = ?').bind(companyId).first()
+      const params = [
+        s.understanding_score ?? null, s.moat_score ?? null, s.management_score ?? null, s.options_liquidity_score ?? null,
+        s.total_pct ?? null, s.grade || null, s.fit_rating ?? null, s.confidence_company ?? null, s.confidence_industry ?? null,
+        s.values_alignment ?? null, s.moat_strength ?? null, s.moat_type ?? null, s.pricing_power ?? null,
+        s.ceo_candor ?? null, s.insider_activity ?? null, s.fcf_deployment ?? null, s.buyback_timing ?? null,
+        s.big_four_score ?? null, s.conservative_financing_score ?? null, s.roic_score ?? null,
+        s.guru_activity_score ?? null, s.capital_intensity_score ?? null,
+      ]
+      if (existing) {
+        await db.prepare(`
+          UPDATE scoresheet SET understanding_score=?, moat_score=?, management_score=?, options_liquidity_score=?,
+            total_pct=?, grade=?, fit_rating=?, confidence_company=?, confidence_industry=?, values_alignment=?,
+            moat_strength=?, moat_type=?, pricing_power=?, ceo_candor=?, insider_activity=?, fcf_deployment=?,
+            buyback_timing=?, big_four_score=?, conservative_financing_score=?, roic_score=?, guru_activity_score=?,
+            capital_intensity_score=?, assessment_date=CURRENT_TIMESTAMP
+          WHERE company_id=?
+        `).bind(...params, companyId).run()
+      } else {
+        await db.prepare(`
+          INSERT INTO scoresheet (company_id, understanding_score, moat_score, management_score, options_liquidity_score,
+            total_pct, grade, fit_rating, confidence_company, confidence_industry, values_alignment, moat_strength,
+            moat_type, pricing_power, ceo_candor, insider_activity, fcf_deployment, buyback_timing, big_four_score,
+            conservative_financing_score, roic_score, guru_activity_score, capital_intensity_score)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(companyId, ...params).run()
+      }
+    }
+
+    // --- Anti-Fragile ---
+    if (body.anti_fragile) {
+      const a = body.anti_fragile
+      const existing = await db.prepare('SELECT id FROM anti_fragile_scores WHERE company_id = ?').bind(companyId).first()
+      const params = [
+        a.roic_score ?? null, a.fgr_score ?? null, a.net_debt_fcf_score ?? null, a.inflation_resilience_score ?? null,
+        a.recession_resilience_score ?? null, a.purchase_frequency_score ?? null, a.discretionary_essential_score ?? null,
+        a.geopolitical_risk_score ?? null, a.total_score ?? null,
+      ]
+      if (existing) {
+        await db.prepare(`
+          UPDATE anti_fragile_scores SET roic_score=?, fgr_score=?, net_debt_fcf_score=?, inflation_resilience_score=?,
+            recession_resilience_score=?, purchase_frequency_score=?, discretionary_essential_score=?,
+            geopolitical_risk_score=?, total_score=?, assessment_date=CURRENT_TIMESTAMP
+          WHERE company_id=?
+        `).bind(...params, companyId).run()
+      } else {
+        await db.prepare(`
+          INSERT INTO anti_fragile_scores (company_id, roic_score, fgr_score, net_debt_fcf_score,
+            inflation_resilience_score, recession_resilience_score, purchase_frequency_score,
+            discretionary_essential_score, geopolitical_risk_score, total_score)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(companyId, ...params).run()
+      }
+    }
+
+    // --- FGR Triangulation ---
+    if (body.fgr_triangulation) {
+      const f = body.fgr_triangulation
+      const existing = await db.prepare('SELECT id FROM fgr_triangulation WHERE company_id = ?').bind(companyId).first()
+      const params = [
+        f.historical_cagr ?? null, f.management_guidance ?? null, f.segment_reasoning ?? null, f.blended_fgr,
+        f.weighting_rationale || null, f.analyst_commentary ?? null, f.analyst_sources || null,
+        f.gap_pct_points ?? null, f.reconciliation_notes || null,
+      ]
+      if (existing) {
+        await db.prepare(`
+          UPDATE fgr_triangulation SET historical_cagr=?, management_guidance=?, segment_reasoning=?, blended_fgr=?,
+            weighting_rationale=?, analyst_commentary=?, analyst_sources=?, gap_pct_points=?, reconciliation_notes=?,
+            assessed_date=CURRENT_TIMESTAMP
+          WHERE company_id=?
+        `).bind(...params, companyId).run()
+      } else {
+        await db.prepare(`
+          INSERT INTO fgr_triangulation (company_id, historical_cagr, management_guidance, segment_reasoning,
+            blended_fgr, weighting_rationale, analyst_commentary, analyst_sources, gap_pct_points, reconciliation_notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(companyId, ...params).run()
+      }
+    }
+
+    // --- Inversions: fully replaced each pass (delete existing, insert fresh set) ---
+    if (body.inversions && Array.isArray(body.inversions)) {
+      await db.prepare('DELETE FROM inversions WHERE company_id = ?').bind(companyId).run()
+      for (const inv of body.inversions) {
+        await db.prepare(`
+          INSERT INTO inversions (company_id, category, reason_to_own, bear_case, rebuttal, rebuttal_strength)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).bind(companyId, inv.category, inv.reason_to_own, inv.bear_case, inv.rebuttal, inv.rebuttal_strength || null).run()
+      }
+    }
+
+    // --- Events: matched by company_id + description, preserves joint_determination if already set ---
+    if (body.events && Array.isArray(body.events)) {
+      for (const ev of body.events) {
+        const existing = await db.prepare(
+          'SELECT id, joint_determination FROM events WHERE company_id = ? AND description = ?'
+        ).bind(companyId, ev.description).first()
+        if (existing) {
+          await db.prepare(`
+            UPDATE events SET price_impact_pct=?, management_acknowledged=?, management_response=?,
+              agent_recoverable_assessment=?, status=?, source_urls=?
+            WHERE id=?
+          `).bind(
+            ev.price_impact_pct ?? null, ev.management_acknowledged ? 1 : 0, ev.management_response || null,
+            ev.agent_recoverable_assessment || null, ev.status || 'open', ev.source_urls || null, existing.id
+          ).run()
+          // joint_determination intentionally untouched -- only set via a separate, explicit endpoint later
+        } else {
+          await db.prepare(`
+            INSERT INTO events (company_id, description, price_impact_pct, management_acknowledged,
+              management_response, agent_recoverable_assessment, status, source_urls)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            companyId, ev.description, ev.price_impact_pct ?? null, ev.management_acknowledged ? 1 : 0,
+            ev.management_response || null, ev.agent_recoverable_assessment || null, ev.status || 'open',
+            ev.source_urls || null
+          ).run()
+        }
+      }
+    }
+
+    // --- Guru holdings: simple append, computed_date distinguishes snapshots over time ---
+    if (body.guru_holdings && Array.isArray(body.guru_holdings)) {
+      for (const g of body.guru_holdings) {
+        await db.prepare(`
+          INSERT INTO guru_holdings (company_id, guru_name, filing_date, shares, value, implied_price,
+            pct_of_portfolio, activity)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          companyId, g.guru_name, g.filing_date || null, g.shares ?? null, g.value ?? null,
+          g.implied_price ?? null, g.pct_of_portfolio ?? null, g.activity || null
+        ).run()
+      }
+    }
+
+    // --- Peer comparisons: simple append, same pattern ---
+    if (body.peer_comparisons && Array.isArray(body.peer_comparisons)) {
+      for (const p of body.peer_comparisons) {
+        await db.prepare(`
+          INSERT INTO peer_comparisons (company_id, peer_ticker, fiscal_year, revenue, operating_income,
+            operating_margin, avg_fcf_3yr, net_debt_to_fcf_3yr, avg_roic_5yr, employees, revenue_per_employee, data_gaps)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          companyId, p.peer_ticker, p.fiscal_year || null, p.revenue ?? null, p.operating_income ?? null,
+          p.operating_margin ?? null, p.avg_fcf_3yr ?? null, p.net_debt_to_fcf_3yr ?? null,
+          p.avg_roic_5yr ?? null, p.employees ?? null, p.revenue_per_employee ?? null,
+          p.data_gaps ? JSON.stringify(p.data_gaps) : null
+        ).run()
+      }
+    }
+
+    // --- Research notes: upsert on (company_id, doc_type, filing_date), explicit FTS sync ---
+    // (D1's remote API can't run trigger-based sync -- see migrations_research/0002 comment)
+    if (body.research_notes && Array.isArray(body.research_notes)) {
+      for (const n of body.research_notes) {
+        const existing = await db.prepare(
+          'SELECT id FROM research_notes WHERE company_id = ? AND doc_type = ? AND filing_date = ?'
+        ).bind(companyId, n.doc_type, n.filing_date || '').first()
+
+        let noteId: number
+        if (existing) {
+          await db.prepare(`
+            UPDATE research_notes SET source_url=?, content=?, abstract=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+          `).bind(n.source_url || null, n.content, n.abstract || null, existing.id).run()
+          noteId = existing.id as number
+        } else {
+          const result = await db.prepare(`
+            INSERT INTO research_notes (company_id, doc_type, filing_date, source_url, content, abstract)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).bind(companyId, n.doc_type, n.filing_date || '', n.source_url || null, n.content, n.abstract || null).run()
+          noteId = result.meta.last_row_id as number
+        }
+
+      }
+    }
+
+    return c.json({ success: true, ticker: body.ticker.toUpperCase(), company_id: companyId })
+  } catch (err: any) {
+    console.error('Research ingest error:', err)
+    return c.json({ error: 'Internal error during ingest', detail: String(err) }, 500)
+  }
+})
+
+// --- GET /api/research/findings — list everything, for a dashboard/table view ---
+researchApp.get('/findings', async (c) => {
+  const db = c.env.RESEARCH_DB
+  const results = await db.prepare(`
+    SELECT c.symbol, c.name, c.sector, c.industry,
+           qf.status as quick_five_status, qf.overall_pass,
+           v.blended_buy_price, v.blended_sticker, v.current_price, v.on_sale,
+           s.total_pct as scoresheet_pct, s.grade as scoresheet_grade,
+           af.total_score as anti_fragile_total
+    FROM companies c
+    LEFT JOIN quick_five_results qf ON qf.company_id = c.id
+    LEFT JOIN valuations v ON v.company_id = c.id
+    LEFT JOIN scoresheet s ON s.company_id = c.id
+    LEFT JOIN anti_fragile_scores af ON af.company_id = c.id
+    ORDER BY c.symbol ASC
+  `).all()
+  return c.json({ findings: results.results })
+})
+
+// --- GET /api/research/:ticker — full picture for one company ---
+researchApp.get('/:ticker', async (c) => {
+  const db = c.env.RESEARCH_DB
+  const symbol = c.req.param('ticker').toUpperCase()
+
+  const company = await db.prepare('SELECT * FROM companies WHERE symbol = ?').bind(symbol).first()
+  if (!company) {
+    return c.json({ error: 'Company not found' }, 404)
+  }
+  const companyId = company.id
+
+const [quickFive, valuation, scoresheet, antiFragile, fgr, inversions, events, guruHoldings, peerComparisons, researchNotes] = await Promise.all([
+    db.prepare('SELECT * FROM quick_five_results WHERE company_id = ?').bind(companyId).first(),
+    db.prepare('SELECT * FROM valuations WHERE company_id = ?').bind(companyId).first(),
+    db.prepare('SELECT * FROM scoresheet WHERE company_id = ?').bind(companyId).first(),
+    db.prepare('SELECT * FROM anti_fragile_scores WHERE company_id = ?').bind(companyId).first(),
+    db.prepare('SELECT * FROM fgr_triangulation WHERE company_id = ?').bind(companyId).first(),
+    db.prepare('SELECT * FROM inversions WHERE company_id = ?').bind(companyId).all(),
+    db.prepare('SELECT * FROM events WHERE company_id = ?').bind(companyId).all(),
+    db.prepare('SELECT * FROM guru_holdings WHERE company_id = ? ORDER BY computed_date DESC').bind(companyId).all(),
+    db.prepare('SELECT * FROM peer_comparisons WHERE company_id = ? ORDER BY computed_date DESC').bind(companyId).all(),
+    db.prepare('SELECT id, doc_type, filing_date, source_url, abstract, created_at, updated_at FROM research_notes WHERE company_id = ?').bind(companyId).all(),
+  ])
+
+  return c.json({
+    company, quick_five: quickFive, valuation, scoresheet, anti_fragile: antiFragile, fgr_triangulation: fgr,
+    inversions: inversions.results, events: events.results, guru_holdings: guruHoldings.results,
+    peer_comparisons: peerComparisons.results, research_notes: researchNotes.results,
+  })
+})
+
+
+
+export default researchApp

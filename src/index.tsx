@@ -1,9 +1,12 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from 'hono/cloudflare-workers'
+import researchApp from './research-api'
 
 type Bindings = {
   DB: D1Database;
+  RESEARCH_DB: D1Database;
+  RESEARCH_INGEST_TOKEN: string;
 }
 
 // Alias for use in scheduled handler
@@ -29,6 +32,8 @@ app.use('/api/*', cors())
 
 // Serve static files
 app.use('/static/*', serveStatic({ root: './' }))
+
+app.route('/api/research', researchApp)
 
 // ============================================================================
 // UTILITY FUNCTIONS

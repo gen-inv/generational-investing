@@ -11,6 +11,12 @@
       "binding": "DB",
       "database_name": "webapp-production",
       "database_id": "2ebb44fa-3e22-42ff-9736-dfceb6021eba"
+    },
+    {
+      "binding": "RESEARCH_DB",
+      "database_name": "research-production",
+      "database_id": "5d81e453-c229-4cff-9152-8e0f936554da",
+      "migrations_dir": "migrations_research"
     }
   ],
   "env": {

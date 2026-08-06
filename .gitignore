@@ -10,10 +10,12 @@ dist/
 .idea/workspace.xml
 .idea/usage.statistics.xml
 .idea/shelf
+local-dev-schema-mirror.sql
 
 # deps
 node_modules/
 .wrangler
+.wrangler-local-db/
 
 # env
 .env
