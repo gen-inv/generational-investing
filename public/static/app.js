@@ -8999,7 +8999,7 @@ async function submitDailyTrade() {
         const spxPrice = parseFloat(document.getElementById('dt-spx-price').value) || null
         const vixPrice = parseFloat(document.getElementById('dt-vix-price').value) || null
         const contracts = parseInt(document.getElementById('dt-contracts').value)
-        const strikeWidth = parseInt(document.getElementById('dt-strike-width').value) || 5
+        const strikeWidth = dailyTradeConfigCache?.strike_width || 5
         const notes = document.getElementById('dt-notes').value.trim()
         
         // Check required fields
