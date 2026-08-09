@@ -11,6 +11,10 @@ let monthlyPLChart = null
 // API Base URL
 const API_BASE = window.location.origin
 
+// Research API: Use production for complete data including research notes
+// Local seed has MA/UAA core data but not the 12 research notes with markdown content
+const RESEARCH_API_BASE = 'https://generational-investing.pages.dev'
+
 // Axios instance with auth header
 const api = axios.create({
     baseURL: API_BASE
@@ -22,6 +26,39 @@ api.interceptors.request.use(config => {
     }
     return config
 })
+
+// Research findings cache
+let researchFindingsCache = null
+let researchFindingsCacheTime = null
+const RESEARCH_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+// Fetch research findings from API
+async function fetchResearchFindings() {
+    // Return cached data if still fresh
+    if (researchFindingsCache && researchFindingsCacheTime && 
+        (Date.now() - researchFindingsCacheTime < RESEARCH_CACHE_TTL)) {
+        return researchFindingsCache
+    }
+    
+    try {
+        const response = await axios.get(`${RESEARCH_API_BASE}/api/research/findings`)
+        const findings = response.data.findings || []
+        
+        // Create lookup map by ticker for easy access
+        const findingsMap = {}
+        findings.forEach(finding => {
+            findingsMap[finding.symbol] = finding
+        })
+        
+        researchFindingsCache = findingsMap
+        researchFindingsCacheTime = Date.now()
+        
+        return findingsMap
+    } catch (error) {
+        console.error('Error fetching research findings:', error)
+        return {}
+    }
+}
 
 // Auto-trigger dividend fetch on Monday mornings
 async function checkAndTriggerWeeklyDividendFetch() {
@@ -1390,11 +1427,33 @@ async function loadCompanies() {
         const response = await api.get('/api/companies')
         let companies = response.data.companies || response.data
         
+        // Fetch research findings and merge with company data
+        const researchFindings = await fetchResearchFindings()
+        
+        // Merge research data into companies
+        companies = companies.map(company => {
+            const research = researchFindings[company.ticker]
+            if (research) {
+                return {
+                    ...company,
+                    // Override with research data
+                    research_score: research.scoresheet_pct,
+                    anti_fragile_score: research.anti_fragile_total,
+                    buy_price: research.blended_buy_price,
+                    sticker_price: research.blended_sticker,
+                    last_researched: research.last_researched_date,
+                    // "Wonderful" is now driven by research score >= 80
+                    is_wonderful: research.scoresheet_pct >= 80
+                }
+            }
+            return company
+        })
+        
         const table = document.getElementById('companies-table')
         table.innerHTML = ''
         
         if (!companies || companies.length === 0) {
-            table.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">No companies found. Click "Add Company" to get started.</td></tr>'
+            table.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-gray-500">No companies found. Click "Add Company" to get started.</td></tr>'
             return
         }
         
@@ -1419,6 +1478,18 @@ async function loadCompanies() {
                     aVal = a.anti_fragile_score || 0
                     bVal = b.anti_fragile_score || 0
                     break
+                case 'buy_price':
+                    aVal = a.buy_price || 0
+                    bVal = b.buy_price || 0
+                    break
+                case 'sticker_price':
+                    aVal = a.sticker_price || 0
+                    bVal = b.sticker_price || 0
+                    break
+                case 'last_researched':
+                    aVal = a.last_researched || ''
+                    bVal = b.last_researched || ''
+                    break
                 default:
                     return 0
             }
@@ -1435,6 +1506,33 @@ async function loadCompanies() {
             // Check if company data is still loading (missing key fields)
             const isLoading = !company.company_name || company.company_name === company.ticker
             
+            // Format prices
+            const buyPriceDisplay = company.buy_price 
+                ? `$${company.buy_price.toFixed(2)}` 
+                : '-'
+            const stickerPriceDisplay = company.sticker_price 
+                ? `$${company.sticker_price.toFixed(2)}` 
+                : '-'
+            
+            // Format date
+            const lastResearchedDisplay = company.last_researched
+                ? new Date(company.last_researched).toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'short', 
+                    day: 'numeric' 
+                })
+                : '-'
+            
+            // Format research score
+            const researchScoreDisplay = company.research_score
+                ? `${company.research_score.toFixed(1)}%`
+                : '-'
+            
+            // Format anti-fragile score (out of 32)
+            const antiFragileDisplay = company.anti_fragile_score !== null && company.anti_fragile_score !== undefined
+                ? `${company.anti_fragile_score}/32`
+                : '-'
+            
             table.innerHTML += `
                 <tr class="border-b border-gray-200 hover:bg-gray-50 ${isLoading ? 'animate-pulse' : ''}">
                     <td class="px-4 py-3 font-semibold">
@@ -1450,8 +1548,11 @@ async function loadCompanies() {
                     <td class="px-4 py-3 text-center">
                         ${company.is_wonderful ? '<i class="fas fa-star text-brand-gold"></i>' : '-'}
                     </td>
-                    <td class="px-4 py-3 text-center">${company.research_score || '-'}</td>
-                    <td class="px-4 py-3 text-center">${company.anti_fragile_score || '-'}</td>
+                    <td class="px-4 py-3 text-center">${researchScoreDisplay}</td>
+                    <td class="px-4 py-3 text-center">${antiFragileDisplay}</td>
+                    <td class="px-4 py-3 text-right">${buyPriceDisplay}</td>
+                    <td class="px-4 py-3 text-right">${stickerPriceDisplay}</td>
+                    <td class="px-4 py-3 text-center text-sm text-gray-600">${lastResearchedDisplay}</td>
                     <td class="px-4 py-3 text-center">
                         <button onclick="editCompany(${company.id})" class="text-brand-teal hover:text-brand-gold mr-2">
                             <i class="fas fa-edit"></i>
@@ -1775,28 +1876,41 @@ async function showCompanyView(companyId) {
                     </div>
                 </div>
                 
-                <div class="border-t pt-4 flex gap-2 flex-wrap">
-                    <button onclick="fetchEarningsDate(${companyId})" class="btn-primary flex items-center gap-2">
-                        <i class="fas fa-calendar-alt"></i>
-                        <span class="btn-text">Fetch Earnings Date</span>
-                        <span class="btn-loading hidden">Fetching...</span>
-                    </button>
+                <div class="border-t pt-4 space-y-3">
                     ${hasResearchData ? `
-                        <button onclick="openResearchModal('${company.ticker}')" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded flex items-center gap-2">
+                        <button onclick="openResearchModal('${company.ticker}'); this.closest('.fixed').remove()" class="w-full bg-teal-600 hover:bg-teal-700 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 font-semibold text-lg shadow-md">
                             <i class="fas fa-chart-line"></i>
-                            View Financials
+                            View Research
                         </button>
+                        <div class="flex gap-2">
+                            <button onclick="fetchEarningsDate(${companyId})" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm flex items-center justify-center gap-2">
+                                <i class="fas fa-calendar-alt"></i>
+                                <span class="btn-text">Fetch Earnings Date</span>
+                                <span class="btn-loading hidden">Fetching...</span>
+                            </button>
+                            <button onclick="editCompany(${companyId}); this.closest('.fixed').remove()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm flex items-center justify-center gap-2">
+                                <i class="fas fa-edit"></i>
+                                Edit Company
+                            </button>
+                        </div>
                     ` : `
-                        <button onclick="fetchFinancials('${company.ticker}')" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded flex items-center gap-2" id="fetch-financials-btn">
+                        <button onclick="fetchFinancials('${company.ticker}')" class="w-full bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 font-semibold text-lg shadow-md" id="fetch-financials-btn">
                             <i class="fas fa-download"></i>
                             <span class="btn-text">Fetch Financials</span>
                             <span class="btn-loading hidden"><i class="fas fa-spinner fa-spin"></i> Fetching...</span>
                         </button>
+                        <div class="flex gap-2">
+                            <button onclick="fetchEarningsDate(${companyId})" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm flex items-center justify-center gap-2">
+                                <i class="fas fa-calendar-alt"></i>
+                                <span class="btn-text">Fetch Earnings Date</span>
+                                <span class="btn-loading hidden">Fetching...</span>
+                            </button>
+                            <button onclick="editCompany(${companyId}); this.closest('.fixed').remove()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm flex items-center justify-center gap-2">
+                                <i class="fas fa-edit"></i>
+                                Edit Company
+                            </button>
+                        </div>
                     `}
-                    <button onclick="editCompany(${companyId}); this.closest('.fixed').remove()" class="btn-secondary flex items-center gap-2">
-                        <i class="fas fa-edit"></i>
-                        Edit Company
-                    </button>
                 </div>
             </div>
         `
@@ -13032,36 +13146,27 @@ async function openResearchModal(symbol) {
     `
     
     try {
-        // Fetch company data from research API
-        const response = await axios.get(`${RESEARCH_API}/api/research/company/${symbol}`, {
-            validateStatus: function (status) {
-                // Accept 404 as valid status (company doesn't exist yet)
-                return (status >= 200 && status < 300) || status === 404
-            }
-        })
-        
-        // Check if it was a 404 before trying to use the data
-        if (response.status === 404) {
-            throw { response: { status: 404 }, message: 'Company not found' }
-        }
+        // Fetch company research data from API
+        const response = await axios.get(`${RESEARCH_API_BASE}/api/research/${symbol}`)
         
         currentResearchData = response.data
         
         // Update title
+        const companyName = response.data.company?.name || symbol
         modalTitle.innerHTML = `
-            <i class="fas fa-chart-bar mr-2"></i>${symbol} - ${response.data.company.name || 'N/A'}
+            <i class="fas fa-chart-bar mr-2"></i>${symbol} - ${companyName}
         `
         
         // Hide loading
         loadingEl.classList.add('hidden')
         
         // Render all tabs
-        renderResearchIncomeTab(currentResearchData)
-        renderResearchBalanceTab(currentResearchData)
-        renderResearchCashFlowTab(currentResearchData)
+        renderOverviewTab(currentResearchData)
+        renderAnalysisTab(currentResearchData)
+        renderNotesTab(currentResearchData)
         
-        // Show income tab by default
-        switchResearchTab('income')
+        // Show overview tab by default
+        switchResearchTab('overview')
         
     } catch (error) {
         console.error('Error loading research data:', error)
@@ -13111,189 +13216,632 @@ function switchResearchTab(tabName) {
     document.getElementById(`research-${tabName}-tab`).classList.remove('hidden')
 }
 
-// Render Income Statement Tab
-function renderResearchIncomeTab(data) {
-    const container = document.getElementById('research-income-tab')
-    const statements = data.financials.income_statements || []
+// ============================================================================
+// Overview Tab - Quick-Five, Valuation, Scoresheet, Anti-Fragile
+// ============================================================================
+function renderOverviewTab(data) {
+    const container = document.getElementById('research-overview-tab')
+    const { company, quick_five, valuation, scoresheet, anti_fragile } = data
     
-    if (statements.length === 0) {
-        container.innerHTML = '<div class="text-center py-12 text-gray-600">No income statement data available</div>'
-        return
-    }
+    let html = '<div class="space-y-6">'
     
-    const years = statements.map(s => s.fiscal_year).sort((a, b) => b - a).slice(0, 10)
-    
-    container.innerHTML = `
-        <div class="overflow-x-auto">
-            <table class="min-w-full border border-gray-200">
-                <thead>
-                    <tr class="bg-teal-700 text-white">
-                        <th class="px-4 py-2 text-left sticky left-0 bg-teal-700">Metric</th>
-                        ${years.map(year => `<th class="px-4 py-2 text-right">${year}</th>`).join('')}
-                    </tr>
-                </thead>
-                <tbody class="bg-white">
-                    ${renderResearchMetricRow('Revenue', statements, years, 'revenue', true)}
-                    ${renderResearchMetricRow('Cost of Revenue', statements, years, 'cost_of_revenue', true)}
-                    ${renderResearchMetricRow('Gross Profit', statements, years, 'gross_profit', true)}
-                    ${renderResearchMetricRow('Operating Income', statements, years, 'operating_income', true)}
-                    ${renderResearchMetricRow('EBITDA', statements, years, 'ebitda', true)}
-                    ${renderResearchMetricRow('Net Income', statements, years, 'net_income', true)}
-                    ${renderResearchMetricRow('EPS (Basic)', statements, years, 'eps', false)}
-                    ${renderResearchMetricRow('EPS (Diluted)', statements, years, 'eps_diluted', false)}
-                    ${renderResearchMetricRow('Shares Outstanding', statements, years, 'weighted_average_shares', false, true)}
-                </tbody>
-            </table>
-        </div>
-    `
-}
-
-// Render Balance Sheet Tab
-function renderResearchBalanceTab(data) {
-    const container = document.getElementById('research-balance-tab')
-    const statements = data.financials.balance_sheets || []
-    
-    if (statements.length === 0) {
-        container.innerHTML = '<div class="text-center py-12 text-gray-600">No balance sheet data available</div>'
-        return
-    }
-    
-    const years = statements.map(s => s.fiscal_year).sort((a, b) => b - a).slice(0, 10)
-    
-    container.innerHTML = `
-        <div class="overflow-x-auto">
-            <table class="min-w-full border border-gray-200">
-                <thead>
-                    <tr class="bg-teal-700 text-white">
-                        <th class="px-4 py-2 text-left sticky left-0 bg-teal-700">Metric</th>
-                        ${years.map(year => `<th class="px-4 py-2 text-right">${year}</th>`).join('')}
-                    </tr>
-                </thead>
-                <tbody class="bg-white">
-                    <tr class="bg-teal-100"><th colspan="${years.length + 1}" class="px-4 py-2 text-center font-bold">ASSETS</th></tr>
-                    ${renderResearchMetricRow('Total Assets', statements, years, 'total_assets', true)}
-                    ${renderResearchMetricRow('Current Assets', statements, years, 'current_assets', true)}
-                    ${renderResearchMetricRow('Cash & Equivalents', statements, years, 'cash_and_equivalents', true)}
-                    ${renderResearchMetricRow('Accounts Receivable', statements, years, 'accounts_receivable', true)}
-                    ${renderResearchMetricRow('Inventory', statements, years, 'inventory', true)}
-                    ${renderResearchMetricRow('Property, Plant & Equipment', statements, years, 'property_plant_equipment', true)}
-                    <tr class="bg-orange-100"><th colspan="${years.length + 1}" class="px-4 py-2 text-center font-bold">LIABILITIES</th></tr>
-                    ${renderResearchMetricRow('Total Liabilities', statements, years, 'total_liabilities', true)}
-                    ${renderResearchMetricRow('Current Liabilities', statements, years, 'current_liabilities', true)}
-                    ${renderResearchMetricRow('Accounts Payable', statements, years, 'accounts_payable', true)}
-                    ${renderResearchMetricRow('Short-term Debt', statements, years, 'short_term_debt', true)}
-                    ${renderResearchMetricRow('Long-term Debt', statements, years, 'long_term_debt', true)}
-                    ${renderResearchMetricRow('Total Debt', statements, years, 'total_debt', true)}
-                    <tr class="bg-yellow-100"><th colspan="${years.length + 1}" class="px-4 py-2 text-center font-bold">EQUITY</th></tr>
-                    ${renderResearchMetricRow('Total Stockholders Equity', statements, years, 'total_stockholders_equity', true)}
-                    ${renderResearchMetricRow('Retained Earnings', statements, years, 'retained_earnings', true)}
-                    ${renderResearchMetricRow('Shares Outstanding', statements, years, 'shares_outstanding', false, true)}
-                </tbody>
-            </table>
-        </div>
-    `
-}
-
-// Render Cash Flow Tab
-function renderResearchCashFlowTab(data) {
-    const container = document.getElementById('research-cashflow-tab')
-    const statements = data.financials.cash_flow_statements || []
-    
-    if (statements.length === 0) {
-        container.innerHTML = '<div class="text-center py-12 text-gray-600">No cash flow data available</div>'
-        return
-    }
-    
-    const years = statements.map(s => s.fiscal_year).sort((a, b) => b - a).slice(0, 10)
-    
-    container.innerHTML = `
-        <div class="overflow-x-auto">
-            <table class="min-w-full border border-gray-200">
-                <thead>
-                    <tr class="bg-teal-700 text-white">
-                        <th class="px-4 py-2 text-left sticky left-0 bg-teal-700">Metric</th>
-                        ${years.map(year => `<th class="px-4 py-2 text-right">${year}</th>`).join('')}
-                    </tr>
-                </thead>
-                <tbody class="bg-white">
-                    ${renderResearchMetricRow('Operating Cash Flow', statements, years, 'operating_cash_flow', true)}
-                    ${renderResearchMetricRow('Capital Expenditure', statements, years, 'capital_expenditure', true)}
-                    ${renderResearchMetricRow('Free Cash Flow', statements, years, 'free_cash_flow', true)}
-                    ${renderResearchMetricRow('Investing Cash Flow', statements, years, 'investing_cash_flow', true)}
-                    ${renderResearchMetricRow('Financing Cash Flow', statements, years, 'financing_cash_flow', true)}
-                    ${renderResearchMetricRow('Dividend Payments', statements, years, 'dividend_payments', true)}
-                    ${renderResearchMetricRow('Stock Repurchases', statements, years, 'stock_repurchases', true)}
-                </tbody>
-            </table>
-        </div>
-    `
-}
-
-// Helper: Render metric row
-function renderResearchMetricRow(label, statements, years, field, isCurrency, isShares = false) {
-    const values = years.map(year => {
-        const statement = statements.find(s => s.fiscal_year === year)
-        const value = statement ? statement[field] : null
+    // Quick-Five Section
+    if (quick_five) {
+        const statusBadge = quick_five.status === 'disqualified'
+            ? '<span class="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm font-semibold">Disqualified</span>'
+            : '<span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-semibold">Active</span>'
         
-        if (value === null || value === undefined) {
-            return '<td class="px-4 py-2 text-right border-t">-</td>'
-        }
+        html += `
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center gap-3">
+                    <i class="fas fa-check-circle text-teal-600"></i>
+                    Quick-Five Assessment
+                    ${statusBadge}
+                </h3>
+                
+                ${quick_five.disqualification_reason ? `
+                    <div class="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p class="text-sm font-semibold text-amber-900 mb-1">Disqualification Reason:</p>
+                        <p class="text-sm text-amber-800">${quick_five.disqualification_reason}</p>
+                    </div>
+                ` : ''}
+                
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                    <div class="bg-gray-50 p-3 rounded">
+                        <div class="text-xs text-gray-600 mb-1">Debt/FCF Years</div>
+                        <div class="text-lg font-semibold">${quick_five.debt_fcf_years !== null ? quick_five.debt_fcf_years.toFixed(2) : 'N/A'}</div>
+                        <div class="text-xs ${quick_five.debt_fcf_status === 'pass' ? 'text-green-600' : 'text-red-600'}">${quick_five.debt_fcf_status || 'N/A'}</div>
+                    </div>
+                    <div class="bg-gray-50 p-3 rounded">
+                        <div class="text-xs text-gray-600 mb-1">ROIC Avg</div>
+                        <div class="text-lg font-semibold">${quick_five.roic_avg !== null ? (quick_five.roic_avg * 100).toFixed(1) + '%' : 'N/A'}</div>
+                        <div class="text-xs text-gray-500">Slope: ${quick_five.roic_slope !== null ? quick_five.roic_slope.toFixed(4) : 'N/A'}</div>
+                    </div>
+                    <div class="bg-gray-50 p-3 rounded">
+                        <div class="text-xs text-gray-600 mb-1">FCF % of Earnings</div>
+                        <div class="text-lg font-semibold">${quick_five.fcf_pct_earnings !== null ? (quick_five.fcf_pct_earnings * 100).toFixed(1) + '%' : 'N/A'}</div>
+                    </div>
+                </div>
+                
+                ${quick_five.understand_easily_notes ? `
+                    <div class="mb-3">
+                        <p class="text-sm font-semibold text-gray-700 mb-1">Understand Easily:</p>
+                        <p class="text-sm text-gray-600">${quick_five.understand_easily_notes}</p>
+                    </div>
+                ` : ''}
+                
+                ${quick_five.understand_destroyers_notes ? `
+                    <div>
+                        <p class="text-sm font-semibold text-gray-700 mb-1">Potential Destroyers:</p>
+                        <p class="text-sm text-gray-600">${quick_five.understand_destroyers_notes}</p>
+                    </div>
+                ` : ''}
+            </div>
+        `
+    }
+    
+    // Valuation Section
+    if (valuation) {
+        html += `
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-dollar-sign text-teal-600 mr-2"></i>
+                    Valuation
+                </h3>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div class="bg-teal-50 p-4 rounded-lg">
+                        <div class="text-xs text-gray-600 mb-1">Buy Price</div>
+                        <div class="text-2xl font-bold text-teal-700">$${valuation.blended_buy_price.toFixed(2)}</div>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <div class="text-xs text-gray-600 mb-1">Sticker Price</div>
+                        <div class="text-2xl font-bold text-blue-700">$${valuation.blended_sticker.toFixed(2)}</div>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <div class="text-xs text-gray-600 mb-1">ROP Wheel Ceiling</div>
+                        <div class="text-2xl font-bold text-purple-700">$${valuation.rop_wheel_ceiling.toFixed(2)}</div>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <div class="text-xs text-gray-600 mb-1">Growth Class</div>
+                        <div class="text-lg font-semibold text-gray-700">${valuation.growth_classification}</div>
+                        <div class="text-xs text-gray-500">FGR: ${(valuation.fgr_used * 100).toFixed(1)}%</div>
+                    </div>
+                </div>
+                
+                ${valuation.notes ? `
+                    <div class="text-xs text-gray-600 bg-gray-50 p-3 rounded">
+                        <p class="font-semibold mb-1">Notes:</p>
+                        <p>${valuation.notes.substring(0, 300)}${valuation.notes.length > 300 ? '...' : ''}</p>
+                    </div>
+                ` : ''}
+            </div>
+        `
+    }
+    
+    // Scoresheet Section
+    if (scoresheet) {
+        html += `
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-star text-teal-600 mr-2"></i>
+                    Research Score
+                </h3>
+                
+                <div class="flex items-center gap-6 mb-4">
+                    <div class="text-center">
+                        <div class="text-5xl font-bold text-teal-600">${scoresheet.total_pct.toFixed(1)}%</div>
+                        <div class="text-sm text-gray-600 mt-1">Overall Score</div>
+                    </div>
+                    <div class="flex-1">
+                        <div class="text-lg font-semibold text-gray-700 mb-2">Grade: ${scoresheet.grade}</div>
+                        <div class="w-full bg-gray-200 rounded-full h-4">
+                            <div class="bg-teal-600 h-4 rounded-full" style="width: ${scoresheet.total_pct}%"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                ${scoresheet.understanding_score || scoresheet.moat_score || scoresheet.management_score ? `
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        ${scoresheet.understanding_score ? `
+                            <div class="bg-gray-50 p-3 rounded">
+                                <div class="text-xs text-gray-600">Understanding</div>
+                                <div class="text-lg font-semibold">${scoresheet.understanding_score.toFixed(2)}</div>
+                            </div>
+                        ` : ''}
+                        ${scoresheet.moat_score ? `
+                            <div class="bg-gray-50 p-3 rounded">
+                                <div class="text-xs text-gray-600">Moat</div>
+                                <div class="text-lg font-semibold">${scoresheet.moat_score.toFixed(2)}</div>
+                            </div>
+                        ` : ''}
+                        ${scoresheet.management_score ? `
+                            <div class="bg-gray-50 p-3 rounded">
+                                <div class="text-xs text-gray-600">Management</div>
+                                <div class="text-lg font-semibold">${scoresheet.management_score.toFixed(2)}</div>
+                            </div>
+                        ` : ''}
+                        ${scoresheet.options_liquidity_score ? `
+                            <div class="bg-gray-50 p-3 rounded">
+                                <div class="text-xs text-gray-600">Options Liquidity</div>
+                                <div class="text-lg font-semibold">${scoresheet.options_liquidity_score.toFixed(2)}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                ` : ''}
+            </div>
+        `
+    }
+    
+    // Anti-Fragile Section
+    if (anti_fragile) {
+        html += `
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-shield-alt text-teal-600 mr-2"></i>
+                    Anti-Fragile Score
+                </h3>
+                
+                <div class="flex items-center gap-6 mb-4">
+                    <div class="text-center">
+                        <div class="text-5xl font-bold text-teal-600">${anti_fragile.total_score}</div>
+                        <div class="text-sm text-gray-600 mt-1">out of 32</div>
+                    </div>
+                    <div class="flex-1">
+                        <div class="w-full bg-gray-200 rounded-full h-4">
+                            <div class="bg-teal-600 h-4 rounded-full" style="width: ${(anti_fragile.total_score / 32 * 100).toFixed(0)}%"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    ${anti_fragile.roic_score !== null ? `
+                        <div class="bg-gray-50 p-2 rounded">
+                            <div class="text-xs text-gray-600">ROIC</div>
+                            <div class="font-semibold">${anti_fragile.roic_score}/4</div>
+                        </div>
+                    ` : ''}
+                    ${anti_fragile.fgr_score !== null ? `
+                        <div class="bg-gray-50 p-2 rounded">
+                            <div class="text-xs text-gray-600">FGR</div>
+                            <div class="font-semibold">${anti_fragile.fgr_score}/4</div>
+                        </div>
+                    ` : ''}
+                    ${anti_fragile.net_debt_fcf_score !== null ? `
+                        <div class="bg-gray-50 p-2 rounded">
+                            <div class="text-xs text-gray-600">Debt/FCF</div>
+                            <div class="font-semibold">${anti_fragile.net_debt_fcf_score}/4</div>
+                        </div>
+                    ` : ''}
+                    ${anti_fragile.inflation_resilience_score !== null ? `
+                        <div class="bg-gray-50 p-2 rounded">
+                            <div class="text-xs text-gray-600">Inflation</div>
+                            <div class="font-semibold">${anti_fragile.inflation_resilience_score}/4</div>
+                        </div>
+                    ` : ''}
+                    ${anti_fragile.recession_resilience_score !== null ? `
+                        <div class="bg-gray-50 p-2 rounded">
+                            <div class="text-xs text-gray-600">Recession</div>
+                            <div class="font-semibold">${anti_fragile.recession_resilience_score}/4</div>
+                        </div>
+                    ` : ''}
+                    ${anti_fragile.purchase_frequency_score !== null ? `
+                        <div class="bg-gray-50 p-2 rounded">
+                            <div class="text-xs text-gray-600">Purchase Freq</div>
+                            <div class="font-semibold">${anti_fragile.purchase_frequency_score}/4</div>
+                        </div>
+                    ` : ''}
+                    ${anti_fragile.discretionary_essential_score !== null ? `
+                        <div class="bg-gray-50 p-2 rounded">
+                            <div class="text-xs text-gray-600">Essential</div>
+                            <div class="font-semibold">${anti_fragile.discretionary_essential_score}/4</div>
+                        </div>
+                    ` : ''}
+                    ${anti_fragile.geopolitical_risk_score !== null ? `
+                        <div class="bg-gray-50 p-2 rounded">
+                            <div class="text-xs text-gray-600">Geopolitical</div>
+                            <div class="font-semibold">${anti_fragile.geopolitical_risk_score}/4</div>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `
+    }
+    
+    // If no sections available
+    if (!quick_five && !valuation && !scoresheet && !anti_fragile) {
+        html += `
+            <div class="text-center py-12 text-gray-600">
+                <i class="fas fa-info-circle text-4xl mb-4"></i>
+                <p>No research data available for this company yet.</p>
+            </div>
+        `
+    }
+    
+    html += '</div>'
+    container.innerHTML = html
+}
+
+// ============================================================================
+// Analysis Tab - Inversions, Events, Guru Holdings, Peer Comparisons  
+// ============================================================================
+function renderAnalysisTab(data) {
+    const container = document.getElementById('research-analysis-tab')
+    const { inversions, events, guru_holdings, peer_comparisons, quick_five } = data
+    
+    let html = '<div class="space-y-6">'
+    
+    // Check if disqualified at Quick-Five stage
+    if (quick_five && quick_five.status === 'disqualified') {
+        html += `
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-8">
+                <div class="text-center">
+                    <i class="fas fa-ban text-amber-600 text-4xl mb-4"></i>
+                    <h3 class="text-xl font-bold text-amber-800 mb-2">Further Research Unavailable</h3>
+                    <p class="text-amber-700">This company was disqualified during the Quick-Five screening phase. In-depth analysis is not performed for companies that fail the initial screening gates.</p>
+                </div>
+            </div>
+        `
+        html += '</div>'
+        container.innerHTML = html
+        return
+    }
+    
+    // Inversions Section
+    if (inversions && inversions.length > 0) {
+        html += `
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-balance-scale text-teal-600 mr-2"></i>
+                    Inversions (${inversions.length})
+                </h3>
+                <div class="space-y-4">
+        `
         
-        if (isShares) {
-            return `<td class="px-4 py-2 text-right border-t">${formatResearchShares(value)}</td>`
-        } else if (isCurrency) {
-            return `<td class="px-4 py-2 text-right border-t">${formatResearchCurrency(value)}</td>`
-        } else {
-            return `<td class="px-4 py-2 text-right border-t">${formatResearchNumber(value, 2)}</td>`
-        }
+        inversions.forEach((inv, index) => {
+            html += `
+                <div class="border-l-4 border-teal-600 pl-4 py-2">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="px-2 py-1 bg-teal-100 text-teal-800 text-xs font-semibold rounded">${inv.category}</span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <p class="text-sm font-semibold text-green-700 mb-1">
+                            <i class="fas fa-arrow-up mr-1"></i> Reason to Own:
+                        </p>
+                        <p class="text-sm text-gray-700">${inv.reason_to_own}</p>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <p class="text-sm font-semibold text-red-700 mb-1">
+                            <i class="fas fa-arrow-down mr-1"></i> Bear Case:
+                        </p>
+                        <p class="text-sm text-gray-700">${inv.bear_case}</p>
+                    </div>
+                    
+                    <div class="bg-blue-50 p-3 rounded">
+                        <p class="text-sm font-semibold text-blue-900 mb-1">
+                            <i class="fas fa-shield-alt mr-1"></i> Rebuttal:
+                        </p>
+                        <p class="text-sm text-blue-800">${inv.rebuttal}</p>
+                    </div>
+                </div>
+            `
+        })
+        
+        html += `
+                </div>
+            </div>
+        `
+    }
+    
+    // Events Section
+    if (events && events.length > 0) {
+        html += `
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-calendar-alt text-teal-600 mr-2"></i>
+                    Significant Events (${events.length})
+                </h3>
+                <div class="space-y-4">
+        `
+        
+        events.forEach(event => {
+            const statusBadge = event.status === 'Live' 
+                ? '<span class="px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">Live</span>'
+                : '<span class="px-2 py-1 bg-gray-100 text-gray-800 text-xs font-semibold rounded">Resolved</span>'
+            
+            const priceImpact = event.price_impact_pct !== null
+                ? `<span class="text-sm ${event.price_impact_pct < 0 ? 'text-red-600' : 'text-green-600'} font-semibold">
+                     ${event.price_impact_pct > 0 ? '+' : ''}${event.price_impact_pct.toFixed(1)}%
+                   </span>`
+                : ''
+            
+            html += `
+                <div class="border border-gray-200 rounded p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        ${statusBadge}
+                        ${priceImpact}
+                    </div>
+                    
+                    <p class="text-sm text-gray-700 mb-3">${event.description}</p>
+                    
+                    ${event.management_acknowledged ? `
+                        <div class="bg-teal-50 p-3 rounded mb-2">
+                            <p class="text-xs font-semibold text-teal-900 mb-1">Management Response:</p>
+                            <p class="text-xs text-teal-800">${event.management_response || 'N/A'}</p>
+                        </div>
+                    ` : ''}
+                    
+                    ${event.agent_recoverable_assessment ? `
+                        <div class="bg-gray-50 p-3 rounded">
+                            <p class="text-xs font-semibold text-gray-700 mb-1">Recovery Assessment:</p>
+                            <p class="text-xs text-gray-600">${event.agent_recoverable_assessment}</p>
+                        </div>
+                    ` : ''}
+                </div>
+            `
+        })
+        
+        html += `
+                </div>
+            </div>
+        `
+    }
+    
+    // Guru Holdings Section
+    if (guru_holdings && guru_holdings.length > 0) {
+        html += `
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-users text-teal-600 mr-2"></i>
+                    Notable Investor Holdings (${guru_holdings.length})
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="px-3 py-2 text-left">Investor</th>
+                                <th class="px-3 py-2 text-right">Shares</th>
+                                <th class="px-3 py-2 text-right">Value</th>
+                                <th class="px-3 py-2 text-right">% Portfolio</th>
+                                <th class="px-3 py-2 text-center">Activity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `
+        
+        guru_holdings.slice(0, 10).forEach(holding => {
+            const activityClass = holding.activity === 'ADDED' ? 'text-green-600' 
+                                : holding.activity === 'REDUCED' ? 'text-red-600'
+                                : 'text-blue-600'
+            
+            html += `
+                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                    <td class="px-3 py-2 font-medium">${holding.guru_name}</td>
+                    <td class="px-3 py-2 text-right">${holding.shares.toLocaleString()}</td>
+                    <td class="px-3 py-2 text-right">$${(holding.value / 1e6).toFixed(1)}M</td>
+                    <td class="px-3 py-2 text-right">${holding.pct_of_portfolio ? holding.pct_of_portfolio.toFixed(2) + '%' : '-'}</td>
+                    <td class="px-3 py-2 text-center">
+                        <span class="${activityClass} font-semibold text-xs">${holding.activity}</span>
+                    </td>
+                </tr>
+            `
+        })
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+                ${guru_holdings.length > 10 ? `<p class="text-xs text-gray-500 mt-2 text-center">Showing 10 of ${guru_holdings.length} holdings</p>` : ''}
+            </div>
+        `
+    }
+    
+    // Peer Comparisons Section
+    if (peer_comparisons && peer_comparisons.length > 0) {
+        html += `
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <h3 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-chart-bar text-teal-600 mr-2"></i>
+                    Peer Comparisons (${peer_comparisons.length})
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="px-3 py-2 text-left">Peer</th>
+                                <th class="px-3 py-2 text-right">Revenue</th>
+                                <th class="px-3 py-2 text-right">Op. Income</th>
+                                <th class="px-3 py-2 text-right">ROIC (5yr)</th>
+                                <th class="px-3 py-2 text-right">Debt/FCF</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `
+        
+        peer_comparisons.forEach(peer => {
+            html += `
+                <tr class="border-b border-gray-200 hover:bg-gray-50">
+                    <td class="px-3 py-2 font-medium">${peer.peer_ticker || 'N/A'}</td>
+                    <td class="px-3 py-2 text-right">${peer.revenue ? '$' + (peer.revenue / 1e9).toFixed(1) + 'B' : '-'}</td>
+                    <td class="px-3 py-2 text-right">${peer.operating_income ? '$' + (peer.operating_income / 1e9).toFixed(1) + 'B' : '-'}</td>
+                    <td class="px-3 py-2 text-right">${(peer.avg_roic_5yr !== null && peer.avg_roic_5yr !== undefined) ? (peer.avg_roic_5yr * 100).toFixed(1) + '%' : '-'}</td>
+                    <td class="px-3 py-2 text-right">${(peer.net_debt_to_fcf_3yr !== null && peer.net_debt_to_fcf_3yr !== undefined) ? peer.net_debt_to_fcf_3yr.toFixed(1) + 'y' : '-'}</td>
+                </tr>
+            `
+        })
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `
+    }
+    
+    // If no sections available
+    if ((!inversions || inversions.length === 0) && 
+        (!events || events.length === 0) && 
+        (!guru_holdings || guru_holdings.length === 0) && 
+        (!peer_comparisons || peer_comparisons.length === 0)) {
+        html += `
+            <div class="text-center py-12 text-gray-600">
+                <i class="fas fa-info-circle text-4xl mb-4"></i>
+                <p>No analysis data available for this company yet.</p>
+            </div>
+        `
+    }
+    
+    html += '</div>'
+    container.innerHTML = html
+}
+
+// ============================================================================
+// Research Notes Tab - Notes list with lazy-loading detail
+// ============================================================================
+function renderNotesTab(data) {
+    const container = document.getElementById('research-notes-tab')
+    const { research_notes, quick_five } = data
+    
+    // Check if disqualified at Quick-Five stage
+    if (quick_five && quick_five.status === 'disqualified') {
+        container.innerHTML = `
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-8">
+                <div class="text-center">
+                    <i class="fas fa-ban text-amber-600 text-4xl mb-4"></i>
+                    <h3 class="text-xl font-bold text-amber-800 mb-2">Further Research Unavailable</h3>
+                    <p class="text-amber-700">This company was disqualified during the Quick-Five screening phase. Detailed research notes are not created for companies that fail the initial screening gates.</p>
+                </div>
+            </div>
+        `
+        return
+    }
+    
+    if (!research_notes || research_notes.length === 0) {
+        container.innerHTML = `
+            <div class="text-center py-12 text-gray-600">
+                <i class="fas fa-file-alt text-4xl mb-4"></i>
+                <p>No research notes available for this company yet.</p>
+            </div>
+        `
+        return
+    }
+    
+    let html = '<div class="space-y-4">'
+    
+    research_notes.forEach((note, index) => {
+        const noteId = `note-${note.id}`
+        const docTypeLabel = note.doc_type || 'Research Note'
+        const filingDate = note.filing_date ? new Date(note.filing_date).toLocaleDateString() : 'N/A'
+        
+        html += `
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+                <!-- Note Header - Always Visible -->
+                <div class="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition" 
+                     onclick="toggleNoteDetail('${noteId}', '${currentResearchData.company.symbol}', ${note.id})">
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="px-3 py-1 bg-teal-100 text-teal-800 rounded text-sm font-semibold">
+                                    ${docTypeLabel}
+                                </span>
+                                <span class="text-sm text-gray-600">
+                                    <i class="fas fa-calendar-alt mr-1"></i>
+                                    ${filingDate}
+                                </span>
+                            </div>
+                            <p class="text-sm text-gray-700 line-clamp-2">
+                                ${note.abstract || 'Click to view full research note...'}
+                            </p>
+                        </div>
+                        <i class="fas fa-chevron-down text-gray-400 ml-4 transition-transform note-chevron" id="${noteId}-chevron"></i>
+                    </div>
+                </div>
+                
+                <!-- Note Detail - Lazy Loaded -->
+                <div id="${noteId}" class="hidden border-t border-gray-200">
+                    <div class="p-6 bg-white">
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                            <p>Loading note content...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `
     })
     
-    return `
-        <tr class="hover:bg-gray-50">
-            <th class="px-4 py-2 text-left font-semibold border-t sticky left-0 bg-gray-50">${label}</th>
-            ${values.join('')}
-        </tr>
-    `
+    html += '</div>'
+    container.innerHTML = html
 }
 
-// Helper: Format currency
-function formatResearchCurrency(value) {
-    if (!value && value !== 0) return '-'
-    const num = parseFloat(value)
-    if (isNaN(num)) return '-'
+// Toggle note detail expansion and lazy-load content
+async function toggleNoteDetail(noteId, ticker, noteIdNum) {
+    const detailContainer = document.getElementById(noteId)
+    const chevron = document.getElementById(`${noteId}-chevron`)
     
-    const billions = num / 1_000_000_000
-    if (Math.abs(billions) >= 1) {
-        return `$${billions.toFixed(2)}B`
+    // If already open, close it
+    if (!detailContainer.classList.contains('hidden')) {
+        detailContainer.classList.add('hidden')
+        chevron.classList.remove('rotate-180')
+        return
     }
     
-    const millions = num / 1_000_000
-    return `$${millions.toFixed(2)}M`
-}
-
-// Helper: Format shares
-function formatResearchShares(value) {
-    if (!value && value !== 0) return '-'
-    const num = parseFloat(value)
-    if (isNaN(num)) return '-'
+    // Open the detail container
+    detailContainer.classList.remove('hidden')
+    chevron.classList.add('rotate-180')
     
-    const billions = num / 1_000_000_000
-    if (Math.abs(billions) >= 1) {
-        return `${billions.toFixed(2)}B`
+    // Check if content is already loaded
+    if (detailContainer.dataset.loaded === 'true') {
+        return
     }
     
-    const millions = num / 1_000_000
-    return `${millions.toFixed(2)}M`
+    // Lazy-load the full note content
+    try {
+        const response = await axios.get(`${RESEARCH_API_BASE}/api/research/${ticker}/notes/${noteIdNum}`)
+        const note = response.data.note
+        
+        if (!note || !note.content) {
+            detailContainer.innerHTML = `
+                <div class="p-6 bg-white">
+                    <div class="text-center py-8 text-gray-500">
+                        <i class="fas fa-exclamation-circle text-2xl mb-2"></i>
+                        <p>Note content not available</p>
+                    </div>
+                </div>
+            `
+            return
+        }
+        
+        // Render markdown content with DOMPurify sanitization
+        const rawHtml = marked.parse(note.content)
+        const cleanHtml = DOMPurify.sanitize(rawHtml)
+        
+        detailContainer.innerHTML = `
+            <div class="p-6 bg-white prose prose-sm max-w-none">
+                ${cleanHtml}
+            </div>
+        `
+        
+        // Mark as loaded
+        detailContainer.dataset.loaded = 'true'
+        
+    } catch (error) {
+        console.error('Error loading note detail:', error)
+        detailContainer.innerHTML = `
+            <div class="p-6 bg-white">
+                <div class="text-center py-8 text-red-500">
+                    <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                    <p>Failed to load note content</p>
+                </div>
+            </div>
+        `
+    }
 }
 
-// Helper: Format number
-function formatResearchNumber(value, decimals = 2) {
-    if (!value && value !== 0) return '-'
-    const num = parseFloat(value)
-    if (isNaN(num)) return '-'
-    return num.toFixed(decimals)
-}
-
+// Remove old rendering functions (Income, Balance, CashFlow)
+function renderResearchIncomeTab(data) {}
 console.log('[RESEARCH] Research modal functions loaded')
 
 // =============================================================================

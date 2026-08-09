@@ -35,6 +35,7 @@ app.use('/static/*', serveStatic({ root: './' }))
 
 app.route('/api/research', researchApp)
 
+
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
@@ -7598,6 +7599,8 @@ app.get('/', (c) => {
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
         <style>
             :root {
                 --teal: #004F59;
@@ -7660,6 +7663,126 @@ app.get('/', (c) => {
                 cursor: not-allowed;
             }
             .hidden { display: none; }
+            
+            /* Research Notes Tab Styles */
+            .note-chevron {
+                transition: transform 0.3s ease;
+            }
+            .rotate-180 {
+                transform: rotate(180deg);
+            }
+            .line-clamp-2 {
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+            }
+            
+            /* Prose styling for markdown content */
+            .prose {
+                color: #374151;
+                max-width: 65ch;
+            }
+            .prose h1 {
+                font-size: 1.875rem;
+                font-weight: 700;
+                margin-top: 0;
+                margin-bottom: 1rem;
+                color: #111827;
+            }
+            .prose h2 {
+                font-size: 1.5rem;
+                font-weight: 600;
+                margin-top: 2rem;
+                margin-bottom: 1rem;
+                color: #111827;
+            }
+            .prose h3 {
+                font-size: 1.25rem;
+                font-weight: 600;
+                margin-top: 1.5rem;
+                margin-bottom: 0.75rem;
+                color: #111827;
+            }
+            .prose p {
+                margin-top: 0.75rem;
+                margin-bottom: 0.75rem;
+                line-height: 1.75;
+            }
+            .prose ul, .prose ol {
+                margin-top: 0.75rem;
+                margin-bottom: 0.75rem;
+                padding-left: 1.5rem;
+            }
+            .prose li {
+                margin-top: 0.5rem;
+                margin-bottom: 0.5rem;
+            }
+            .prose code {
+                background-color: #f3f4f6;
+                padding: 0.125rem 0.25rem;
+                border-radius: 0.25rem;
+                font-size: 0.875em;
+            }
+            .prose pre {
+                background-color: #1f2937;
+                color: #f3f4f6;
+                padding: 1rem;
+                border-radius: 0.5rem;
+                overflow-x: auto;
+                margin-top: 1rem;
+                margin-bottom: 1rem;
+            }
+            .prose pre code {
+                background-color: transparent;
+                padding: 0;
+                color: inherit;
+            }
+            .prose table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 1rem;
+                margin-bottom: 1rem;
+            }
+            .prose th {
+                background-color: #f3f4f6;
+                padding: 0.5rem;
+                text-align: left;
+                font-weight: 600;
+                border: 1px solid #d1d5db;
+            }
+            .prose td {
+                padding: 0.5rem;
+                border: 1px solid #d1d5db;
+            }
+            .prose blockquote {
+                border-left: 4px solid #004F59;
+                padding-left: 1rem;
+                margin-left: 0;
+                margin-right: 0;
+                font-style: italic;
+                color: #6b7280;
+            }
+            .prose a {
+                color: #004F59;
+                text-decoration: underline;
+            }
+            .prose a:hover {
+                color: #003940;
+            }
+            .prose strong {
+                font-weight: 600;
+                color: #111827;
+            }
+            .prose em {
+                font-style: italic;
+            }
+            .prose hr {
+                margin-top: 2rem;
+                margin-bottom: 2rem;
+                border: 0;
+                border-top: 1px solid #d1d5db;
+            }
         </style>
     </head>
     <body class="bg-gray-50">
@@ -7875,6 +7998,30 @@ app.get('/', (c) => {
                                                 <div class="flex items-center justify-center gap-2">
                                                     Anti-Fragile
                                                     <span id="sort-anti_fragile_score" class="text-xs text-gray-400">
+                                                        <i class="fas fa-sort"></i>
+                                                    </span>
+                                                </div>
+                                            </th>
+                                            <th class="px-4 py-3 text-right cursor-pointer hover:bg-gray-200 select-none" onclick="sortCompanies('buy_price')">
+                                                <div class="flex items-center justify-end gap-2">
+                                                    Buy Price
+                                                    <span id="sort-buy_price" class="text-xs text-gray-400">
+                                                        <i class="fas fa-sort"></i>
+                                                    </span>
+                                                </div>
+                                            </th>
+                                            <th class="px-4 py-3 text-right cursor-pointer hover:bg-gray-200 select-none" onclick="sortCompanies('sticker_price')">
+                                                <div class="flex items-center justify-end gap-2">
+                                                    Sticker Price
+                                                    <span id="sort-sticker_price" class="text-xs text-gray-400">
+                                                        <i class="fas fa-sort"></i>
+                                                    </span>
+                                                </div>
+                                            </th>
+                                            <th class="px-4 py-3 text-center cursor-pointer hover:bg-gray-200 select-none" onclick="sortCompanies('last_researched')">
+                                                <div class="flex items-center justify-center gap-2">
+                                                    Last Updated
+                                                    <span id="sort-last_researched" class="text-xs text-gray-400">
                                                         <i class="fas fa-sort"></i>
                                                     </span>
                                                 </div>
@@ -10603,14 +10750,14 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                 
                 <!-- Tabs -->
                 <div class="flex border-b border-gray-200 bg-gray-50 sticky top-[68px] z-10">
-                    <button class="research-tab px-6 py-3 font-semibold text-gray-600 hover:text-teal-600 hover:bg-white border-b-2 border-transparent active" onclick="switchResearchTab('income')">
-                        <i class="fas fa-chart-line mr-2"></i>Income Statement
+                    <button class="research-tab px-6 py-3 font-semibold text-gray-600 hover:text-teal-600 hover:bg-white border-b-2 border-transparent active" onclick="switchResearchTab('overview')">
+                        <i class="fas fa-info-circle mr-2"></i>Overview
                     </button>
-                    <button class="research-tab px-6 py-3 font-semibold text-gray-600 hover:text-teal-600 hover:bg-white border-b-2 border-transparent" onclick="switchResearchTab('balance')">
-                        <i class="fas fa-balance-scale mr-2"></i>Balance Sheet
+                    <button class="research-tab px-6 py-3 font-semibold text-gray-600 hover:text-teal-600 hover:bg-white border-b-2 border-transparent" onclick="switchResearchTab('analysis')">
+                        <i class="fas fa-chart-line mr-2"></i>Analysis
                     </button>
-                    <button class="research-tab px-6 py-3 font-semibold text-gray-600 hover:text-teal-600 hover:bg-white border-b-2 border-transparent" onclick="switchResearchTab('cashflow')">
-                        <i class="fas fa-money-bill-wave mr-2"></i>Cash Flow
+                    <button class="research-tab px-6 py-3 font-semibold text-gray-600 hover:text-teal-600 hover:bg-white border-b-2 border-transparent" onclick="switchResearchTab('notes')">
+                        <i class="fas fa-file-alt mr-2"></i>Research Notes
                     </button>
                 </div>
                 
@@ -10618,7 +10765,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                 <div class="p-6">
                     <div id="research-loading" class="text-center py-12">
                         <i class="fas fa-spinner fa-spin text-4xl text-teal-600 mb-4"></i>
-                        <p class="text-gray-600">Loading financial data...</p>
+                        <p class="text-gray-600">Loading research data...</p>
                     </div>
                     
                     <div id="research-error" class="hidden text-center py-12">
@@ -10626,9 +10773,9 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                         <p class="text-gray-600" id="research-error-message">Error loading data</p>
                     </div>
                     
-                    <div id="research-income-tab" class="research-tab-content hidden"></div>
-                    <div id="research-balance-tab" class="research-tab-content hidden"></div>
-                    <div id="research-cashflow-tab" class="research-tab-content hidden"></div>
+                    <div id="research-overview-tab" class="research-tab-content hidden"></div>
+                    <div id="research-analysis-tab" class="research-tab-content hidden"></div>
+                    <div id="research-notes-tab" class="research-tab-content hidden"></div>
                 </div>
             </div>
         </div>
