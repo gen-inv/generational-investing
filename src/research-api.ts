@@ -358,6 +358,31 @@ const [quickFive, valuation, scoresheet, antiFragile, fgr, inversions, events, g
   })
 })
 
+// --- GET /:ticker/notes/:id — full content of a single research note ---
+researchApp.get('/:ticker/notes/:id', async (c) => {
+  const db = c.env.RESEARCH_DB
+  const symbol = c.req.param('ticker').toUpperCase()
+  const noteId = c.req.param('id')
+
+  const company = await db.prepare('SELECT id FROM companies WHERE symbol = ?').bind(symbol).first()
+  if (!company) {
+    return c.json({ error: 'Company not found' }, 404)
+  }
+
+  // Scoped to company_id, not just note id -- prevents fetching another company's note
+  // by guessing an id, even though ids aren't secret, this keeps the API honest about
+  // what belongs to what.
+  const note = await db.prepare(
+    'SELECT * FROM research_notes WHERE id = ? AND company_id = ?'
+  ).bind(noteId, company.id).first()
+
+  if (!note) {
+    return c.json({ error: 'Note not found for this company' }, 404)
+  }
+
+  return c.json({ note })
+})
+
 
 
 export default researchApp
