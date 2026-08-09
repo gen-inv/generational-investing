@@ -312,7 +312,7 @@ researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
 researchApp.get('/findings', async (c) => {
   const db = c.env.RESEARCH_DB
   const results = await db.prepare(`
-    SELECT c.symbol, c.name, c.sector, c.industry,
+    SELECT c.symbol, c.name, c.sector, c.industry, c.last_updated as last_researched_date,
            qf.status as quick_five_status, qf.overall_pass,
            v.blended_buy_price, v.blended_sticker, v.current_price, v.on_sale,
            s.total_pct as scoresheet_pct, s.grade as scoresheet_grade,
