@@ -212,10 +212,11 @@ app.post('/api/auth/register', async (c) => {
       user: { id: result.meta.last_row_id, email, name }
     })
   } catch (error: any) {
+    console.error('REGISTER ERROR:', error.message, error.stack)
     if (error.message.includes('UNIQUE constraint failed')) {
       return c.json({ error: 'Email already exists' }, 400)
     }
-    return c.json({ error: 'Registration failed' }, 500)
+    return c.json({ error: 'Registration failed', detail: error.message }, 500)
   }
 })
 
@@ -600,33 +601,70 @@ app.post('/api/companies', authMiddleware, async (c) => {
   
   // Fetch company data from multiple sources
   const yahooData = await fetchYahooFinanceData(ticker, c.env)
-  
+
+  // Check for existing research first -- research-production is ticker-global (no
+  // user concept), so if this ticker has already been researched by anyone, auto-populate
+  // the summary fields from real research data instead of leaving them blank/manual.
+  // If no research exists yet, falls through to the old client-provided/null behavior
+  // unchanged -- this does NOT yet trigger new research for missing tickers (that's the
+  // separate pending-queue work, not built yet).
+  let researchBuyPrice = data.buy_price || null
+  let researchIsWonderful = data.is_wonderful ? 1 : 0
+  let researchScore = data.research_score || null
+  let researchAntiFragileScore = data.anti_fragile_score || null
+
+  try {
+    const researchCompany = await c.env.RESEARCH_DB.prepare(
+      'SELECT id FROM companies WHERE symbol = ?'
+    ).bind(ticker).first()
+
+    if (researchCompany) {
+      const [valuation, scoresheet, antiFragile] = await Promise.all([
+        c.env.RESEARCH_DB.prepare('SELECT blended_buy_price FROM valuations WHERE company_id = ?').bind(researchCompany.id).first(),
+        c.env.RESEARCH_DB.prepare('SELECT total_pct FROM scoresheet WHERE company_id = ?').bind(researchCompany.id).first(),
+        c.env.RESEARCH_DB.prepare('SELECT total_score FROM anti_fragile_scores WHERE company_id = ?').bind(researchCompany.id).first(),
+      ])
+
+      if (valuation && valuation.blended_buy_price !== null) researchBuyPrice = valuation.blended_buy_price
+      if (scoresheet && scoresheet.total_pct !== null) {
+        researchScore = scoresheet.total_pct
+        researchIsWonderful = scoresheet.total_pct >= 80 ? 1 : 0
+      }
+      if (antiFragile && antiFragile.total_score !== null) researchAntiFragileScore = antiFragile.total_score
+    }
+  } catch (e) {
+    // Research lookup failing shouldn't block adding a company -- log and continue
+    // with whatever data was already available (client-provided or null).
+    console.error('Research lookup failed during company creation:', e)
+  }
+
   const result = await c.env.DB.prepare(`
     INSERT INTO companies (
-      user_id, ticker, company_name, market_cap, exchange, 
-      sector, industry, buy_price, is_wonderful, research_score, anti_fragile_score, next_earnings_date
+      user_id, ticker, company_name, market_cap, exchange,
+      sector, industry, buy_price, is_wonderful, research_score, anti_fragile_score,
+next_earnings_date
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
-    userId, 
-    ticker, 
+    userId,
+    ticker,
     yahooData.company_name,
     yahooData.market_cap,
     yahooData.exchange,
     yahooData.sector,
     yahooData.industry,
-    data.buy_price || null,
-    data.is_wonderful ? 1 : 0,
-    data.research_score || null,
-    data.anti_fragile_score || null,
+    researchBuyPrice,
+    researchIsWonderful,
+    researchScore,
+    researchAntiFragileScore,
     yahooData.next_earnings_date
   ).run()
-  
-  return c.json({ 
-    id: result.meta.last_row_id, 
+
+  return c.json({
+    id: result.meta.last_row_id,
     ticker: ticker,
     ...yahooData,
-    research_score: data.research_score || null,
-    anti_fragile_score: data.anti_fragile_score || null
+    research_score: researchScore,
+    anti_fragile_score: researchAntiFragileScore
   }, 201)
 })
 
