@@ -301,6 +301,15 @@ researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
       }
     }
 
+    // Close out any matching pending-research queue entry -- atomic with the research
+    // write itself, so there's no separate "remember to clear the queue" step that
+    // could be missed. Matches on ticker, any active (pending or in_progress) row.
+    const queueStatus = body.quick_five?.status === 'disqualified' ? 'disqualified' : 'completed'
+    await db.prepare(`
+      UPDATE pending_research SET status = ?, completed_at = CURRENT_TIMESTAMP
+      WHERE ticker = ? AND status IN ('pending', 'in_progress')
+    `).bind(queueStatus, body.ticker.toUpperCase()).run()
+
     return c.json({ success: true, ticker: body.ticker.toUpperCase(), company_id: companyId })
   } catch (err: any) {
     console.error('Research ingest error:', err)
@@ -326,6 +335,50 @@ researchApp.get('/findings', async (c) => {
   `).all()
   return c.json({ findings: results.results })
 })
+
+// --- GET /queue — public, list what's currently pending/in_progress ---
+researchApp.get('/queue', async (c) => {
+  const db = c.env.RESEARCH_DB
+  const results = await db.prepare(`
+    SELECT id, ticker, status, requested_at, claimed_at
+    FROM pending_research
+    WHERE status IN ('pending', 'in_progress')
+    ORDER BY requested_at ASC
+  `).all()
+  return c.json({ queue: results.results })
+})
+
+// --- GET /queue/next — SER8-only, atomically claims the oldest pending ticker ---
+researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+
+  const next = await db.prepare(`
+    SELECT id, ticker FROM pending_research
+    WHERE status = 'pending'
+    ORDER BY requested_at ASC
+    LIMIT 1
+  `).first()
+
+  if (!next) {
+    return c.json({ ticker: null, message: 'No pending research requests.' })
+  }
+
+  // Claim it -- only succeeds if still 'pending' (guards against a race if this were
+  // ever called concurrently, even though today there's exactly one consumer).
+  const claim = await db.prepare(`
+    UPDATE pending_research SET status = 'in_progress', claimed_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND status = 'pending'
+  `).bind(next.id).run()
+
+  if (claim.meta.changes === 0) {
+    // Someone else claimed it between our SELECT and UPDATE -- rare, but handle it
+    // honestly rather than pretend we claimed something we didn't.
+    return c.json({ ticker: null, message: 'Next item was claimed by another process just now -- try again.' })
+  }
+
+  return c.json({ pending_id: next.id, ticker: next.ticker })
+})
+
 
 // --- GET /api/research/:ticker — full picture for one company ---
 researchApp.get('/:ticker', async (c) => {
