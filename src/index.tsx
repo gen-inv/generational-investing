@@ -631,6 +631,21 @@ app.post('/api/companies', authMiddleware, async (c) => {
         researchIsWonderful = scoresheet.total_pct >= 80 ? 1 : 0
       }
       if (antiFragile && antiFragile.total_score !== null) researchAntiFragileScore = antiFragile.total_score
+    } else {
+      // No research exists for this ticker at all -- enqueue it. Only insert if not
+      // already active (pending/in_progress) for this ticker, since multiple users could
+      // add the same unresearched ticker -- the unique index would reject a duplicate
+      // anyway, but checking first avoids relying on that as the only guard and lets us
+      // stay silent (not an error) on a duplicate request.
+      const alreadyQueued = await c.env.RESEARCH_DB.prepare(
+        "SELECT id FROM pending_research WHERE ticker = ? AND status IN ('pending', 'in_progress')"
+      ).bind(ticker).first()
+
+      if (!alreadyQueued) {
+        await c.env.RESEARCH_DB.prepare(
+          'INSERT INTO pending_research (ticker, requested_by_user_id) VALUES (?, ?)'
+        ).bind(ticker, userId).run()
+      }
     }
   } catch (e) {
     // Research lookup failing shouldn't block adding a company -- log and continue
