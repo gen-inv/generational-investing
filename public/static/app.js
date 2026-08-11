@@ -1631,33 +1631,7 @@ function showCompanyForm(companyId = null) {
                 <label class="block text-gray-700 mb-2">Ticker Symbol *</label>
                 <input type="text" name="ticker" placeholder="e.g., AAPL, MSFT, GOOGL" 
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg uppercase" required>
-                <p class="text-sm text-gray-500 mt-1">Company data will be fetched automatically from Yahoo Finance</p>
-            </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Target Buy Price</label>
-                <input type="number" step="0.01" name="buy_price" 
-                       placeholder="150.00" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                <p class="text-sm text-gray-500 mt-1">Your target price to buy this stock</p>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-gray-700 mb-2">Research Score (0-100)</label>
-                    <input type="number" name="research_score" min="0" max="100" 
-                           placeholder="95" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    <p class="text-sm text-gray-500 mt-1">Your research quality rating</p>
-                </div>
-                <div>
-                    <label class="block text-gray-700 mb-2">Anti-Fragile Score (0-100)</label>
-                    <input type="number" name="anti_fragile_score" min="0" max="100" 
-                           placeholder="88" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    <p class="text-sm text-gray-500 mt-1">Company resilience rating</p>
-                </div>
-            </div>
-            <div>
-                <label class="flex items-center">
-                    <input type="checkbox" name="is_wonderful" class="mr-2">
-                    <span class="text-gray-700">Mark as Wonderful Company</span>
-                </label>
+                <p class="text-sm text-gray-500 mt-1">All company data, research scores, and valuation will be fetched automatically in the background</p>
             </div>
         </div>
     `
