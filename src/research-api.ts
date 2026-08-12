@@ -387,9 +387,18 @@ researchApp.post('/queue/:id/report-failure', researchAuthMiddleware, async (c) 
   const db = c.env.RESEARCH_DB
   const id = c.req.param('id')
 
-  const row = await db.prepare('SELECT id, ticker, attempts FROM pending_research WHERE id = ?').bind(id).first()
+  const row = await db.prepare('SELECT id, ticker, status, attempts FROM pending_research WHERE id = ?').bind(id).first()
   if (!row) {
     return c.json({ error: 'Queue entry not found' }, 404)
+  }
+  if (row.status === 'failed') {
+    // Already terminal -- don't keep incrementing attempts past the cap if this
+    // gets called again (e.g. accidentally, or by a future bug). Report the existing
+    // state rather than mutating it further.
+    return c.json({
+      ticker: row.ticker, attempts: row.attempts, max_attempts: MAX_ATTEMPTS,
+      status: 'failed', will_retry: false, note: 'Already marked failed -- no change made.',
+    })
   }
 
   const newAttempts = (row.attempts as number) + 1
