@@ -1,0 +1,1 @@
+ALTER TABLE pending_research ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;

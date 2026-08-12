@@ -342,7 +342,7 @@ researchApp.get('/queue', async (c) => {
   const results = await db.prepare(`
     SELECT id, ticker, status, requested_at, claimed_at
     FROM pending_research
-    WHERE status IN ('pending', 'in_progress')
+    WHERE status IN ('pending', 'in_progress', 'failed')
     ORDER BY requested_at ASC
   `).all()
   return c.json({ queue: results.results })
@@ -377,6 +377,37 @@ researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
   }
 
   return c.json({ pending_id: next.id, ticker: next.ticker })
+})
+
+// --- POST /queue/:id/report-failure — SER8-only, records a failed run and decides
+// whether to auto-retry (reset to pending) or give up (mark failed) ---
+const MAX_ATTEMPTS = 3
+
+researchApp.post('/queue/:id/report-failure', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+
+  const row = await db.prepare('SELECT id, ticker, attempts FROM pending_research WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'Queue entry not found' }, 404)
+  }
+
+  const newAttempts = (row.attempts as number) + 1
+  const willRetry = newAttempts < MAX_ATTEMPTS
+
+  await db.prepare(`
+    UPDATE pending_research
+    SET attempts = ?, status = ?, claimed_at = ${willRetry ? 'NULL' : 'claimed_at'}
+    WHERE id = ?
+  `).bind(newAttempts, willRetry ? 'pending' : 'failed', id).run()
+
+  return c.json({
+    ticker: row.ticker,
+    attempts: newAttempts,
+    max_attempts: MAX_ATTEMPTS,
+    status: willRetry ? 'pending' : 'failed',
+    will_retry: willRetry,
+  })
 })
 
 
