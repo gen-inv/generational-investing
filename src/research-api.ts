@@ -218,30 +218,54 @@ researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
     // --- Events: matched by company_id + description, preserves joint_determination if already set ---
     if (body.events && Array.isArray(body.events)) {
       for (const ev of body.events) {
+        if (!ev.event_key) {
+          warnings.push(`Event "${ev.description?.slice(0, 60)}..." has no event_key -- skipped. Every event needs a stable key for tracking.`)
+          continue
+        }
         const existing = await db.prepare(
-          'SELECT id, joint_determination FROM events WHERE company_id = ? AND description = ?'
-        ).bind(companyId, ev.description).first()
+          'SELECT id, joint_determination FROM events WHERE company_id = ? AND event_key = ?'
+        ).bind(companyId, ev.event_key).first()
+
+        let eventId: number
         if (existing) {
           await db.prepare(`
-            UPDATE events SET price_impact_pct=?, management_acknowledged=?, management_response=?,
+            UPDATE events SET description=?, price_impact_pct=?, management_acknowledged=?, management_response=?,
               agent_recoverable_assessment=?, status=?, source_urls=?
             WHERE id=?
           `).bind(
-            ev.price_impact_pct ?? null, ev.management_acknowledged ? 1 : 0, ev.management_response || null,
+            ev.description, ev.price_impact_pct ?? null, ev.management_acknowledged ? 1 : 0, ev.management_response || null,
             ev.agent_recoverable_assessment || null, ev.status || 'open', ev.source_urls || null, existing.id
           ).run()
-          // joint_determination intentionally untouched -- only set via a separate, explicit endpoint later
+          // joint_determination intentionally untouched here -- Rob-only, never auto-overwritten
+          eventId = existing.id as number
         } else {
-          await db.prepare(`
-            INSERT INTO events (company_id, description, price_impact_pct, management_acknowledged,
+          const result = await db.prepare(`
+            INSERT INTO events (company_id, event_key, description, price_impact_pct, management_acknowledged,
               management_response, agent_recoverable_assessment, status, source_urls)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
-            companyId, ev.description, ev.price_impact_pct ?? null, ev.management_acknowledged ? 1 : 0,
+            companyId, ev.event_key, ev.description, ev.price_impact_pct ?? null, ev.management_acknowledged ? 1 : 0,
             ev.management_response || null, ev.agent_recoverable_assessment || null, ev.status || 'open',
             ev.source_urls || null
           ).run()
+          eventId = result.meta.last_row_id as number
         }
+
+        // Always append a snapshot to event_history, including the CURRENT joint_determination
+        // (carried forward from the existing row, not from the incoming payload -- this is
+        // Rob's own call and must survive every automated update untouched)
+        const currentJointDetermination = existing?.joint_determination || null
+        await db.prepare(`
+          INSERT INTO event_history (company_id, event_key, description, price_impact_pct,
+            management_acknowledged, management_response, agent_recoverable_assessment,
+            joint_determination, status, source_urls)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          companyId, ev.event_key, ev.description, ev.price_impact_pct ?? null,
+          ev.management_acknowledged ? 1 : 0, ev.management_response || null,
+          ev.agent_recoverable_assessment || null, currentJointDetermination,
+          ev.status || 'open', ev.source_urls || null
+        ).run()
       }
     }
 
@@ -352,15 +376,15 @@ researchApp.get('/queue', async (c) => {
 researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
 
-  const next = await db.prepare(`
-    SELECT id, ticker FROM pending_research
+const next = await db.prepare(`
+    SELECT id, ticker, update_type, user_notes FROM pending_research
     WHERE status = 'pending'
     ORDER BY requested_at ASC
     LIMIT 1
   `).first()
 
   if (!next) {
-    return c.json({ ticker: null, message: 'No pending research requests.' })
+    return c.json({ pending_id: next.id, ticker: next.ticker, update_type: next.update_type, user_notes: next.user_notes })
   }
 
   // Claim it -- only succeeds if still 'pending' (guards against a race if this were
@@ -402,7 +426,7 @@ researchApp.post('/queue/:id/report-failure', researchAuthMiddleware, async (c) 
   }
 
   const newAttempts = (row.attempts as number) + 1
-  const willRetry = newAttempts < MAX_ATTEMPTS
+  const willRetry = newAttempts < MAX_ATTEMPTS;
 
   await db.prepare(`
     UPDATE pending_research
@@ -431,7 +455,7 @@ researchApp.get('/:ticker', async (c) => {
   }
   const companyId = company.id
 
-const [quickFive, valuation, scoresheet, antiFragile, fgr, inversions, events, guruHoldings, peerComparisons, researchNotes] = await Promise.all([
+const [quickFive, valuation, scoresheet, antiFragile, fgr, inversions, events, eventHistory, guruHoldings, peerComparisons, researchNotes] = await Promise.all([
     db.prepare('SELECT * FROM quick_five_results WHERE company_id = ?').bind(companyId).first(),
     db.prepare('SELECT * FROM valuations WHERE company_id = ?').bind(companyId).first(),
     db.prepare('SELECT * FROM scoresheet WHERE company_id = ?').bind(companyId).first(),
@@ -439,6 +463,7 @@ const [quickFive, valuation, scoresheet, antiFragile, fgr, inversions, events, g
     db.prepare('SELECT * FROM fgr_triangulation WHERE company_id = ?').bind(companyId).first(),
     db.prepare('SELECT * FROM inversions WHERE company_id = ?').bind(companyId).all(),
     db.prepare('SELECT * FROM events WHERE company_id = ?').bind(companyId).all(),
+    db.prepare('SELECT * FROM event_history WHERE company_id = ? ORDER BY snapshot_date DESC').bind(companyId).all(),
     db.prepare('SELECT * FROM guru_holdings WHERE company_id = ? ORDER BY computed_date DESC').bind(companyId).all(),
     db.prepare('SELECT * FROM peer_comparisons WHERE company_id = ? ORDER BY computed_date DESC').bind(companyId).all(),
     db.prepare('SELECT id, doc_type, filing_date, source_url, abstract, created_at, updated_at FROM research_notes WHERE company_id = ?').bind(companyId).all(),
@@ -446,8 +471,8 @@ const [quickFive, valuation, scoresheet, antiFragile, fgr, inversions, events, g
 
   return c.json({
     company, quick_five: quickFive, valuation, scoresheet, anti_fragile: antiFragile, fgr_triangulation: fgr,
-    inversions: inversions.results, events: events.results, guru_holdings: guruHoldings.results,
-    peer_comparisons: peerComparisons.results, research_notes: researchNotes.results,
+    inversions: inversions.results, events: events.results, event_history: eventHistory.results,
+    guru_holdings: guruHoldings.results, peer_comparisons: peerComparisons.results, research_notes: researchNotes.results,
   })
 })
 
