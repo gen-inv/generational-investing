@@ -387,6 +387,44 @@ const next = await db.prepare(`
     return c.json({ pending_id: next.id, ticker: next.ticker, update_type: next.update_type, user_notes: next.user_notes })
   }
 
+  // --- POST /:ticker/request-update — enqueues a re-research request for an existing
+// ticker. Public (matches the site's existing auth model -- the main site's own login
+// already gates who can reach this UI at all; this endpoint itself doesn't need the
+// SER8-only bearer token, since it's a user-facing action, not a machine-to-machine one) ---
+researchApp.post('/:ticker/request-update', async (c) => {
+  const db = c.env.RESEARCH_DB
+  const symbol = c.req.param('ticker').toUpperCase()
+  const body = await c.req.json()
+
+  const validTypes = ['quarterly', 'annual', 'info']
+  if (!validTypes.includes(body.update_type)) {
+    return c.json({ error: `update_type must be one of: ${validTypes.join(', ')}` }, 400)
+  }
+  if (body.update_type === 'info' && !body.user_notes) {
+    return c.json({ error: 'user_notes is required for an info update' }, 400)
+  }
+
+  const company = await db.prepare('SELECT id FROM companies WHERE symbol = ?').bind(symbol).first()
+  if (!company) {
+    return c.json({ error: 'Company not found -- use Add Company for a new ticker, not an update' }, 404)
+  }
+
+  const alreadyQueued = await db.prepare(
+    "SELECT id FROM pending_research WHERE ticker = ? AND status IN ('pending', 'in_progress')"
+  ).bind(symbol).first()
+  if (alreadyQueued) {
+    return c.json({ error: `${symbol} already has an active research request (status: pending/in_progress)` }, 409)
+  }
+
+  const result = await db.prepare(`
+    INSERT INTO pending_research (ticker, update_type, user_notes)
+    VALUES (?, ?, ?)
+  `).bind(symbol, body.update_type, body.user_notes || null).run()
+
+  return c.json({ success: true, ticker: symbol, update_type: body.update_type, pending_id: result.meta.last_row_id }, 201)
+})
+
+
   // Claim it -- only succeeds if still 'pending' (guards against a race if this were
   // ever called concurrently, even though today there's exactly one consumer).
   const claim = await db.prepare(`
