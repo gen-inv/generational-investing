@@ -391,7 +391,7 @@ const next = await db.prepare(`
 // ticker. Public (matches the site's existing auth model -- the main site's own login
 // already gates who can reach this UI at all; this endpoint itself doesn't need the
 // SER8-only bearer token, since it's a user-facing action, not a machine-to-machine one) ---
-researchApp.post('/:ticker/request-update', async (c) => {
+researchApp.post('/update/:ticker', async (c) => {
   const db = c.env.RESEARCH_DB
   const symbol = c.req.param('ticker').toUpperCase()
   const body = await c.req.json()
