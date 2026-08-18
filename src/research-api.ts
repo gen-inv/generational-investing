@@ -419,9 +419,15 @@ researchApp.post('/update/:ticker', async (c) => {
     return c.json({ error: 'user_notes is required for an info update' }, 400)
   }
 
-  const company = await db.prepare('SELECT id FROM companies WHERE symbol = ?').bind(symbol).first()
-  if (!company) {
-    return c.json({ error: 'Company not found -- use Add Company for a new ticker, not an update' }, 404)
+  // 'annual' means "full research run regardless of what exists" -- so a ticker with
+  // zero prior research is a perfectly valid target (e.g. something added to the roster
+  // before this feature existed). Only quarterly/info genuinely require prior research
+  // to refine, so only they need this check.
+  if (body.update_type !== 'annual') {
+    const company = await db.prepare('SELECT id FROM companies WHERE symbol = ?').bind(symbol).first()
+    if (!company) {
+      return c.json({ error: 'No existing research found for this ticker -- use Annual Update for a first-time research run' }, 404)
+    }
   }
 
   const alreadyQueued = await db.prepare(
