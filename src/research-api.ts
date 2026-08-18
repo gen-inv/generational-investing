@@ -375,8 +375,7 @@ researchApp.get('/queue', async (c) => {
 // --- GET /queue/next — SER8-only, atomically claims the oldest pending ticker ---
 researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
-
-const next = await db.prepare(`
+  const next = await db.prepare(`
     SELECT id, ticker, update_type, user_notes FROM pending_research
     WHERE status = 'pending'
     ORDER BY requested_at ASC
@@ -384,13 +383,29 @@ const next = await db.prepare(`
   `).first()
 
   if (!next) {
-    return c.json({ pending_id: next.id, ticker: next.ticker, update_type: next.update_type, user_notes: next.user_notes })
+    return c.json({ ticker: null, message: 'No pending research requests.' })
   }
 
-  // --- POST /:ticker/request-update — enqueues a re-research request for an existing
-// ticker. Public (matches the site's existing auth model -- the main site's own login
-// already gates who can reach this UI at all; this endpoint itself doesn't need the
-// SER8-only bearer token, since it's a user-facing action, not a machine-to-machine one) ---
+  // Claim it -- only succeeds if still 'pending' (guards against a race if this were
+  // ever called concurrently, even though today there's exactly one consumer).
+  const claim = await db.prepare(`
+    UPDATE pending_research SET status = 'in_progress', claimed_at = CURRENT_TIMESTAMP
+    WHERE id = ? AND status = 'pending'
+  `).bind(next.id).run()
+
+  if (claim.meta.changes === 0) {
+    // Someone else claimed it between our SELECT and UPDATE -- rare, but handle it
+    // honestly rather than pretend we claimed something we didn't.
+    return c.json({ ticker: null, message: 'Next item was claimed by another process just now -- try again.' })
+  }
+
+  return c.json({ pending_id: next.id, ticker: next.ticker, update_type: next.update_type, user_notes: next.user_notes })
+})
+
+// --- POST /update/:ticker -- enqueues a re-research request for an existing ticker.
+// Public (matches the site's existing auth model -- the main site's own login already
+// gates who can reach this UI at all; this endpoint doesn't need the SER8-only bearer
+// token, since it's a user-facing action, not a machine-to-machine one) ---
 researchApp.post('/update/:ticker', async (c) => {
   const db = c.env.RESEARCH_DB
   const symbol = c.req.param('ticker').toUpperCase()
@@ -424,22 +439,6 @@ researchApp.post('/update/:ticker', async (c) => {
   return c.json({ success: true, ticker: symbol, update_type: body.update_type, pending_id: result.meta.last_row_id }, 201)
 })
 
-
-  // Claim it -- only succeeds if still 'pending' (guards against a race if this were
-  // ever called concurrently, even though today there's exactly one consumer).
-  const claim = await db.prepare(`
-    UPDATE pending_research SET status = 'in_progress', claimed_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND status = 'pending'
-  `).bind(next.id).run()
-
-  if (claim.meta.changes === 0) {
-    // Someone else claimed it between our SELECT and UPDATE -- rare, but handle it
-    // honestly rather than pretend we claimed something we didn't.
-    return c.json({ ticker: null, message: 'Next item was claimed by another process just now -- try again.' })
-  }
-
-  return c.json({ pending_id: next.id, ticker: next.ticker })
-})
 
 // --- POST /queue/:id/report-failure — SER8-only, records a failed run and decides
 // whether to auto-retry (reset to pending) or give up (mark failed) ---
