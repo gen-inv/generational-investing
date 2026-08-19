@@ -1862,26 +1862,22 @@ async function showCompanyView(companyId) {
                                 <span class="btn-text">Fetch Earnings Date</span>
                                 <span class="btn-loading hidden">Fetching...</span>
                             </button>
-                            <button onclick="editCompany(${companyId}); this.closest('.fixed').remove()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm flex items-center justify-center gap-2">
-                                <i class="fas fa-edit"></i>
-                                Edit Company
+                            <button onclick="openUpdateResearchModal('${company.ticker}')" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm flex items-center justify-center gap-2">
+                                <i class="fas fa-sync-alt"></i>
+                                Update Research
                             </button>
                         </div>
                     ` : `
-                        <button onclick="fetchFinancials('${company.ticker}')" class="w-full bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 font-semibold text-lg shadow-md" id="fetch-financials-btn">
-                            <i class="fas fa-download"></i>
-                            <span class="btn-text">Fetch Financials</span>
-                            <span class="btn-loading hidden"><i class="fas fa-spinner fa-spin"></i> Fetching...</span>
+                        <button onclick="performResearch('${company.ticker}')" class="w-full bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg flex items-center justify-center gap-2 font-semibold text-lg shadow-md" id="perform-research-btn">
+                            <i class="fas fa-search"></i>
+                            <span class="btn-text">Perform Research</span>
+                            <span class="btn-loading hidden"><i class="fas fa-spinner fa-spin"></i> Researching...</span>
                         </button>
                         <div class="flex gap-2">
                             <button onclick="fetchEarningsDate(${companyId})" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm flex items-center justify-center gap-2">
                                 <i class="fas fa-calendar-alt"></i>
                                 <span class="btn-text">Fetch Earnings Date</span>
                                 <span class="btn-loading hidden">Fetching...</span>
-                            </button>
-                            <button onclick="editCompany(${companyId}); this.closest('.fixed').remove()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded text-sm flex items-center justify-center gap-2">
-                                <i class="fas fa-edit"></i>
-                                Edit Company
                             </button>
                         </div>
                     `}
@@ -13812,6 +13808,173 @@ async function toggleNoteDetail(noteId, ticker, noteIdNum) {
             </div>
         `
     }
+}
+
+// ============================================================================
+// Update Research Modal
+// ============================================================================
+
+function openUpdateResearchModal(ticker) {
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg p-6 max-w-md w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Update Research</h3>
+                <button onclick="this.closest('.fixed').remove()" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="mb-4">
+                <p class="text-sm text-gray-600 mb-4">Select the type of research update for <strong>${ticker}</strong>:</p>
+                
+                <div class="space-y-3">
+                    <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input type="radio" name="update_type" value="quarterly" class="mt-1" onchange="handleUpdateTypeChange()">
+                        <div>
+                            <div class="font-semibold text-gray-800">Quarterly Earnings Update</div>
+                            <div class="text-sm text-gray-600">Review latest quarterly earnings report</div>
+                        </div>
+                    </label>
+                    
+                    <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input type="radio" name="update_type" value="annual" class="mt-1" onchange="handleUpdateTypeChange()">
+                        <div>
+                            <div class="font-semibold text-gray-800">Annual Update</div>
+                            <div class="text-sm text-gray-600">Full annual review of all research data</div>
+                        </div>
+                    </label>
+                    
+                    <label class="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <input type="radio" name="update_type" value="info" class="mt-1" onchange="handleUpdateTypeChange()">
+                        <div>
+                            <div class="font-semibold text-gray-800">Data/Information Update</div>
+                            <div class="text-sm text-gray-600">Specific information has changed</div>
+                        </div>
+                    </label>
+                </div>
+                
+                <div id="info-notes-container" class="hidden mt-4">
+                    <label class="block text-gray-700 mb-2 font-semibold">What needs to be considered?</label>
+                    <textarea 
+                        id="user-notes" 
+                        rows="4" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-teal-600"
+                        placeholder="Describe what needs to be considered for this research run..."
+                    ></textarea>
+                </div>
+            </div>
+            
+            <div class="flex gap-3">
+                <button 
+                    onclick="this.closest('.fixed').remove()" 
+                    class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                    Cancel
+                </button>
+                <button 
+                    id="submit-update-btn"
+                    onclick="submitResearchUpdate('${ticker}')" 
+                    disabled
+                    class="flex-1 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    Request Update
+                </button>
+            </div>
+        </div>
+    `
+    
+    document.body.appendChild(modal)
+}
+
+function handleUpdateTypeChange() {
+    const selectedType = document.querySelector('input[name="update_type"]:checked')?.value
+    const notesContainer = document.getElementById('info-notes-container')
+    const submitBtn = document.getElementById('submit-update-btn')
+    const userNotes = document.getElementById('user-notes')
+    
+    if (selectedType === 'info') {
+        notesContainer.classList.remove('hidden')
+        // Enable submit only if notes are non-empty
+        const checkNotes = () => {
+            submitBtn.disabled = !userNotes.value.trim()
+        }
+        userNotes.addEventListener('input', checkNotes)
+        checkNotes() // Initial check
+    } else {
+        notesContainer.classList.add('hidden')
+        // Enable submit for quarterly/annual
+        submitBtn.disabled = !selectedType
+    }
+}
+
+async function submitResearchUpdate(ticker) {
+    const selectedType = document.querySelector('input[name="update_type"]:checked')?.value
+    const userNotes = document.getElementById('user-notes')?.value.trim()
+    const submitBtn = document.getElementById('submit-update-btn')
+    
+    if (!selectedType) return
+    if (selectedType === 'info' && !userNotes) return
+    
+    // Build request body
+    const body = { update_type: selectedType }
+    if (selectedType === 'info') {
+        body.user_notes = userNotes
+    }
+    
+    // Close modal immediately (don't wait for response)
+    document.querySelector('.fixed.inset-0.bg-black.bg-opacity-50:last-of-type').remove()
+    
+    // Show notification immediately
+    showNotification('Update requested — this will be processed in the background', 'info')
+    
+    // Submit request in background (fire-and-forget)
+    axios.post(
+        `https://generational-investing.pages.dev/api/research/update/${ticker}`,
+        body
+    ).catch(error => {
+        // Log errors silently - request already acknowledged to user
+        console.error('Background research update error:', error)
+        const errorMsg = error.response?.data?.error || 'Research update may have failed'
+        showNotification(errorMsg, 'error')
+    })
+}
+
+// ============================================================================
+// Perform Research (Direct Annual Update - No Modal)
+// ============================================================================
+
+async function performResearch(ticker) {
+    const btn = document.getElementById('perform-research-btn')
+    const btnText = btn.querySelector('.btn-text')
+    const btnLoading = btn.querySelector('.btn-loading')
+    
+    // Show loading state briefly
+    btn.disabled = true
+    btnText.classList.add('hidden')
+    btnLoading.classList.remove('hidden')
+    
+    // Show notification immediately
+    showNotification('Research requested — this will be processed in the background', 'info')
+    
+    // Re-enable button after brief delay (visual feedback)
+    setTimeout(() => {
+        btn.disabled = false
+        btnText.classList.remove('hidden')
+        btnLoading.classList.add('hidden')
+    }, 500)
+    
+    // Submit request in background (fire-and-forget)
+    axios.post(
+        `https://generational-investing.pages.dev/api/research/update/${ticker}`,
+        { update_type: 'annual' }
+    ).catch(error => {
+        // Log errors silently - request already acknowledged to user
+        console.error('Background research request error:', error)
+        const errorMsg = error.response?.data?.error || 'Research request may have failed'
+        showNotification(errorMsg, 'error')
+    })
 }
 
 // Remove old rendering functions (Income, Balance, CashFlow)
