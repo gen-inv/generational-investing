@@ -364,7 +364,7 @@ researchApp.get('/findings', async (c) => {
 researchApp.get('/queue', async (c) => {
   const db = c.env.RESEARCH_DB
   const results = await db.prepare(`
-    SELECT id, ticker, status, requested_at, claimed_at
+    SELECT id, ticker, update_type, user_notes, status, attempts, requested_at, claimed_at
     FROM pending_research
     WHERE status IN ('pending', 'in_progress', 'failed')
     ORDER BY requested_at ASC
