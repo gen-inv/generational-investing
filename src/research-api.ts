@@ -376,7 +376,7 @@ researchApp.get('/queue', async (c) => {
 researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const next = await db.prepare(`
-    SELECT id, ticker, update_type, user_notes FROM pending_research
+    SELECT id, ticker, update_type, user_notes, attempts FROM pending_research
     WHERE status = 'pending'
     ORDER BY requested_at ASC
     LIMIT 1
@@ -399,9 +399,8 @@ researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
     return c.json({ ticker: null, message: 'Next item was claimed by another process just now -- try again.' })
   }
 
-  return c.json({ pending_id: next.id, ticker: next.ticker, update_type: next.update_type, user_notes: next.user_notes })
+  return c.json({ pending_id: next.id, ticker: next.ticker, update_type: next.update_type, user_notes: next.user_notes, attempts: next.attempts })
 })
-
 // --- POST /update/:ticker -- enqueues a re-research request for an existing ticker.
 // Public (matches the site's existing auth model -- the main site's own login already
 // gates who can reach this UI at all; this endpoint doesn't need the SER8-only bearer
@@ -465,6 +464,17 @@ researchApp.post('/queue/:id/report-failure', researchAuthMiddleware, async (c) 
     return c.json({
       ticker: row.ticker, attempts: row.attempts, max_attempts: MAX_ATTEMPTS,
       status: 'failed', will_retry: false, note: 'Already marked failed -- no change made.',
+    })
+  }
+  if (row.status === 'completed' || row.status === 'disqualified') {
+    // The run actually succeeded and already pushed real results (e.g. a subagent
+    // delivery hang AFTER the real work finished and was pushed -- found via SFM/ACN,
+    // 2026-08-21) before the orchestrator's own subprocess got killed for exceeding
+    // its timeout. Don't overwrite a genuinely successful outcome with a failure.
+    return c.json({
+      ticker: row.ticker, attempts: row.attempts, max_attempts: MAX_ATTEMPTS,
+      status: row.status, will_retry: false,
+      note: `Already ${row.status} -- the research actually completed successfully before this report arrived. No change made.`,
     })
   }
 
