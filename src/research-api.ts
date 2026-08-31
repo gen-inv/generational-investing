@@ -324,16 +324,7 @@ researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
 
       }
     }
-
-    // Close out any matching pending-research queue entry -- atomic with the research
-    // write itself, so there's no separate "remember to clear the queue" step that
-    // could be missed. Matches on ticker, any active (pending or in_progress) row.
-    const queueStatus = body.quick_five?.status === 'disqualified' ? 'disqualified' : 'completed'
-    await db.prepare(`
-      UPDATE pending_research SET status = ?, completed_at = CURRENT_TIMESTAMP
-      WHERE ticker = ? AND status IN ('pending', 'in_progress')
-    `).bind(queueStatus, body.ticker.toUpperCase()).run()
-
+    
     return c.json({ success: true, ticker: body.ticker.toUpperCase(), company_id: companyId })
   } catch (err: any) {
     console.error('Research ingest error:', err)
@@ -496,6 +487,34 @@ researchApp.post('/queue/:id/report-failure', researchAuthMiddleware, async (c) 
   })
 })
 
+// --- POST /queue/:id/mark-complete — SER8-only. Kendry calls this explicitly at
+// genuine completion (full funnel finished + pushed, or a disqualification accepted
+// with no override pending) -- NOT inferred from a process exit code, since a clean
+// exit can also mean "paused, waiting on Rob" (see AGENTS.md unattended-run rules),
+// which must stay in_progress, not get closed out as done. ---
+researchApp.post('/queue/:id/mark-complete', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const finalStatus = body.status === 'disqualified' ? 'disqualified' : 'completed'
+
+  const row = await db.prepare('SELECT id, ticker, status FROM pending_research WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'Queue entry not found' }, 404)
+  }
+  if (row.status !== 'pending' && row.status !== 'in_progress') {
+    return c.json({
+      ticker: row.ticker, status: row.status,
+      note: `Already ${row.status} -- no change made.`,
+    })
+  }
+
+  await db.prepare(`
+    UPDATE pending_research SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).bind(finalStatus, id).run()
+
+  return c.json({ success: true, ticker: row.ticker, status: finalStatus })
+})
 
 // --- GET /api/research/:ticker — full picture for one company ---
 researchApp.get('/:ticker', async (c) => {
