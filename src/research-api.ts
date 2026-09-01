@@ -355,9 +355,10 @@ researchApp.get('/findings', async (c) => {
 researchApp.get('/queue', async (c) => {
   const db = c.env.RESEARCH_DB
   const results = await db.prepare(`
-    SELECT id, ticker, update_type, user_notes, status, attempts, requested_at, claimed_at
+    SELECT id, ticker, update_type, user_notes, status, attempts, requested_at, claimed_at,
+           meaning_question_num, question_sent_at
     FROM pending_research
-    WHERE status IN ('pending', 'in_progress', 'failed')
+    WHERE status IN ('pending', 'in_progress', 'failed', 'awaiting_meaning_clarity')
     ORDER BY requested_at ASC
   `).all()
   return c.json({ queue: results.results })
@@ -514,6 +515,67 @@ researchApp.post('/queue/:id/mark-complete', researchAuthMiddleware, async (c) =
   `).bind(finalStatus, id).run()
 
   return c.json({ success: true, ticker: row.ticker, status: finalStatus })
+})
+
+// --- POST /queue/:id/ask-meaning-question — Kendry calls this after actually sending
+// a question via Telegram, marking "the clock starts now" for that specific question.
+// SER8-only. ---
+researchApp.post('/queue/:id/ask-meaning-question', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const questionNum = body.question_num
+
+  if (![1, 2, 3, 4].includes(questionNum)) {
+    return c.json({ error: 'question_num must be 1, 2, 3, or 4' }, 400)
+  }
+
+  const row = await db.prepare('SELECT id, ticker FROM pending_research WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'Queue entry not found' }, 404)
+  }
+
+  await db.prepare(`
+    UPDATE pending_research
+    SET status = 'awaiting_meaning_clarity', meaning_question_num = ?, question_sent_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).bind(questionNum, id).run()
+
+  return c.json({ success: true, ticker: row.ticker, question_num: questionNum, status: 'awaiting_meaning_clarity' })
+})
+
+// --- POST /queue/:id/record-meaning-answer — called by orchestrator.py's own polling,
+// not by Kendry directly. Saves the raw reply, flips status back to pending so the
+// ticker becomes claimable again. Deliberately does NOT decide what happens next --
+// that's Kendry's judgment on the next claim, read fresh from the database. ---
+researchApp.post('/queue/:id/record-meaning-answer', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const questionNum = body.question_num
+  const answerText = body.answer_text
+
+  if (![1, 2, 3, 4].includes(questionNum)) {
+    return c.json({ error: 'question_num must be 1, 2, 3, or 4' }, 400)
+  }
+  if (!answerText) {
+    return c.json({ error: 'answer_text is required' }, 400)
+  }
+
+  const row = await db.prepare('SELECT id, ticker, status FROM pending_research WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'Queue entry not found' }, 404)
+  }
+  if (row.status !== 'awaiting_meaning_clarity') {
+    return c.json({ error: `Queue entry is not awaiting a meaning-clarity answer (status: ${row.status})` }, 409)
+  }
+
+  const column = `meaning_answer_${questionNum}`
+  await db.prepare(`
+    UPDATE pending_research SET ${column} = ?, status = 'pending' WHERE id = ?
+  `).bind(answerText, id).run()
+
+  return c.json({ success: true, ticker: row.ticker, question_num: questionNum, status: 'pending' })
 })
 
 // --- GET /api/research/:ticker — full picture for one company ---
