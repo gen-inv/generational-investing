@@ -358,7 +358,7 @@ researchApp.get('/queue', async (c) => {
     SELECT id, ticker, update_type, user_notes, status, attempts, requested_at, claimed_at,
            meaning_question_num, question_sent_at
     FROM pending_research
-    WHERE status IN ('pending', 'in_progress', 'failed', 'awaiting_meaning_clarity')
+        WHERE status IN ('pending', 'in_progress', 'failed', 'awaiting_meaning_clarity', 'awaiting_fcf_trend_clarity')
     ORDER BY requested_at ASC
   `).all()
   return c.json({ queue: results.results })
@@ -368,8 +368,8 @@ researchApp.get('/queue', async (c) => {
 researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const next = await db.prepare(`
-    SELECT id, ticker, update_type, user_notes, attempts, meaning_question_num,
-           meaning_answer_1, meaning_answer_2, meaning_answer_3, meaning_answer_4
+        SELECT id, ticker, update_type, user_notes, status, attempts, requested_at, claimed_at,
+           meaning_question_num, question_sent_at, fcf_trend_question_sent_at
     FROM pending_research
     WHERE status = 'pending'
     ORDER BY requested_at ASC
