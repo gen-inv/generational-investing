@@ -552,6 +552,26 @@ researchApp.post('/queue/:id/ask-meaning-question', researchAuthMiddleware, asyn
   return c.json({ success: true, ticker: row.ticker, question_num: questionNum, status: 'awaiting_meaning_clarity' })
 })
 
+// --- POST /queue/:id/ask-fcf-trend-question — Kendry calls this after sending the
+// consolidated FCF-trend findings via Telegram. SER8-only. ---
+researchApp.post('/queue/:id/ask-fcf-trend-question', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+
+  const row = await db.prepare('SELECT id, ticker FROM pending_research WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'Queue entry not found' }, 404)
+  }
+
+  await db.prepare(`
+    UPDATE pending_research
+    SET status = 'awaiting_fcf_trend_clarity', fcf_trend_question_sent_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).bind(id).run()
+
+  return c.json({ success: true, ticker: row.ticker, status: 'awaiting_fcf_trend_clarity' })
+})
+
 // --- POST /queue/:id/record-meaning-answer — called by orchestrator.py's own polling,
 // not by Kendry directly. Saves the raw reply, flips status back to pending so the
 // ticker becomes claimable again. Deliberately does NOT decide what happens next --
@@ -584,6 +604,75 @@ researchApp.post('/queue/:id/record-meaning-answer', researchAuthMiddleware, asy
   `).bind(answerText, id).run()
 
   return c.json({ success: true, ticker: row.ticker, question_num: questionNum, status: 'pending' })
+})
+
+// --- POST /queue/:id/record-fcf-trend-reply — called by orchestrator.py's own polling,
+// not by Kendry directly. Just flips status back to pending so the ticker becomes
+// claimable again -- unlike meaning-clarity, does NOT record the reply text itself,
+// since a single reply may address multiple candidate periods at once and Kendry
+// needs to read and interpret the raw text itself (via GET /:ticker/fcf-trend-events
+// or similar), not have it mechanically parsed here. ---
+researchApp.post('/queue/:id/record-fcf-trend-reply', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+
+  const row = await db.prepare('SELECT id, ticker, status FROM pending_research WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'Queue entry not found' }, 404)
+  }
+  if (row.status !== 'awaiting_fcf_trend_clarity') {
+    return c.json({ error: `Queue entry is not awaiting an FCF-trend reply (status: ${row.status})` }, 409)
+  }
+
+  await db.prepare(`UPDATE pending_research SET status = 'pending' WHERE id = ?`).bind(id).run()
+
+  return c.json({ success: true, ticker: row.ticker, status: 'pending' })
+})
+
+// --- POST /fcf-trend-events/:id/resolve — Kendry calls this once per candidate period
+// after reading and interpreting Rob's raw reply. SER8-only. ---
+researchApp.post('/fcf-trend-events/:id/resolve', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const resolution = body.status  // 'confirmed' or 'rejected'
+  const robResponse = body.rob_response
+  const excludesPriorTrend = body.excludes_prior_trend ? 1 : 0
+
+  if (!['confirmed', 'rejected'].includes(resolution)) {
+    return c.json({ error: "status must be 'confirmed' or 'rejected'" }, 400)
+  }
+
+  const row = await db.prepare('SELECT id FROM fcf_trend_events WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'FCF trend event not found' }, 404)
+  }
+
+  await db.prepare(`
+    UPDATE fcf_trend_events
+    SET status = ?, rob_response = ?, excludes_prior_trend = ?, resolved_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).bind(resolution, robResponse ?? null, excludesPriorTrend, id).run()
+
+  return c.json({ success: true, id: Number(id), status: resolution })
+})
+
+// --- GET /:ticker/fcf-trend-events — lets Kendry (or anyone) see the FCF-trend
+// events on file for a ticker, including which are still awaiting Rob's confirmation. ---
+researchApp.get('/:ticker/fcf-trend-events', async (c) => {
+  const db = c.env.RESEARCH_DB
+  const symbol = c.req.param('ticker').toUpperCase()
+
+  const company = await db.prepare('SELECT id FROM companies WHERE symbol = ?').bind(symbol).first()
+  if (!company) {
+    return c.json({ error: 'Company not found' }, 404)
+  }
+
+  const results = await db.prepare(`
+    SELECT * FROM fcf_trend_events WHERE company_id = ? ORDER BY start_year ASC
+  `).bind(company.id).all()
+
+  return c.json({ ticker: symbol, events: results.results })
 })
 
 // --- GET /api/research/:ticker — full picture for one company ---
@@ -643,6 +732,41 @@ researchApp.get('/:ticker/notes/:id', async (c) => {
   return c.json({ note })
 })
 
+// --- POST /:ticker/fcf-trend-events — Kendry calls this once, with all candidate
+// periods found for this ticker in one request. Creates the audit-trail rows and
+// starts the patient wait (same shape as meaning-clarity, single round-trip instead
+// of four sequential questions). SER8-only. ---
+researchApp.post('/:ticker/fcf-trend-events', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+  const symbol = c.req.param('ticker').toUpperCase()
+  const body = await c.req.json()
 
+  const company = await db.prepare('SELECT id FROM companies WHERE symbol = ?').bind(symbol).first()
+  if (!company) {
+    return c.json({ error: 'Company not found' }, 404)
+  }
+
+  const events = body.events
+  if (!Array.isArray(events) || events.length === 0) {
+    return c.json({ error: 'events must be a non-empty array' }, 400)
+  }
+
+  const createdIds: number[] = []
+  for (const ev of events) {
+    if (!ev.start_year || !ev.end_year || !ev.direction || !ev.flag_level) {
+      return c.json({ error: 'Each event needs start_year, end_year, direction, flag_level' }, 400)
+    }
+    const result = await db.prepare(`
+      INSERT INTO fcf_trend_events (company_id, start_year, end_year, direction, deviation_pct, flag_level, kendry_findings)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      company.id, ev.start_year, ev.end_year, ev.direction,
+      ev.deviation_pct ?? null, ev.flag_level, ev.kendry_findings ?? null
+    ).run()
+    createdIds.push(result.meta.last_row_id as number)
+  }
+
+  return c.json({ success: true, ticker: symbol, event_ids: createdIds })
+})
 
 export default researchApp
