@@ -1,0 +1,1 @@
+ALTER TABLE fcf_trend_events ADD COLUMN affected_metrics TEXT;

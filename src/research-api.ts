@@ -755,11 +755,11 @@ researchApp.post('/:ticker/fcf-trend-events', researchAuthMiddleware, async (c) 
       return c.json({ error: 'Each event needs start_year, end_year, direction, flag_level' }, 400)
     }
     const result = await db.prepare(`
-      INSERT INTO fcf_trend_events (company_id, start_year, end_year, direction, deviation_pct, flag_level, kendry_findings)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO fcf_trend_events (company_id, start_year, end_year, direction, deviation_pct, flag_level, kendry_findings, affected_metrics)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       company.id, ev.start_year, ev.end_year, ev.direction,
-      ev.deviation_pct ?? null, ev.flag_level, ev.kendry_findings ?? null
+      ev.deviation_pct ?? null, ev.flag_level, ev.kendry_findings ?? null, ev.affected_metrics ?? null
     ).run()
     createdIds.push(result.meta.last_row_id as number)
   }
