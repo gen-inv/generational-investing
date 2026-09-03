@@ -356,20 +356,21 @@ researchApp.get('/queue', async (c) => {
   const db = c.env.RESEARCH_DB
   const results = await db.prepare(`
     SELECT id, ticker, update_type, user_notes, status, attempts, requested_at, claimed_at,
-           meaning_question_num, question_sent_at
+           meaning_question_num, question_sent_at, fcf_trend_question_sent_at
     FROM pending_research
-        WHERE status IN ('pending', 'in_progress', 'failed', 'awaiting_meaning_clarity', 'awaiting_fcf_trend_clarity')
+    WHERE status IN ('pending', 'in_progress', 'failed', 'awaiting_meaning_clarity', 'awaiting_fcf_trend_clarity')
     ORDER BY requested_at ASC
   `).all()
   return c.json({ queue: results.results })
 })
 
+
 // --- GET /queue/next — SER8-only, atomically claims the oldest pending ticker ---
 researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const next = await db.prepare(`
-        SELECT id, ticker, update_type, user_notes, status, attempts, requested_at, claimed_at,
-           meaning_question_num, question_sent_at, fcf_trend_question_sent_at
+    SELECT id, ticker, update_type, user_notes, attempts,
+           meaning_question_num, meaning_answer_1, meaning_answer_2, meaning_answer_3, meaning_answer_4
     FROM pending_research
     WHERE status = 'pending'
     ORDER BY requested_at ASC
@@ -380,16 +381,12 @@ researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
     return c.json({ ticker: null, message: 'No pending research requests.' })
   }
 
-  // Claim it -- only succeeds if still 'pending' (guards against a race if this were
-  // ever called concurrently, even though today there's exactly one consumer).
   const claim = await db.prepare(`
     UPDATE pending_research SET status = 'in_progress', claimed_at = CURRENT_TIMESTAMP
     WHERE id = ? AND status = 'pending'
   `).bind(next.id).run()
 
   if (claim.meta.changes === 0) {
-    // Someone else claimed it between our SELECT and UPDATE -- rare, but handle it
-    // honestly rather than pretend we claimed something we didn't.
     return c.json({ ticker: null, message: 'Next item was claimed by another process just now -- try again.' })
   }
 
@@ -401,6 +398,7 @@ researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
     meaning_answer_3: next.meaning_answer_3, meaning_answer_4: next.meaning_answer_4
   })
 })
+
 // --- POST /update/:ticker -- enqueues a re-research request for an existing ticker.
 // Public (matches the site's existing auth model -- the main site's own login already
 // gates who can reach this UI at all; this endpoint doesn't need the SER8-only bearer
