@@ -749,10 +749,16 @@ researchApp.post('/:ticker/fcf-trend-events', researchAuthMiddleware, async (c) 
     return c.json({ error: 'events must be a non-empty array' }, 400)
   }
 
-  const createdIds: number[] = []
+    const createdIds: number[] = []
   for (const ev of events) {
     if (!ev.start_year || !ev.end_year || !ev.direction || !ev.flag_level) {
       return c.json({ error: 'Each event needs start_year, end_year, direction, flag_level' }, 400)
+    }
+    if (!['depressed', 'elevated'].includes(ev.direction)) {
+      return c.json({ error: `Invalid direction "${ev.direction}" -- must be 'depressed' or 'elevated'` }, 400)
+    }
+    if (parseInt(ev.start_year) > parseInt(ev.end_year)) {
+      return c.json({ error: `start_year (${ev.start_year}) cannot be after end_year (${ev.end_year})` }, 400)
     }
     const result = await db.prepare(`
       INSERT INTO fcf_trend_events (company_id, start_year, end_year, direction, deviation_pct, flag_level, kendry_findings, affected_metrics)
