@@ -642,9 +642,16 @@ app.post('/api/companies', authMiddleware, async (c) => {
       ).bind(ticker).first()
 
       if (!alreadyQueued) {
-        await c.env.RESEARCH_DB.prepare(
-          'INSERT INTO pending_research (ticker, requested_by_user_id) VALUES (?, ?)'
-        ).bind(ticker, userId).run()
+        // Only Rob (user_id=1) can trigger new research -- per his decision
+        // 2026-09-13, since he's the one who answers every judgment-call question
+        // Kendry raises during a run. Other users can still add the ticker to their
+        // own roster (with blank score fields until research exists), just won't
+        // trigger a new research request.
+        if (userId === 1) {
+          await c.env.RESEARCH_DB.prepare(
+            'INSERT INTO pending_research (ticker, requested_by_user_id) VALUES (?, ?)'
+          ).bind(ticker, userId).run()
+        }
       }
     }
   } catch (e) {
