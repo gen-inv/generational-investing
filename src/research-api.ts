@@ -523,6 +523,42 @@ researchApp.post('/queue/:id/mark-complete', researchAuthMiddleware, async (c) =
   return c.json({ success: true, ticker: row.ticker, status: finalStatus })
 })
 
+// --- POST /queue/:id/retry — resets a queue entry to pending with a fresh attempt
+// budget. Public for now (access restriction deferred to a future broader index.tsx
+// refactor, per Rob's decision 2026-09-14). ---
+researchApp.post('/queue/:id/retry', async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+
+  const row = await db.prepare('SELECT id, ticker FROM pending_research WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'Queue entry not found' }, 404)
+  }
+
+  await db.prepare(`
+    UPDATE pending_research SET status = 'pending', attempts = 0, claimed_at = NULL
+    WHERE id = ?
+  `).bind(id).run()
+
+  return c.json({ success: true, ticker: row.ticker, status: 'pending' })
+})
+
+// --- POST /queue/:id/cancel — marks a queue entry cancelled. Public for now (access
+// restriction deferred, per Rob's decision 2026-09-14). ---
+researchApp.post('/queue/:id/cancel', async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+
+  const row = await db.prepare('SELECT id, ticker FROM pending_research WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'Queue entry not found' }, 404)
+  }
+
+  await db.prepare(`UPDATE pending_research SET status = 'cancelled' WHERE id = ?`).bind(id).run()
+
+  return c.json({ success: true, ticker: row.ticker, status: 'cancelled' })
+})
+
 // --- POST /queue/:id/ask-meaning-question — Kendry calls this after actually sending
 // a question via Telegram, marking "the clock starts now" for that specific question.
 // SER8-only. ---
