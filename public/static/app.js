@@ -10696,6 +10696,70 @@ function showUtilityTab(tabName) {
     }
 }
 
+async function loadResearchQueue() {
+    const tbody = document.getElementById('research-queue-table')
+    tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</td></tr>'
+    try {
+        const response = await fetch('https://generational-investing.pages.dev/api/research/queue')
+        const data = await response.json()
+        const queue = data.queue || []
+        if (queue.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500"><i class="fas fa-inbox text-3xl mb-2"></i><p>Queue is empty</p></td></tr>'
+            return
+        }
+        tbody.innerHTML = queue.map(item => {
+            const statusColors = {
+                'pending': 'bg-blue-100 text-blue-800',
+                'in_progress': 'bg-yellow-100 text-yellow-800',
+                'failed': 'bg-red-100 text-red-800',
+                'awaiting_meaning_clarity': 'bg-purple-100 text-purple-800',
+                'awaiting_fcf_trend_clarity': 'bg-purple-100 text-purple-800',
+            }
+            const statusClass = statusColors[item.status] || 'bg-gray-100 text-gray-800'
+            return `
+                <tr>
+                    <td class="px-4 py-2 font-semibold">${item.ticker}</td>
+                    <td class="px-4 py-2">${item.update_type}</td>
+                    <td class="px-4 py-2"><span class="px-2 py-1 rounded text-xs font-semibold ${statusClass}">${item.status}</span></td>
+                    <td class="px-4 py-2 text-center">${item.attempts}</td>
+                    <td class="px-4 py-2 text-sm text-gray-600">${item.requested_at || ''}</td>
+                    <td class="px-4 py-2 text-sm text-gray-600">${item.claimed_at || ''}</td>
+                    <td class="px-4 py-2 text-center">
+                        <button onclick="retryQueueItem(${item.id})" class="px-3 py-1 bg-blue-100 text-blue-700 rounded font-semibold text-sm hover:bg-blue-200 mr-1">
+                            <i class="fas fa-redo mr-1"></i>Retry
+                        </button>
+                        <button onclick="cancelQueueItem(${item.id})" class="px-3 py-1 bg-red-100 text-red-700 rounded font-semibold text-sm hover:bg-red-200">
+                            <i class="fas fa-times mr-1"></i>Cancel
+                        </button>
+                    </td>
+                </tr>
+            `
+        }).join('')
+    } catch (error) {
+        tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-red-500">Failed to load queue.</td></tr>'
+    }
+}
+
+async function retryQueueItem(id) {
+    if (!confirm('Retry this item? It will be reset to pending with a fresh attempt count.')) return
+    try {
+        await fetch(`https://generational-investing.pages.dev/api/research/queue/${id}/retry`, { method: 'POST' })
+        loadResearchQueue()
+    } catch (error) {
+        alert('Failed to retry item.')
+    }
+}
+
+async function cancelQueueItem(id) {
+    if (!confirm('Cancel this item? It will be removed from active processing.')) return
+    try {
+        await fetch(`https://generational-investing.pages.dev/api/research/queue/${id}/cancel`, { method: 'POST' })
+        loadResearchQueue()
+    } catch (error) {
+        alert('Failed to cancel item.')
+    }
+}
+
 // ====================================
 // Dividend Repository Functions
 // ====================================

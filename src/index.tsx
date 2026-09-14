@@ -8932,6 +8932,9 @@ app.get('/', (c) => {
                                     <button onclick="showUtilityTab('dividend-repository')" data-utility-tab="dividend-repository" class="utility-tab px-4 py-3 font-semibold text-gray-600 border-b-2 border-transparent hover:text-brand-teal hover:border-brand-teal transition-colors">
                                         <i class="fas fa-coins mr-2"></i>Dividend Repository
                                     </button>
+                                    <button onclick="showUtilityTab('queue-management'); loadResearchQueue()" data-utility-tab="queue-management" class="utility-tab px-4 py-3 font-semibold text-gray-600 border-b-2 border-transparent hover:text-brand-teal hover:border-brand-teal transition-colors">
+                                        <i class="fas fa-list-check mr-2"></i>Research Queue
+                                    </button>
                                 </nav>
                             </div>
                         </div>
@@ -9394,9 +9397,51 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                             </div>
                         </div>
                     </div>
+                    <!-- Queue Management Utility -->
+                    <div id="queue-management-utility" class="utility-content hidden">
+                        <div class="card mb-6">
+                            <div class="flex items-start gap-4 mb-4">
+                                <div class="bg-brand-teal text-white p-3 rounded-lg">
+                                    <i class="fas fa-list-check text-2xl"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h3 class="text-xl font-bold text-gray-800">Research Queue</h3>
+                                        <button onclick="loadResearchQueue()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300">
+                                            <i class="fas fa-sync mr-2"></i>Refresh
+                                        </button>
+                                    </div>
+                                    <div class="overflow-x-auto">
+                                        <table class="min-w-full bg-white border border-gray-200 rounded-lg">
+                                            <thead class="bg-gray-100">
+                                                <tr>
+                                                    <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Ticker</th>
+                                                    <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Type</th>
+                                                    <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Status</th>
+                                                    <th class="px-4 py-2 text-center text-sm font-semibold text-gray-700">Attempts</th>
+                                                    <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Requested</th>
+                                                    <th class="px-4 py-2 text-left text-sm font-semibold text-gray-700">Claimed</th>
+                                                    <th class="px-4 py-2 text-center text-sm font-semibold text-gray-700">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="research-queue-table">
+                                                <tr>
+                                                    <td colspan="7" class="px-4 py-8 text-center text-gray-500">
+                                                        <i class="fas fa-spinner fa-spin mr-2"></i>Loading...
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     </div>
                     <!-- End Utilities Section -->
                     
+
+
                     <!-- Reports Section -->
                     <!-- NEW REPORTS SECTION WITH TABS -->
                     <div id="reports-section" class="section hidden">
