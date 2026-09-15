@@ -13377,27 +13377,27 @@ function renderOverviewTab(data) {
                 
                 ${scoresheet.understanding_score || scoresheet.moat_score || scoresheet.management_score ? `
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                        ${scoresheet.understanding_score ? `
+                                                ${scoresheet.understanding_score ? `
                             <div class="bg-gray-50 p-3 rounded">
-                                <div class="text-xs text-gray-600">Understanding</div>
+                                <div class="text-xs text-gray-600">Understanding <span class="text-gray-400">(35%)</span></div>
                                 <div class="text-lg font-semibold">${scoresheet.understanding_score.toFixed(2)}</div>
                             </div>
                         ` : ''}
                         ${scoresheet.moat_score ? `
                             <div class="bg-gray-50 p-3 rounded">
-                                <div class="text-xs text-gray-600">Moat</div>
+                                <div class="text-xs text-gray-600">Moat <span class="text-gray-400">(25%)</span></div>
                                 <div class="text-lg font-semibold">${scoresheet.moat_score.toFixed(2)}</div>
                             </div>
                         ` : ''}
                         ${scoresheet.management_score ? `
                             <div class="bg-gray-50 p-3 rounded">
-                                <div class="text-xs text-gray-600">Management</div>
+                                <div class="text-xs text-gray-600">Management <span class="text-gray-400">(25%)</span></div>
                                 <div class="text-lg font-semibold">${scoresheet.management_score.toFixed(2)}</div>
                             </div>
                         ` : ''}
                         ${scoresheet.options_liquidity_score ? `
                             <div class="bg-gray-50 p-3 rounded">
-                                <div class="text-xs text-gray-600">Options Liquidity</div>
+                                <div class="text-xs text-gray-600">Options Liquidity <span class="text-gray-400">(15%)</span></div>
                                 <div class="text-lg font-semibold">${scoresheet.options_liquidity_score.toFixed(2)}</div>
                             </div>
                         ` : ''}
