@@ -476,6 +476,22 @@ researchApp.post('/queue/:id/report-failure', researchAuthMiddleware, async (c) 
     })
   }
 
+    const body = await c.req.json().catch(() => ({}))
+  if (body.infrastructure === true) {
+    // Doesn't count against the retry cap -- a pure infrastructure failure (network,
+    // provider auth, billing) reflects nothing wrong with the research itself. Reset
+    // to pending unconditionally, attempts unchanged. Added 2026-09-15 after NFLX hit
+    // a genuine multi-provider outage and burned a real attempt for something that
+    // had nothing to do with the research work.
+    await db.prepare(`
+      UPDATE pending_research SET status = 'pending', claimed_at = NULL WHERE id = ?
+    `).bind(id).run()
+    return c.json({
+      ticker: row.ticker, attempts: row.attempts, max_attempts: MAX_ATTEMPTS,
+      status: 'pending', will_retry: true, infrastructure: true,
+    })
+  }
+
   const newAttempts = (row.attempts as number) + 1
   const willRetry = newAttempts < MAX_ATTEMPTS;
 
