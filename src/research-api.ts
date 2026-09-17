@@ -656,6 +656,63 @@ researchApp.post('/queue/:id/record-meaning-answer', researchAuthMiddleware, asy
   return c.json({ success: true, ticker: row.ticker, question_num: questionNum, status: 'pending' })
 })
 
+// --- POST /queue/:id/ask-clarification — Kendry calls this after sending an ad-hoc
+// clarifying question via Telegram, for anything genuinely ambiguous that doesn't fit
+// the structured FCF-trend or meaning-clarity flows. Stores the actual question text --
+// unlike those two flows, there's no fixed schema to re-derive meaning from on resume,
+// so a fresh session needs the real question handed back to it directly. SER8-only. ---
+researchApp.post('/queue/:id/ask-clarification', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const question = body.question
+
+  if (!question) {
+    return c.json({ error: 'question is required' }, 400)
+  }
+
+  const row = await db.prepare('SELECT id, ticker FROM pending_research WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'Queue entry not found' }, 404)
+  }
+
+  await db.prepare(`
+    UPDATE pending_research
+    SET status = 'awaiting_clarification', clarification_question = ?, question_sent_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).bind(question, id).run()
+
+  return c.json({ success: true, ticker: row.ticker, status: 'awaiting_clarification' })
+})
+
+// --- POST /queue/:id/record-clarification-reply — called by orchestrator.py's own
+// polling, not by Kendry directly. Saves the raw reply, flips status back to pending
+// so the ticker becomes claimable again. ---
+researchApp.post('/queue/:id/record-clarification-reply', researchAuthMiddleware, async (c) => {
+  const db = c.env.RESEARCH_DB
+  const id = c.req.param('id')
+  const body = await c.req.json().catch(() => ({}))
+  const response = body.response
+
+  if (!response) {
+    return c.json({ error: 'response is required' }, 400)
+  }
+
+  const row = await db.prepare('SELECT id, ticker, status FROM pending_research WHERE id = ?').bind(id).first()
+  if (!row) {
+    return c.json({ error: 'Queue entry not found' }, 404)
+  }
+  if (row.status !== 'awaiting_clarification') {
+    return c.json({ error: `Queue entry is not awaiting a clarification reply (status: ${row.status})` }, 409)
+  }
+
+  await db.prepare(`
+    UPDATE pending_research SET clarification_response = ?, status = 'pending' WHERE id = ?
+  `).bind(response, id).run()
+
+  return c.json({ success: true, ticker: row.ticker, status: 'pending' })
+})
+
 // --- POST /queue/:id/record-fcf-trend-reply — called by orchestrator.py's own polling,
 // not by Kendry directly. Just flips status back to pending so the ticker becomes
 // claimable again -- unlike meaning-clarity, does NOT record the reply text itself,
