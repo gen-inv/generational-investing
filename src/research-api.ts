@@ -356,9 +356,10 @@ researchApp.get('/queue', async (c) => {
   const db = c.env.RESEARCH_DB
   const results = await db.prepare(`
     SELECT id, ticker, update_type, user_notes, status, attempts, requested_at, claimed_at,
-           meaning_question_num, question_sent_at, fcf_trend_question_sent_at
+           meaning_question_num, question_sent_at, fcf_trend_question_sent_at,
+           clarification_question, clarification_response
     FROM pending_research
-    WHERE status IN ('pending', 'in_progress', 'failed', 'awaiting_meaning_clarity', 'awaiting_fcf_trend_clarity')
+    WHERE status IN ('pending', 'in_progress', 'failed', 'awaiting_meaning_clarity', 'awaiting_fcf_trend_clarity', 'awaiting_clarification')
     ORDER BY requested_at ASC
   `).all()
   return c.json({ queue: results.results })
