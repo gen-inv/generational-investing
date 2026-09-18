@@ -370,7 +370,8 @@ researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const next = await db.prepare(`
     SELECT id, ticker, update_type, user_notes, attempts,
-           meaning_question_num, meaning_answer_1, meaning_answer_2, meaning_answer_3, meaning_answer_4
+           meaning_question_num, meaning_answer_1, meaning_answer_2, meaning_answer_3, meaning_answer_4,
+           clarification_question, clarification_response
     FROM pending_research
     WHERE status = 'pending'
     ORDER BY requested_at ASC
@@ -390,12 +391,14 @@ researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
     return c.json({ ticker: null, message: 'Next item was claimed by another process just now -- try again.' })
   }
 
-  return c.json({
+    return c.json({
     pending_id: next.id, ticker: next.ticker, update_type: next.update_type,
     user_notes: next.user_notes, attempts: next.attempts,
     meaning_question_num: next.meaning_question_num,
     meaning_answer_1: next.meaning_answer_1, meaning_answer_2: next.meaning_answer_2,
-    meaning_answer_3: next.meaning_answer_3, meaning_answer_4: next.meaning_answer_4
+    meaning_answer_3: next.meaning_answer_3, meaning_answer_4: next.meaning_answer_4,
+    clarification_question: next.clarification_question,
+    clarification_response: next.clarification_response
   })
 })
 
