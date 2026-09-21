@@ -354,12 +354,11 @@ researchApp.get('/findings', async (c) => {
 // --- GET /queue — public, list what's currently pending/in_progress ---
 researchApp.get('/queue', async (c) => {
   const db = c.env.RESEARCH_DB
-  const results = await db.prepare(`
+    const results = await db.prepare(`
     SELECT id, ticker, update_type, user_notes, status, attempts, requested_at, claimed_at,
-           meaning_question_num, question_sent_at, fcf_trend_question_sent_at,
-           clarification_question, clarification_response
+           awaiting_reply_kind, awaiting_reply_question, awaiting_reply_response, awaiting_reply_sent_at
     FROM pending_research
-    WHERE status IN ('pending', 'in_progress', 'failed', 'awaiting_meaning_clarity', 'awaiting_fcf_trend_clarity', 'awaiting_clarification')
+    WHERE status IN ('pending', 'in_progress', 'failed', 'awaiting_reply')
     ORDER BY requested_at ASC
   `).all()
   return c.json({ queue: results.results })
@@ -371,8 +370,7 @@ researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const next = await db.prepare(`
     SELECT id, ticker, update_type, user_notes, attempts,
-           meaning_question_num, meaning_answer_1, meaning_answer_2, meaning_answer_3, meaning_answer_4,
-           clarification_question, clarification_response
+           awaiting_reply_kind, awaiting_reply_question, awaiting_reply_response
     FROM pending_research
     WHERE status = 'pending'
     ORDER BY requested_at ASC
@@ -392,14 +390,12 @@ researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
     return c.json({ ticker: null, message: 'Next item was claimed by another process just now -- try again.' })
   }
 
-    return c.json({
+  return c.json({
     pending_id: next.id, ticker: next.ticker, update_type: next.update_type,
     user_notes: next.user_notes, attempts: next.attempts,
-    meaning_question_num: next.meaning_question_num,
-    meaning_answer_1: next.meaning_answer_1, meaning_answer_2: next.meaning_answer_2,
-    meaning_answer_3: next.meaning_answer_3, meaning_answer_4: next.meaning_answer_4,
-    clarification_question: next.clarification_question,
-    clarification_response: next.clarification_response
+    awaiting_reply_kind: next.awaiting_reply_kind,
+    awaiting_reply_question: next.awaiting_reply_question,
+    awaiting_reply_response: next.awaiting_reply_response
   })
 })
 
@@ -579,98 +575,21 @@ researchApp.post('/queue/:id/cancel', async (c) => {
   return c.json({ success: true, ticker: row.ticker, status: 'cancelled' })
 })
 
-// --- POST /queue/:id/ask-meaning-question — Kendry calls this after actually sending
-// a question via Telegram, marking "the clock starts now" for that specific question.
-// SER8-only. ---
-researchApp.post('/queue/:id/ask-meaning-question', researchAuthMiddleware, async (c) => {
+// --- POST /queue/:id/ask-reply — one consolidated mechanism replacing the three
+// separate ask-* endpoints (meaning-clarity, FCF-trend, ad-hoc). Kendry calls this
+// after actually sending a question via Telegram. Always stores the real question
+// text and a kind tag -- the actual interpretation of what "kind" means is
+// AGENTS.md's job, not this endpoint's. SER8-only. ---
+researchApp.post('/queue/:id/ask-reply', researchAuthMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({}))
-  const questionNum = body.question_num
-
-  if (![1, 2, 3, 4].includes(questionNum)) {
-    return c.json({ error: 'question_num must be 1, 2, 3, or 4' }, 400)
-  }
-
-  const row = await db.prepare('SELECT id, ticker FROM pending_research WHERE id = ?').bind(id).first()
-  if (!row) {
-    return c.json({ error: 'Queue entry not found' }, 404)
-  }
-
-  await db.prepare(`
-    UPDATE pending_research
-    SET status = 'awaiting_meaning_clarity', meaning_question_num = ?, question_sent_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).bind(questionNum, id).run()
-
-  return c.json({ success: true, ticker: row.ticker, question_num: questionNum, status: 'awaiting_meaning_clarity' })
-})
-
-// --- POST /queue/:id/ask-fcf-trend-question — Kendry calls this after sending the
-// consolidated FCF-trend findings via Telegram. SER8-only. ---
-researchApp.post('/queue/:id/ask-fcf-trend-question', researchAuthMiddleware, async (c) => {
-  const db = c.env.RESEARCH_DB
-  const id = c.req.param('id')
-
-  const row = await db.prepare('SELECT id, ticker FROM pending_research WHERE id = ?').bind(id).first()
-  if (!row) {
-    return c.json({ error: 'Queue entry not found' }, 404)
-  }
-
-  await db.prepare(`
-    UPDATE pending_research
-    SET status = 'awaiting_fcf_trend_clarity', fcf_trend_question_sent_at = CURRENT_TIMESTAMP
-    WHERE id = ?
-  `).bind(id).run()
-
-  return c.json({ success: true, ticker: row.ticker, status: 'awaiting_fcf_trend_clarity' })
-})
-
-// --- POST /queue/:id/record-meaning-answer — called by orchestrator.py's own polling,
-// not by Kendry directly. Saves the raw reply, flips status back to pending so the
-// ticker becomes claimable again. Deliberately does NOT decide what happens next --
-// that's Kendry's judgment on the next claim, read fresh from the database. ---
-researchApp.post('/queue/:id/record-meaning-answer', researchAuthMiddleware, async (c) => {
-  const db = c.env.RESEARCH_DB
-  const id = c.req.param('id')
-  const body = await c.req.json().catch(() => ({}))
-  const questionNum = body.question_num
-  const answerText = body.answer_text
-
-  if (![1, 2, 3, 4].includes(questionNum)) {
-    return c.json({ error: 'question_num must be 1, 2, 3, or 4' }, 400)
-  }
-  if (!answerText) {
-    return c.json({ error: 'answer_text is required' }, 400)
-  }
-
-  const row = await db.prepare('SELECT id, ticker, status FROM pending_research WHERE id = ?').bind(id).first()
-  if (!row) {
-    return c.json({ error: 'Queue entry not found' }, 404)
-  }
-  if (row.status !== 'awaiting_meaning_clarity') {
-    return c.json({ error: `Queue entry is not awaiting a meaning-clarity answer (status: ${row.status})` }, 409)
-  }
-
-  const column = `meaning_answer_${questionNum}`
-  await db.prepare(`
-    UPDATE pending_research SET ${column} = ?, status = 'pending' WHERE id = ?
-  `).bind(answerText, id).run()
-
-  return c.json({ success: true, ticker: row.ticker, question_num: questionNum, status: 'pending' })
-})
-
-// --- POST /queue/:id/ask-clarification — Kendry calls this after sending an ad-hoc
-// clarifying question via Telegram, for anything genuinely ambiguous that doesn't fit
-// the structured FCF-trend or meaning-clarity flows. Stores the actual question text --
-// unlike those two flows, there's no fixed schema to re-derive meaning from on resume,
-// so a fresh session needs the real question handed back to it directly. SER8-only. ---
-researchApp.post('/queue/:id/ask-clarification', researchAuthMiddleware, async (c) => {
-  const db = c.env.RESEARCH_DB
-  const id = c.req.param('id')
-  const body = await c.req.json().catch(() => ({}))
+  const kind = body.kind
   const question = body.question
 
+  if (!['meaning_clarity', 'fcf_trend', 'ad_hoc'].includes(kind)) {
+    return c.json({ error: "kind must be 'meaning_clarity', 'fcf_trend', or 'ad_hoc'" }, 400)
+  }
   if (!question) {
     return c.json({ error: 'question is required' }, 400)
   }
@@ -682,17 +601,20 @@ researchApp.post('/queue/:id/ask-clarification', researchAuthMiddleware, async (
 
   await db.prepare(`
     UPDATE pending_research
-    SET status = 'awaiting_clarification', clarification_question = ?, question_sent_at = CURRENT_TIMESTAMP
+    SET status = 'awaiting_reply', awaiting_reply_kind = ?, awaiting_reply_question = ?,
+        awaiting_reply_sent_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).bind(question, id).run()
+  `).bind(kind, question, id).run()
 
-  return c.json({ success: true, ticker: row.ticker, status: 'awaiting_clarification' })
+  return c.json({ success: true, ticker: row.ticker, kind, status: 'awaiting_reply' })
 })
 
-// --- POST /queue/:id/record-clarification-reply — called by orchestrator.py's own
-// polling, not by Kendry directly. Saves the raw reply, flips status back to pending
-// so the ticker becomes claimable again. ---
-researchApp.post('/queue/:id/record-clarification-reply', researchAuthMiddleware, async (c) => {
+// --- POST /queue/:id/record-reply — called by orchestrator.py's own polling, not by
+// Kendry directly. Always captures the real reply text -- closes the exact gap found
+// via CMG (2026-09-20), where FCF-trend's old separate mechanism detected a reply
+// existed but never stored what it actually said, leaving a fresh reclaim with no way
+// to know what Rob had answered. ---
+researchApp.post('/queue/:id/record-reply', researchAuthMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const id = c.req.param('id')
   const body = await c.req.json().catch(() => ({}))
@@ -706,36 +628,13 @@ researchApp.post('/queue/:id/record-clarification-reply', researchAuthMiddleware
   if (!row) {
     return c.json({ error: 'Queue entry not found' }, 404)
   }
-  if (row.status !== 'awaiting_clarification') {
-    return c.json({ error: `Queue entry is not awaiting a clarification reply (status: ${row.status})` }, 409)
+  if (row.status !== 'awaiting_reply') {
+    return c.json({ error: `Queue entry is not awaiting a reply (status: ${row.status})` }, 409)
   }
 
   await db.prepare(`
-    UPDATE pending_research SET clarification_response = ?, status = 'pending' WHERE id = ?
+    UPDATE pending_research SET awaiting_reply_response = ?, status = 'pending' WHERE id = ?
   `).bind(response, id).run()
-
-  return c.json({ success: true, ticker: row.ticker, status: 'pending' })
-})
-
-// --- POST /queue/:id/record-fcf-trend-reply — called by orchestrator.py's own polling,
-// not by Kendry directly. Just flips status back to pending so the ticker becomes
-// claimable again -- unlike meaning-clarity, does NOT record the reply text itself,
-// since a single reply may address multiple candidate periods at once and Kendry
-// needs to read and interpret the raw text itself (via GET /:ticker/fcf-trend-events
-// or similar), not have it mechanically parsed here. ---
-researchApp.post('/queue/:id/record-fcf-trend-reply', researchAuthMiddleware, async (c) => {
-  const db = c.env.RESEARCH_DB
-  const id = c.req.param('id')
-
-  const row = await db.prepare('SELECT id, ticker, status FROM pending_research WHERE id = ?').bind(id).first()
-  if (!row) {
-    return c.json({ error: 'Queue entry not found' }, 404)
-  }
-  if (row.status !== 'awaiting_fcf_trend_clarity') {
-    return c.json({ error: `Queue entry is not awaiting an FCF-trend reply (status: ${row.status})` }, 409)
-  }
-
-  await db.prepare(`UPDATE pending_research SET status = 'pending' WHERE id = ?`).bind(id).run()
 
   return c.json({ success: true, ticker: row.ticker, status: 'pending' })
 })
