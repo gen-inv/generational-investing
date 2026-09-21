@@ -1,0 +1,9 @@
+ALTER TABLE pending_research DROP COLUMN meaning_question_num;
+ALTER TABLE pending_research DROP COLUMN meaning_answer_1;
+ALTER TABLE pending_research DROP COLUMN meaning_answer_2;
+ALTER TABLE pending_research DROP COLUMN meaning_answer_3;
+ALTER TABLE pending_research DROP COLUMN meaning_answer_4;
+ALTER TABLE pending_research DROP COLUMN question_sent_at;
+ALTER TABLE pending_research DROP COLUMN fcf_trend_question_sent_at;
+ALTER TABLE pending_research DROP COLUMN clarification_question;
+ALTER TABLE pending_research DROP COLUMN clarification_response;
