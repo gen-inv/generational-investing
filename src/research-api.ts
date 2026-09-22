@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { addCompanyToRoster } from './lib/add-company'
 
 type Bindings = {
   RESEARCH_DB: D1Database
@@ -683,6 +684,18 @@ researchApp.get('/:ticker/fcf-trend-events', async (c) => {
   `).bind(company.id).all()
 
   return c.json({ ticker: symbol, events: results.results })
+})
+
+// --- POST /:ticker/add-to-roster — Kendry calls this after a discovery-triggered
+// candidate passes Quick-5 and Rob confirms via Telegram he wants to add it. Adds
+// directly to Rob's own roster (user_id=1), using the exact same logic as the
+// website's own "Add Company" button -- so a guru-discovered ticker looks identical
+// to one Rob added himself (same Yahoo enrichment, same auto-populated research
+// fields). SER8-only. ---
+researchApp.post('/:ticker/add-to-roster', researchAuthMiddleware, async (c) => {
+  const symbol = c.req.param('ticker').toUpperCase()
+  const result = await addCompanyToRoster(c.env, 1, symbol)
+  return c.json(result, result.status)
 })
 
 // --- GET /api/research/:ticker — full picture for one company ---
