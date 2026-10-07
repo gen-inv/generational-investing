@@ -270,8 +270,9 @@ researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
       }
     }
 
-    // --- Guru holdings: simple append, computed_date distinguishes snapshots over time ---
+    // --- Guru holdings: fully replaced each pass (delete existing, insert fresh set) ---
     if (body.guru_holdings && Array.isArray(body.guru_holdings)) {
+      await db.prepare('DELETE FROM guru_holdings WHERE company_id = ?').bind(companyId).run()
       for (const g of body.guru_holdings) {
         await db.prepare(`
           INSERT INTO guru_holdings (company_id, guru_name, filing_date, shares, value, implied_price,
@@ -284,8 +285,9 @@ researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
       }
     }
 
-    // --- Peer comparisons: simple append, same pattern ---
+    // --- Peer comparisons: fully replaced each pass (delete existing, insert fresh set) ---
     if (body.peer_comparisons && Array.isArray(body.peer_comparisons)) {
+      await db.prepare('DELETE FROM peer_comparisons WHERE company_id = ?').bind(companyId).run()
       for (const p of body.peer_comparisons) {
         await db.prepare(`
           INSERT INTO peer_comparisons (company_id, peer_ticker, fiscal_year, revenue, operating_income,
