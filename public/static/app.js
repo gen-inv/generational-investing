@@ -5255,6 +5255,28 @@ function toggleClosedOptions() {
     loadOptions()
 }
 
+// List-view display for multi-leg trades: short strike(s) and NET premium per share.
+function optionListStrike(option, digits) {
+    const f = (v) => parseFloat(v).toFixed(digits)
+    if (option.strategy_type === 'CREDIT_SPREAD' || option.strategy_type === 'DEBIT_SPREAD') {
+        return '$' + f(option.short_strike != null ? option.short_strike : option.strike_price)
+    }
+    if (option.strategy_type === 'IRON_CONDOR') {
+        return '$' + f(option.short_put_strike) + ' / $' + f(option.short_call_strike)
+    }
+    return '$' + f(option.strike_price)
+}
+function optionListPremium(option, digits) {
+    const n = (v) => parseFloat(v) || 0
+    let p = n(option.premium)
+    if (option.strategy_type === 'CREDIT_SPREAD' || option.strategy_type === 'DEBIT_SPREAD') {
+        p = n(option.short_premium != null ? option.short_premium : option.premium) - n(option.long_premium)
+    } else if (option.strategy_type === 'IRON_CONDOR') {
+        p = (n(option.short_call_premium) - n(option.long_call_premium)) + (n(option.short_put_premium) - n(option.long_put_premium))
+    }
+    return '$' + p.toFixed(digits)
+}
+
 async function loadOptions() {
     try {
         // Fetch based on toggle state
@@ -5335,6 +5357,15 @@ async function loadOptions() {
         // Set Actions header text
         const lastHeaderCell = tableHeader.querySelector('th:last-child')
         lastHeaderCell.textContent = 'Actions'
+
+        // Column labels for multi-leg tabs
+        const isSpreadTab = currentStrategyFilter === 'CREDIT_SPREAD' || currentStrategyFilter === 'DEBIT_SPREAD'
+        const isCondorTab = currentStrategyFilter === 'IRON_CONDOR'
+        const hdrCells = tableHeader.querySelectorAll('th')
+        if (hdrCells.length > 4) {
+            hdrCells[3].textContent = isSpreadTab ? 'Short Strike' : (isCondorTab ? 'Short Strikes (Put / Call)' : 'Strike')
+            hdrCells[4].textContent = (isSpreadTab || isCondorTab) ? 'Net Premium' : 'Premium'
+        }
         
         if (filteredOptions.length === 0) {
             const strategyName = STRATEGY_TYPES.find(st => st.value === currentStrategyFilter)?.label || 'this strategy'
@@ -5352,8 +5383,8 @@ async function loadOptions() {
                     <td class="px-4 py-3">${option.trade_date}</td>
                     <td class="px-4 py-3 font-semibold text-brand-teal">${option.ticker}</td>
                     <td class="px-4 py-3">${strategyLabel}</td>
-                    <td class="px-4 py-3 text-right">$${parseFloat(option.strike_price).toFixed(3)}</td>
-                    <td class="px-4 py-3 text-right">$${parseFloat(option.premium).toFixed(3)}</td>
+                    <td class="px-4 py-3 text-right">${optionListStrike(option, 3)}</td>
+                    <td class="px-4 py-3 text-right">${optionListPremium(option, 3)}</td>
                     <td class="px-4 py-3 text-center font-semibold">${option.quantity}</td>
                     <td class="px-4 py-3">${option.expiration_date}</td>
                     <td class="px-4 py-3 text-center">
@@ -6044,6 +6075,17 @@ async function showOptionForm(optionId = null) {
             notes: formData.get('notes') || null
         }
         
+        // Multi-leg strategies have no single strike/premium input: send each leg's fields
+        // (short_strike, long_premium, ...) and let the server map them to columns.
+        const legCfg = strategyConfigs[data.strategy_type]
+        if (legCfg && legCfg.legs > 1) {
+            delete data.strike_price
+            delete data.premium
+            legCfg.fields.forEach(f => {
+                if (f !== 'commission') data[f] = parseFloat(formData.get(f))
+            })
+        }
+
         // Include close fields if they exist (for closed trades)
         if (formData.get('close_date')) {
             data.close_date = formData.get('close_date')
@@ -6665,7 +6707,7 @@ function renderLegDetails(option, strategyConfig) {
                     <div class="flex justify-between items-center">
                         <span class="font-semibold text-gray-700">Net Credit:</span>
                         <span class="text-xl font-bold text-purple-600">
-                            +$${((parseFloat(option.short_premium) - parseFloat(option.long_premium)) * option.quantity * 100).toFixed(2)}
+                            +$${((parseFloat(option.short_premium) - parseFloat(option.long_premium)) * option.quantity * 100 - (parseFloat(option.commission) || 0)).toFixed(2)}
                         </span>
                     </div>
                 </div>
@@ -6674,7 +6716,7 @@ function renderLegDetails(option, strategyConfig) {
     } else if (strategyConfig.legs === 4) {
         // Iron Condor
         const netCredit = ((parseFloat(option.short_call_premium) - parseFloat(option.long_call_premium)) +
-                          (parseFloat(option.short_put_premium) - parseFloat(option.long_put_premium))) * option.quantity * 100
+                          (parseFloat(option.short_put_premium) - parseFloat(option.long_put_premium))) * option.quantity * 100 - (parseFloat(option.commission) || 0)
         
         return `
             <div class="space-y-3">
@@ -6896,6 +6938,9 @@ async function closeOption(optionId) {
                 strike_price_3: option.strike_price_3,
                 strike_price_4: option.strike_price_4,
                 premium: option.premium,
+                premium_2: option.premium_2 ?? null,
+                premium_3: option.premium_3 ?? null,
+                premium_4: option.premium_4 ?? null,
                 quantity: option.quantity,
                 expiration_date: option.expiration_date,
                 account_type: option.account_type,
@@ -7076,6 +7121,9 @@ async function addToOptionPosition(optionId) {
                     strike_price_2: option.strike_price_2 || null,
                     strike_price_3: option.strike_price_3 || null,
                     strike_price_4: option.strike_price_4 || null,
+                    premium_2: option.premium_2 ?? null,
+                    premium_3: option.premium_3 ?? null,
+                    premium_4: option.premium_4 ?? null,
                     premium: avgPremium,
                     quantity: totalContracts,
                     expiration_date: option.expiration_date,
@@ -7248,6 +7296,9 @@ async function reduceFromOptionPosition(optionId) {
                 strike_price_3: option.strike_price_3 || null,
                 strike_price_4: option.strike_price_4 || null,
                 premium: option.premium,
+                premium_2: option.premium_2 ?? null,
+                premium_3: option.premium_3 ?? null,
+                premium_4: option.premium_4 ?? null,
                 quantity: contractsToClose,
                 expiration_date: option.expiration_date,
                 option_type: option.option_type || null,
@@ -7279,6 +7330,9 @@ async function reduceFromOptionPosition(optionId) {
                     strike_price_2: option.strike_price_2 || null,
                     strike_price_3: option.strike_price_3 || null,
                     strike_price_4: option.strike_price_4 || null,
+                    premium_2: option.premium_2 ?? null,
+                    premium_3: option.premium_3 ?? null,
+                    premium_4: option.premium_4 ?? null,
                     premium: option.premium,
                     quantity: remainingContracts,
                     expiration_date: option.expiration_date,
@@ -7579,8 +7633,8 @@ function calculateOptionPL(option, strategyConfig, closeData) {
         // Two legs
         const shortOpen = parseFloat(option.short_premium)
         const longOpen = parseFloat(option.long_premium)
-        const shortClose = closeData.short_close_price || 0
-        const longClose = closeData.long_close_price || 0
+        const shortClose = closeData.short_close_price ?? closeData.close_price ?? 0
+        const longClose = closeData.long_close_price ?? closeData.close_price_2 ?? 0
         
         // Net opening credit
         openingCredit = (shortOpen - longOpen) * contracts * 100
@@ -7594,10 +7648,10 @@ function calculateOptionPL(option, strategyConfig, closeData) {
         const shortPutOpen = parseFloat(option.short_put_premium)
         const longPutOpen = parseFloat(option.long_put_premium)
         
-        const shortCallClose = closeData.short_call_close || 0
-        const longCallClose = closeData.long_call_close || 0
-        const shortPutClose = closeData.short_put_close || 0
-        const longPutClose = closeData.long_put_close || 0
+        const shortCallClose = closeData.short_call_close ?? closeData.close_price ?? 0
+        const longCallClose = closeData.long_call_close ?? closeData.close_price_2 ?? 0
+        const shortPutClose = closeData.short_put_close ?? closeData.close_price_3 ?? 0
+        const longPutClose = closeData.long_put_close ?? closeData.close_price_4 ?? 0
         
         // Net opening credit (receive short premiums, pay long premiums)
         openingCredit = ((shortCallOpen - longCallOpen) + (shortPutOpen - longPutOpen)) * contracts * 100
@@ -7758,8 +7812,8 @@ async function loadClosedTrades() {
                             <td class="px-4 py-3">${option.close_date || '-'}</td>
                             <td class="px-4 py-3 font-semibold text-brand-teal">${option.ticker}</td>
                             <td class="px-4 py-3">${strategyLabel}</td>
-                            <td class="px-4 py-3 text-right">$${parseFloat(option.strike_price).toFixed(2)}</td>
-                            <td class="px-4 py-3 text-right">$${parseFloat(option.premium).toFixed(2)}</td>
+                            <td class="px-4 py-3 text-right">${optionListStrike(option, 2)}</td>
+                            <td class="px-4 py-3 text-right">${optionListPremium(option, 2)}</td>
                             <td class="px-4 py-3">${option.expiration_date}</td>
                             <td class="px-4 py-3">${option.account_type || 'N/A'}</td>
                             <td class="px-4 py-3 text-right ${plClass}">

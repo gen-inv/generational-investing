@@ -3379,6 +3379,50 @@ app.get('/api/stocks/:id/purchase-history', authMiddleware, async (c) => {
 // OPTION TRADES ROUTES
 // ============================================================================
 
+// ---- Multi-leg option helpers -------------------------------------------
+// Leg n is stored in strike_price[_n] / premium[_n] / close_price[_n].
+// Spreads: leg1 = short, leg2 = long.  Iron condor: short call, long call, short put, long put.
+const LEG_KEYS: Record<string, string[][]> = {
+  CREDIT_SPREAD: [['short_strike', 'short_premium'], ['long_strike', 'long_premium']],
+  DEBIT_SPREAD: [['short_strike', 'short_premium'], ['long_strike', 'long_premium']],
+  IRON_CONDOR: [
+    ['short_call_strike', 'short_call_premium'], ['long_call_strike', 'long_call_premium'],
+    ['short_put_strike', 'short_put_premium'], ['long_put_strike', 'long_put_premium']
+  ]
+}
+const LEG_STRIKE_COLS = ['strike_price', 'strike_price_2', 'strike_price_3', 'strike_price_4']
+const LEG_PREMIUM_COLS = ['premium', 'premium_2', 'premium_3', 'premium_4']
+
+// Form payload (short_strike, long_premium, ...) -> DB columns. Mutates data.
+// Returns an error message, or null. Payloads without leg fields pass through untouched.
+function applyLegFields(data: any): string | null {
+  const legs = LEG_KEYS[data.strategy_type]
+  if (!legs) return null
+  if (!legs.some(([s, p]) => data[s] !== undefined || data[p] !== undefined)) return null
+  for (let i = 0; i < legs.length; i++) {
+    const [sKey, pKey] = legs[i]
+    const strike = data[sKey] == null || data[sKey] === '' ? NaN : Number(data[sKey])
+    const prem = data[pKey] == null || data[pKey] === '' ? NaN : Number(data[pKey])
+    if (!Number.isFinite(strike) || strike <= 0) return `Strike is required for leg ${i + 1} (${sKey})`
+    if (!Number.isFinite(prem) || prem < 0) return `Premium is required for leg ${i + 1} (${pKey})`
+    data[LEG_STRIKE_COLS[i]] = strike
+    data[LEG_PREMIUM_COLS[i]] = prem
+  }
+  return null
+}
+
+// DB row -> row plus the per-leg names the frontend reads (short_strike, long_premium, ...).
+function expandLegFields(row: any): any {
+  const legs = LEG_KEYS[row.strategy_type]
+  if (!legs) return row
+  const out = { ...row }
+  legs.forEach(([sKey, pKey], i) => {
+    out[sKey] = row[LEG_STRIKE_COLS[i]]
+    out[pKey] = row[LEG_PREMIUM_COLS[i]]
+  })
+  return out
+}
+
 app.get('/api/options', authMiddleware, async (c) => {
   const userId = c.get('userId')
   const isOpen = c.req.query('open')
@@ -3413,7 +3457,7 @@ app.get('/api/options', authMiddleware, async (c) => {
   const stmt = c.env.DB.prepare(query)
   const options = await stmt.bind(...params).all()
   
-  return c.json(options.results)
+  return c.json((options.results as any[]).map(expandLegFields))
 })
 
 app.post('/api/options', authMiddleware, async (c) => {
@@ -3422,6 +3466,11 @@ app.post('/api/options', authMiddleware, async (c) => {
     const data = await c.req.json()
     const { DB } = c.env
     
+    const legError = applyLegFields(data)
+    if (legError) {
+      return c.json({ error: legError }, 400)
+    }
+
     // Validation
     if (!data.company_id) {
       return c.json({ error: 'Company is required' }, 400)
@@ -3457,9 +3506,9 @@ app.post('/api/options', authMiddleware, async (c) => {
     const result = await DB.prepare(`
       INSERT INTO option_trades (
         user_id, company_id, account_id, ticker, strategy_type, strike_price,
-        strike_price_2, strike_price_3, strike_price_4, premium, quantity,
+        strike_price_2, strike_price_3, strike_price_4, premium, premium_2, premium_3, premium_4, quantity,
         expiration_date, account_type, trade_date, commission, is_open, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       userId,
       data.company_id,
@@ -3471,6 +3520,9 @@ app.post('/api/options', authMiddleware, async (c) => {
       data.strike_price_3 || null,
       data.strike_price_4 || null,
       data.premium,
+      data.premium_2 ?? null,
+      data.premium_3 ?? null,
+      data.premium_4 ?? null,
       data.quantity,
       data.expiration_date,
       account.account_type,  // Get from accounts table
@@ -3499,6 +3551,11 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
     const data = await c.req.json()
     const { DB } = c.env
     
+    const legError = applyLegFields(data)
+    if (legError) {
+      return c.json({ error: legError }, 400)
+    }
+
     // First, get the existing trade data
     const existingTrade = await DB.prepare(`
       SELECT * FROM option_trades WHERE id = ? AND user_id = ?
@@ -3526,7 +3583,7 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       UPDATE option_trades SET
         ticker = ?, strategy_type = ?, strike_price = ?,
         strike_price_2 = ?, strike_price_3 = ?, strike_price_4 = ?,
-        premium = ?, quantity = ?, expiration_date = ?,
+        premium = ?, premium_2 = ?, premium_3 = ?, premium_4 = ?, quantity = ?, expiration_date = ?,
         account_type = ?, account_id = ?, trade_date = ?, commission = ?,
         close_date = ?, close_price = ?, close_price_2 = ?, close_price_3 = ?, close_price_4 = ?,
         close_commission = ?,
@@ -3540,6 +3597,9 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       data.strike_price_3 !== undefined ? data.strike_price_3 : (existingTrade.strike_price_3 ?? null),
       data.strike_price_4 !== undefined ? data.strike_price_4 : (existingTrade.strike_price_4 ?? null),
       data.premium !== undefined ? data.premium : existingTrade.premium,
+      data.premium_2 !== undefined ? data.premium_2 : (existingTrade.premium_2 ?? null),
+      data.premium_3 !== undefined ? data.premium_3 : (existingTrade.premium_3 ?? null),
+      data.premium_4 !== undefined ? data.premium_4 : (existingTrade.premium_4 ?? null),
       data.quantity !== undefined ? data.quantity : existingTrade.quantity,
       data.expiration_date !== undefined ? data.expiration_date : existingTrade.expiration_date,
       accountType,
@@ -3566,6 +3626,9 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       strike_price_3: data.strike_price_3 !== undefined ? data.strike_price_3 : existingTrade.strike_price_3,
       strike_price_4: data.strike_price_4 !== undefined ? data.strike_price_4 : existingTrade.strike_price_4,
       premium: data.premium !== undefined ? data.premium : existingTrade.premium,
+      premium_2: data.premium_2 !== undefined ? data.premium_2 : existingTrade.premium_2,
+      premium_3: data.premium_3 !== undefined ? data.premium_3 : existingTrade.premium_3,
+      premium_4: data.premium_4 !== undefined ? data.premium_4 : existingTrade.premium_4,
       quantity: data.quantity !== undefined ? data.quantity : existingTrade.quantity,
       commission: data.commission !== undefined ? data.commission : (existingTrade.commission || 0),
       close_date: data.close_date !== undefined ? data.close_date : existingTrade.close_date,
@@ -3589,7 +3652,7 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       if (strategyType === 'CREDIT_SPREAD' || strategyType === 'DEBIT_SPREAD') {
         // Two-leg spread
         const shortOpenPremium = mergedData.premium  // strike_price (short leg)
-        const longOpenPremium = mergedData.strike_price_2 || 0  // strike_price_2 (long leg)
+        const longOpenPremium = mergedData.premium_2 || 0  // long leg premium
         const shortClosePremium = mergedData.close_price || 0
         const longClosePremium = mergedData.close_price_2 || 0
         
@@ -3600,9 +3663,9 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       } else if (strategyType === 'IRON_CONDOR') {
         // Four-leg iron condor
         const scOpen = mergedData.premium || 0  // Short Call
-        const lcOpen = mergedData.strike_price_2 || 0  // Long Call
-        const spOpen = mergedData.strike_price_3 || 0  // Short Put
-        const lpOpen = mergedData.strike_price_4 || 0  // Long Put
+        const lcOpen = mergedData.premium_2 || 0  // Long Call premium
+        const spOpen = mergedData.premium_3 || 0  // Short Put premium
+        const lpOpen = mergedData.premium_4 || 0  // Long Put premium
         
         const scClose = mergedData.close_price || 0
         const lcClose = mergedData.close_price_2 || 0
@@ -4910,7 +4973,15 @@ app.get('/api/reports/pl', authMiddleware, async (c) => {
       strftime('%m', trade_date) as month,
       account_type,
       strategy_type,
-      SUM(premium * quantity * 100) as total_premium,
+      SUM(
+        CASE
+          WHEN strategy_type IN ('CREDIT_SPREAD', 'DEBIT_SPREAD')
+            THEN (premium - COALESCE(premium_2, 0))
+          WHEN strategy_type = 'IRON_CONDOR'
+            THEN (premium - COALESCE(premium_2, 0) + COALESCE(premium_3, 0) - COALESCE(premium_4, 0))
+          ELSE premium
+        END * quantity * 100
+      ) as total_premium,
       SUM(CASE WHEN profit_loss IS NOT NULL THEN profit_loss ELSE 0 END) as realized_pl
     FROM option_trades
     WHERE user_id = ?
