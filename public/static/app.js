@@ -3374,6 +3374,7 @@ async function showStockDetails(id) {
                                                 <th class="px-4 py-3 text-right text-indigo-800 font-semibold">Shares</th>
                                                 <th class="px-4 py-3 text-right text-indigo-800 font-semibold">Price</th>
                                                 <th class="px-4 py-3 text-right text-indigo-800 font-semibold">Total</th>
+                                                <th class="px-4 py-3 text-right text-indigo-800 font-semibold">Realized P/L</th>
                                                 <th class="px-4 py-3 text-center text-indigo-800 font-semibold">Status</th>
                                             </tr>
                                         </thead>
@@ -3395,6 +3396,9 @@ async function showStockDetails(id) {
                                                         <td class="px-4 py-3 text-right font-semibold text-gray-800">${trade.quantity}</td>
                                                         <td class="px-4 py-3 text-right text-gray-700">$${trade.price.toFixed(2)}</td>
                                                         <td class="px-4 py-3 text-right font-semibold text-gray-800">$${total.toFixed(2)}</td>
+                                                        <td class="px-4 py-3 text-right font-semibold ${trade.realized_pl === undefined || trade.realized_pl === null ? 'text-gray-400' : (trade.realized_pl >= 0 ? 'text-green-700' : 'text-red-700')}" title="${trade.realized_pl !== undefined && trade.realized_pl !== null ? 'vs. avg cost $' + Number(trade.avg_cost).toFixed(3) + ', ' + trade.shares_remaining + ' shares remaining' : ''}">
+                                                            ${trade.realized_pl !== undefined && trade.realized_pl !== null ? '$' + Number(trade.realized_pl).toFixed(2) : '-'}
+                                                        </td>
                                                         <td class="px-4 py-3 text-center">
                                                             <span class="px-2 py-1 rounded ${statusColor} text-xs font-medium">
                                                                 ${statusText}
@@ -7753,25 +7757,39 @@ async function loadClosedTrades() {
         
         // Load closed stock trades
         if (tradeType === 'all' || tradeType === 'stocks') {
-            const stocksResponse = await api.get('/api/stocks?closed=true')
+            // One row per SELL: partial sells (position still open) and full closes
+            const stocksResponse = await api.get('/api/stocks/closed-trades')
             const closedStocks = stocksResponse.data
-            
+
             const stocksTable = document.getElementById('closed-stocks-table')
             const stocksContainer = document.getElementById('closed-stocks-container')
-            
+
             if (closedStocks.length === 0) {
                 stocksContainer.style.display = 'none'
             } else {
                 stocksContainer.style.display = 'block'
                 stocksTable.innerHTML = closedStocks.map(stock => {
                     const plClass = stock.profit_loss >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'
+                    const partialBadge = stock.is_partial
+                        ? `<span class="ml-2 px-2 py-0.5 rounded text-xs font-semibold bg-amber-100 text-amber-800" title="${stock.shares_remaining} shares still held">Partial</span>`
+                        : ''
+                    const warningIcon = stock.warning
+                        ? `<i class="fas fa-exclamation-triangle text-amber-500 ml-2" title="${String(stock.warning).replace(/"/g, '&quot;')}"></i>`
+                        : ''
+                    // Re-open only makes sense for the sell that closed the position
+                    const reopenButton = (!stock.is_partial && !stock.holding_is_open)
+                        ? `<button onclick="reopenStock(${stock.id})" class="text-green-600 hover:text-green-800" title="Re-open Trade">
+                                    <i class="fas fa-undo"></i>
+                                </button>`
+                        : ''
                     return `
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-4 py-3">${stock.opened_date || stock.trade_date}</td>
-                            <td class="px-4 py-3 font-semibold text-brand-teal">${stock.ticker}</td>
+                            <td class="px-4 py-3">${stock.opened_date || '-'}</td>
+                            <td class="px-4 py-3 font-semibold text-brand-teal">${stock.ticker}${partialBadge}${warningIcon}</td>
                             <td class="px-4 py-3">${stock.closed_date || '-'}</td>
-                            <td class="px-4 py-3 text-right">${stock.total_shares || stock.quantity}</td>
-                            <td class="px-4 py-3 text-right">$${parseFloat(stock.average_price || stock.price).toFixed(3)}</td>
+                            <td class="px-4 py-3 text-right">${stock.total_shares}</td>
+                            <td class="px-4 py-3 text-right">$${parseFloat(stock.average_price).toFixed(3)}</td>
+                            <td class="px-4 py-3 text-right">${stock.sell_price !== null && stock.sell_price !== undefined ? '$' + parseFloat(stock.sell_price).toFixed(3) : '-'}</td>
                             <td class="px-4 py-3">${stock.account_name || stock.account_type || 'N/A'}</td>
                             <td class="px-4 py-3 text-right ${plClass}">
                                 ${stock.profit_loss !== null && stock.profit_loss !== undefined ? '$' + parseFloat(stock.profit_loss).toFixed(2) : '-'}
@@ -7780,9 +7798,7 @@ async function loadClosedTrades() {
                                 <button onclick="editClosedStock(${stock.id})" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button onclick="reopenStock(${stock.id})" class="text-green-600 hover:text-green-800" title="Re-open Trade">
-                                    <i class="fas fa-undo"></i>
-                                </button>
+                                ${reopenButton}
                             </td>
                         </tr>
                     `
