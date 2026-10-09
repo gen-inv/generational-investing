@@ -4,6 +4,7 @@ import { serveStatic } from 'hono/cloudflare-workers'
 import researchApp from './research-api'
 import { fetchCompanyData, fetchYahooFinanceData } from './lib/company-data'
 import { addCompanyToRoster } from './lib/add-company'
+import { loadRealizedSells, sumRealized } from './lib/stock-pl'
 
 type Bindings = {
   DB: D1Database;
@@ -1448,45 +1449,15 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
     let totalYTDPL = 0;
     let totalCurrentValue = 0;
 
+    // Realized stock P/L for this year, one row per SELL (partial sells included)
+    const ytdSells = await loadRealizedSells(DB, userId, {
+      from: `${currentYear}-01-01`,
+      to: `${currentYear + 1}-01-01`
+    });
+
     for (const account of accounts as any[]) {
-      // Get YTD P/L from closed stock positions (using stock_holdings + stock_transactions)
-      const stockPositions = await DB.prepare(`
-        SELECT sh.id as holding_id, sh.closed_date
-        FROM stock_holdings sh
-        WHERE sh.user_id = ? 
-        AND sh.account_id = ?
-        AND sh.is_open = 0
-        AND sh.closed_date IS NOT NULL
-        AND sh.closed_date LIKE ?
-      `).bind(userId, account.id, `${currentYear}%`).all()
-      
-      // Calculate P/L for each closed stock position
-      let stockPLTotal = 0
-      for (const holding of stockPositions.results as any[]) {
-        const transactions = await DB.prepare(`
-          SELECT transaction_type, shares, price_per_share, commission
-          FROM stock_transactions
-          WHERE holding_id = ?
-        `).bind(holding.holding_id).all()
-        
-        let totalBuyValue = 0
-        let totalBuyCommissions = 0
-        let totalSellValue = 0
-        let totalSellCommissions = 0
-        
-        transactions.results.forEach((tx: any) => {
-          if (tx.transaction_type === 'BUY') {
-            totalBuyValue += tx.shares * tx.price_per_share
-            totalBuyCommissions += tx.commission || 0
-          } else if (tx.transaction_type === 'SELL') {
-            totalSellValue += tx.shares * tx.price_per_share
-            totalSellCommissions += tx.commission || 0
-          }
-        })
-        
-        // P/L = Sale Proceeds - Cost Basis - All Commissions
-        stockPLTotal += totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
-      }
+      // YTD realized P/L from stock sells in this account
+      const stockPLTotal = sumRealized(ytdSells.filter(s => s.account_id === account.id))
 
       // Get YTD P/L from closed option trades
       const optionPL = await DB.prepare(`
@@ -1692,41 +1663,23 @@ app.get('/api/stocks', authMiddleware, async (c) => {
   const stmt = DB.prepare(query)
   const stocks = await stmt.bind(...params).all()
   
+  // Realized P/L per SELL (partial sells included), grouped by holding
+  const realizedByHolding = new Map<number, number>()
+  const sellCountByHolding = new Map<number, number>()
+  for (const sell of await loadRealizedSells(DB, userId)) {
+    realizedByHolding.set(sell.holding_id, (realizedByHolding.get(sell.holding_id) || 0) + sell.realized_pl)
+    sellCountByHolding.set(sell.holding_id, (sellCountByHolding.get(sell.holding_id) || 0) + 1)
+  }
+
   // Calculate avg price, cost basis, P/L, and covered call status for each holding
   const enhancedStocks = await Promise.all(stocks.results.map(async (stock: any) => {
     const avgPrice = stock.average_price
     const costBasis = avgPrice - (stock.total_adjustments / stock.total_shares || 0)
-    
-    // Calculate P/L for closed positions
-    let profitLoss = null
-    if (stock.is_open === 0) {
-      // Get all transactions for this holding
-      const transactions = await DB.prepare(`
-        SELECT transaction_type, shares, price_per_share, commission
-        FROM stock_transactions
-        WHERE holding_id = ?
-        ORDER BY transaction_date ASC
-      `).bind(stock.id).all()
-      
-      let totalBuyValue = 0
-      let totalBuyCommissions = 0
-      let totalSellValue = 0
-      let totalSellCommissions = 0
-      
-      transactions.results.forEach((tx: any) => {
-        if (tx.transaction_type === 'BUY') {
-          totalBuyValue += tx.shares * tx.price_per_share
-          totalBuyCommissions += tx.commission || 0
-        } else if (tx.transaction_type === 'SELL') {
-          totalSellValue += tx.shares * tx.price_per_share
-          totalSellCommissions += tx.commission || 0
-        }
-      })
-      
-      // P/L = Sale Proceeds - Cost Basis - All Commissions
-      profitLoss = totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
-    }
-    
+
+    // Realized P/L from sells: lifetime total for a closed holding, partial sells so far for an open one
+    const realizedPL = realizedByHolding.has(stock.id) ? realizedByHolding.get(stock.id)! : null
+    const profitLoss = stock.is_open === 0 ? realizedPL : null
+
     // Calculate days until covered call expiration
     let ccStatus = null
     let daysUntilExpiration = null
@@ -1858,6 +1811,8 @@ app.get('/api/stocks', authMiddleware, async (c) => {
       avg_price: avgPrice,
       cost_basis: costBasis,
       profit_loss: profitLoss,
+      realized_pl: realizedPL,
+      sell_count: sellCountByHolding.get(stock.id) || 0,
       cc_status: ccStatus,
       cc_expiration: stock.nearest_cc_expiration,
       days_until_cc_expiration: daysUntilExpiration,
@@ -1867,6 +1822,90 @@ app.get('/api/stocks', authMiddleware, async (c) => {
   }))
   
   return c.json(enhancedStocks)
+})
+
+// Closed Trades report rows: one row per SELL (partial and full), each with its own realized P/L.
+// Registered before '/api/stocks/:id' so "closed-trades" is not treated as a holding id.
+app.get('/api/stocks/closed-trades', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const { DB } = c.env
+    const accountId = c.req.query('account_id')
+    const from = c.req.query('from')
+    const to = c.req.query('to')
+
+    const sells = await loadRealizedSells(DB, userId, {
+      accountId: accountId ? parseInt(accountId) : undefined,
+      from: from || undefined,
+      to: to || undefined
+    })
+
+    const rows: any[] = sells.map(s => ({
+      id: s.holding_id,
+      transaction_id: s.transaction_id,
+      ticker: s.ticker,
+      opened_date: s.opened_date,
+      closed_date: s.sell_date,
+      total_shares: s.shares,
+      average_price: s.avg_cost,
+      sell_price: s.sell_price,
+      account_id: s.account_id,
+      account_name: s.account_name,
+      account_type: s.account_type,
+      buy_commission: s.buy_commission,
+      sell_commission: s.sell_commission,
+      profit_loss: s.realized_pl,
+      shares_remaining: s.shares_remaining,
+      is_partial: !s.is_full_close,
+      holding_is_open: s.holding_is_open,
+      warning: s.warning || null
+    }))
+
+    // Closed holdings with no SELL transaction at all (legacy data): keep them visible, P/L unknown
+    if (!from && !to) {
+      const orphans = await DB.prepare(`
+        SELECT sh.id, sh.ticker, sh.opened_date, sh.closed_date, sh.total_shares, sh.average_price,
+               sh.account_id, a.account_name, a.account_type
+        FROM stock_holdings sh
+        LEFT JOIN accounts a ON sh.account_id = a.id
+        WHERE sh.user_id = ? AND sh.is_open = 0
+          ${accountId ? 'AND sh.account_id = ?' : ''}
+          AND NOT EXISTS (
+            SELECT 1 FROM stock_transactions st
+            WHERE st.holding_id = sh.id AND st.transaction_type = 'SELL'
+          )
+      `).bind(userId, ...(accountId ? [parseInt(accountId)] : [])).all()
+
+      for (const o of (orphans.results || []) as any[]) {
+        rows.push({
+          id: o.id,
+          transaction_id: null,
+          ticker: o.ticker,
+          opened_date: o.opened_date,
+          closed_date: o.closed_date,
+          total_shares: o.total_shares,
+          average_price: o.average_price,
+          sell_price: null,
+          account_id: o.account_id,
+          account_name: o.account_name,
+          account_type: o.account_type,
+          buy_commission: 0,
+          sell_commission: 0,
+          profit_loss: null,
+          shares_remaining: 0,
+          is_partial: false,
+          holding_is_open: false,
+          warning: 'Closed without a recorded sell transaction'
+        })
+      }
+      rows.sort((a, b) => String(b.closed_date || '').localeCompare(String(a.closed_date || '')))
+    }
+
+    return c.json(rows)
+  } catch (error) {
+    console.error('Closed trades error:', error)
+    return c.json({ error: 'Failed to fetch closed trades' }, 500)
+  }
 })
 
 // Get single stock holding with transaction details
@@ -1901,62 +1940,40 @@ app.get('/api/stocks/:id', authMiddleware, async (c) => {
       ORDER BY transaction_date ASC
     `).bind(holdingId).all()
     
-    // Calculate P/L for closed positions
-    let profitLoss = null
+    // Realized P/L for every SELL (average cost at the time of sale, buy commissions
+    // attributed pro rata). Dividends/premiums are separate income, not part of a sell's P/L.
+    const sells = await loadRealizedSells(DB, userId, { holdingId: Number(holdingId) })
+    const sellById = new Map(sells.map(s => [s.transaction_id, s]))
+    const realizedPL = sells.length > 0 ? sumRealized(sells) : null
+
+    // Lifetime P/L is only reported once the position is closed; open positions report realized_pl
+    let profitLoss = holding.is_open === 0 ? realizedPL : null
     let closePrice = null
     let closeCommission = null
     let closeDate = null
-    
+
     if (holding.is_open === 0) {
-      // Find the closing SELL transaction (created by close endpoint)
-      const closingSell = transactions.results.find((tx: any) => 
-        tx.transaction_type === 'SELL' && 
-        (tx.notes === 'Position closed' || tx.notes?.includes('Position closed'))
-      ) as any
-      
-      if (closingSell) {
-        // Use ONLY the closing SELL for P/L calculation
-        let totalBuyValue = 0
-        let totalBuyCommissions = 0
-        
-        transactions.results.forEach((tx: any) => {
-          if (tx.transaction_type === 'BUY') {
-            totalBuyValue += tx.shares * tx.price_per_share
-            totalBuyCommissions += tx.commission || 0
-          }
-        })
-        
-        const totalSellValue = closingSell.shares * closingSell.price_per_share
-        const totalSellCommissions = closingSell.commission || 0
-        
-        profitLoss = totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
-        closePrice = closingSell.price_per_share
-        closeCommission = closingSell.commission || 0
-        closeDate = closingSell.transaction_date
-      } else {
-        // Fallback: Use last SELL transaction (for legacy closed positions)
-        let totalBuyValue = 0
-        let totalBuyCommissions = 0
-        let totalSellValue = 0
-        let totalSellCommissions = 0
-        
-        transactions.results.forEach((tx: any) => {
-          if (tx.transaction_type === 'BUY') {
-            totalBuyValue += tx.shares * tx.price_per_share
-            totalBuyCommissions += tx.commission || 0
-          } else if (tx.transaction_type === 'SELL') {
-            totalSellValue = tx.shares * tx.price_per_share
-            totalSellCommissions = tx.commission || 0
-            closePrice = tx.price_per_share
-            closeCommission = tx.commission || 0
-            closeDate = tx.transaction_date
-          }
-        })
-        
-        profitLoss = totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
+      // Closing details come from the final SELL (latest by date, then id)
+      const finalSell = [...sells].sort((a, b) =>
+        a.sell_date !== b.sell_date
+          ? (a.sell_date < b.sell_date ? -1 : 1)
+          : a.transaction_id - b.transaction_id
+      ).pop()
+      if (finalSell) {
+        closePrice = finalSell.sell_price
+        closeCommission = finalSell.sell_commission
+        closeDate = finalSell.sell_date
       }
     }
-    
+
+    // Attach realized P/L to each SELL row for the Share Ownership History table
+    const transactionsWithPL = transactions.results.map((tx: any) => {
+      const s = sellById.get(tx.id)
+      return s
+        ? { ...tx, avg_cost: s.avg_cost, realized_pl: s.realized_pl, shares_remaining: s.shares_remaining }
+        : tx
+    })
+
     // Get the first transaction to determine trade_type
     const firstTransaction = transactions.results[0] as any
     const tradeType = firstTransaction?.transaction_type || 'BUY'
@@ -1973,11 +1990,12 @@ app.get('/api/stocks/:id', authMiddleware, async (c) => {
       commission: firstTransaction?.commission || 0,
       avg_price: holding.average_price,
       profit_loss: profitLoss,
+      realized_pl: realizedPL,
       close_date: closeDate,
       close_price: closePrice,
       close_commission: closeCommission,
       closed_date: holding.closed_date,
-      transactions: transactions.results
+      transactions: transactionsWithPL
     })
   } catch (error) {
     console.error('Get stock error:', error)
@@ -2292,21 +2310,21 @@ app.put('/api/stocks/:id/close', authMiddleware, async (c) => {
       'Position closed'
     ).run()
     
-    // Calculate P/L
-    const saleProceeds = data.close_price * holding.total_shares
-    const costBasis = holding.average_price * holding.total_shares
-    
-    // Get total opening commissions from all BUY transactions
-    const buyCommissionsResult = await DB.prepare(`
-      SELECT COALESCE(SUM(commission), 0) as total_buy_commissions
-      FROM stock_transactions
-      WHERE holding_id = ? AND transaction_type = 'BUY'
-    `).bind(holdingId).first()
-    
-    const openingCommissions = buyCommissionsResult?.total_buy_commissions || 0
+    // Calculate P/L for THIS sell only: (sell price - average cost) x shares, less the sell
+    // commission and the matching share of buy commissions. Earlier partial sells already
+    // carry their own P/L, and dividends/premiums are separate income.
+    const holdingSells = await loadRealizedSells(DB, userId, { holdingId: Number(holdingId) })
+    const thisSell = holdingSells.find(s => s.transaction_id === sellTransaction.meta.last_row_id)
+
+    const heldShares = Number((holding as any).total_shares)
+    const saleProceeds = data.close_price * heldShares
+    const costBasis = (thisSell ? thisSell.avg_cost : Number((holding as any).average_price)) * heldShares
+    const openingCommissions = thisSell ? thisSell.buy_commission : 0
     const closingCommission = data.commission || 0
-    const profitLoss = saleProceeds - costBasis - openingCommissions - closingCommission
-    
+    const profitLoss = thisSell
+      ? thisSell.realized_pl
+      : saleProceeds - costBasis - openingCommissions - closingCommission
+
     // Close the holding
     await DB.prepare(`
       UPDATE stock_holdings SET
@@ -2353,21 +2371,41 @@ app.put('/api/stocks/:id/reopen', authMiddleware, async (c) => {
       return c.json({ error: 'Position is already open' }, 400)
     }
     
-    // Delete ALL SELL transactions for this holding
+    // Delete only the FINAL SELL (the one that closed the position). Earlier partial sells are
+    // real history with their own realized P/L and must survive a re-open.
     // User may need to reopen for various reasons: adding dividends, fixing data, etc.
-    await DB.prepare(`
-      DELETE FROM stock_transactions
+    const finalSell = await DB.prepare(`
+      SELECT id FROM stock_transactions
       WHERE holding_id = ? AND transaction_type = 'SELL'
-    `).bind(holdingId).run()
-    
+      ORDER BY transaction_date DESC, id DESC
+      LIMIT 1
+    `).bind(holdingId).first() as any
+
+    if (finalSell) {
+      await DB.prepare(`DELETE FROM stock_transactions WHERE id = ?`).bind(finalSell.id).run()
+    }
+
+    // A position closed by selling down to 0 has total_shares = 0: restore it from the
+    // remaining transactions (buys minus the earlier partial sells).
+    let restoredShares: number | null = null
+    if (Number(holding.total_shares) === 0) {
+      const net = await DB.prepare(`
+        SELECT COALESCE(SUM(CASE WHEN transaction_type = 'BUY' THEN shares ELSE -shares END), 0) as net_shares
+        FROM stock_transactions
+        WHERE holding_id = ?
+      `).bind(holdingId).first() as any
+      if (net && net.net_shares > 0) restoredShares = net.net_shares
+    }
+
     // Re-open the holding
     await DB.prepare(`
       UPDATE stock_holdings SET
         is_open = 1,
         closed_date = NULL,
+        total_shares = COALESCE(?, total_shares),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
-    `).bind(holdingId, userId).run()
+    `).bind(restoredShares, holdingId, userId).run()
     
     return c.json({ success: true, message: 'Position re-opened successfully' })
   } catch (error) {
@@ -3367,8 +3405,18 @@ app.get('/api/stocks/:id/purchase-history', authMiddleware, async (c) => {
       WHERE st.holding_id = ?
       ORDER BY st.transaction_date DESC, st.id DESC
     `).bind(holding.account_id, holdingId).all()
-    
-    return c.json(transactions.results || [])
+
+    // Attach each SELL's realized P/L (average cost at the time of sale, pro-rata buy commissions)
+    const sells = await loadRealizedSells(DB, userId, { holdingId: Number(holdingId) })
+    const sellById = new Map(sells.map(s => [s.transaction_id, s]))
+    const rows = (transactions.results || []).map((tx: any) => {
+      const s = sellById.get(tx.id)
+      return s
+        ? { ...tx, avg_cost: s.avg_cost, realized_pl: s.realized_pl, shares_remaining: s.shares_remaining }
+        : tx
+    })
+
+    return c.json(rows)
   } catch (error) {
     console.error('Get purchase history error:', error)
     return c.json({ error: 'Failed to fetch purchase history' }, 500)
@@ -4750,12 +4798,12 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
 
     
     // Get YTD P/L from all closed trades
-    const stockPL = await DB.prepare(`
-      SELECT COALESCE(SUM(profit_loss), 0) as total_pl
-      FROM stock_trades
-      WHERE user_id = ? AND is_open = 0 AND close_date LIKE ?
-    `).bind(userId, `${currentYear}%`).first() as any
-    
+    // Stock P/L = realized P/L of every SELL (partial sells included), not the legacy stock_trades table
+    const allStockSells = await loadRealizedSells(DB, userId)
+    const stockPL = {
+      total_pl: sumRealized(allStockSells.filter(s => s.sell_date.startsWith(`${currentYear}`)))
+    }
+
     const optionPL = await DB.prepare(`
       SELECT COALESCE(SUM(profit_loss), 0) as total_pl
       FROM option_trades
@@ -4788,16 +4836,24 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
         AVG(profit_loss) as avg_pl,
         MAX(profit_loss) as best_trade
       FROM (
-        SELECT profit_loss FROM stock_trades WHERE user_id = ? AND is_open = 0
-        UNION ALL
         SELECT profit_loss FROM option_trades WHERE user_id = ? AND is_open = 0
         UNION ALL
         SELECT profit_loss FROM daily_trades WHERE user_id = ? AND is_open = 0
       )
-    `).bind(userId, userId, userId).first() as any
-    
-    const totalTrades = closedTrades?.total || 0
-    const winningTrades = closedTrades?.wins || 0
+    `).bind(userId, userId).first() as any
+
+    // Fold the stock sells (one trade per SELL) into the option/daily statistics
+    const sellPLs = allStockSells.map(s => s.realized_pl)
+    const otherCount = closedTrades?.total || 0
+    const totalTrades = otherCount + sellPLs.length
+    const winningTrades = (closedTrades?.wins || 0) + sellPLs.filter(p => p > 0).length
+    const combinedAvgPL = totalTrades > 0
+      ? (((closedTrades?.avg_pl || 0) * otherCount) + sellPLs.reduce((a, b) => a + b, 0)) / totalTrades
+      : 0
+    const combinedBestTrade = Math.max(
+      closedTrades?.best_trade ?? -Infinity,
+      ...(sellPLs.length ? sellPLs : [-Infinity])
+    )
     const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0
     
     // Generate monthly P/L data (last 12 months)
@@ -4811,12 +4867,10 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
       const month = date.getMonth() + 1
       const monthStr = month.toString().padStart(2, '0')
       
-      const monthlyStockPL = await DB.prepare(`
-        SELECT COALESCE(SUM(profit_loss), 0) as pl
-        FROM stock_trades
-        WHERE user_id = ? AND is_open = 0 AND close_date LIKE ?
-      `).bind(userId, `${year}-${monthStr}%`).first() as any
-      
+      const monthlyStockPL = {
+        pl: sumRealized(allStockSells.filter(s => s.sell_date.startsWith(`${year}-${monthStr}`)))
+      }
+
       const monthlyOptionPL = await DB.prepare(`
         SELECT COALESCE(SUM(profit_loss), 0) as pl
         FROM option_trades
@@ -4914,8 +4968,8 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
         winRate,
         totalTrades,
         winningTrades,
-        avgPL: closedTrades?.avg_pl || 0,
-        bestTrade: closedTrades?.best_trade || 0
+        avgPL: combinedAvgPL || 0,
+        bestTrade: Number.isFinite(combinedBestTrade) ? combinedBestTrade : 0
       },
       accounts: accountData,
       monthlyPL,
@@ -4939,33 +4993,25 @@ app.get('/api/reports/pl', authMiddleware, async (c) => {
   const year = c.req.query('year')
   const month = c.req.query('month')
   
-  // Get stock trades P/L
-  let stockQuery = `
-    SELECT 
-      strftime('%Y', trade_date) as year,
-      strftime('%m', trade_date) as month,
-      account_type,
-      SUM(CASE WHEN trade_type = 'SELL' THEN (price * quantity) ELSE -(price * quantity) END) as total
-    FROM stock_trades
-    WHERE user_id = ?
-  `
-  
-  const stockParams = [userId]
-  
-  if (year) {
-    stockQuery += ` AND strftime('%Y', trade_date) = ?`
-    stockParams.push(year)
+  // Stock P/L = realized P/L of each SELL (partial and full), grouped by month and account type
+  const stockSells = await loadRealizedSells(c.env.DB, userId)
+  const stockGroups = new Map<string, { year: string, month: string, account_type: string | null, total: number }>()
+  for (const s of stockSells) {
+    const sellYear = s.sell_date.slice(0, 4)
+    const sellMonth = s.sell_date.slice(5, 7)
+    if (year && sellYear !== year) continue
+    if (month && sellMonth !== month.padStart(2, '0')) continue
+    const key = `${sellYear}-${sellMonth}|${s.account_type}`
+    const group = stockGroups.get(key) || { year: sellYear, month: sellMonth, account_type: s.account_type, total: 0 }
+    group.total += s.realized_pl
+    stockGroups.set(key, group)
   }
-  
-  if (month) {
-    stockQuery += ` AND strftime('%m', trade_date) = ?`
-    stockParams.push(month.padStart(2, '0'))
+  const stockPL = {
+    results: [...stockGroups.values()].sort((a, b) =>
+      `${a.year}-${a.month}`.localeCompare(`${b.year}-${b.month}`)
+    )
   }
-  
-  stockQuery += ` GROUP BY year, month, account_type`
-  
-  const stockPL = await c.env.DB.prepare(stockQuery).bind(...stockParams).all()
-  
+
   // Get option trades P/L
   let optionQuery = `
     SELECT 
@@ -5046,61 +5092,16 @@ app.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     
     console.log(`Date range: startDate=${startDate}`)
     
-    // Get closed stock positions with calculated P/L
-    console.log('Fetching closed stock positions...')
-    const stockPositions = await DB.prepare(`
-      SELECT 
-        sh.id as holding_id,
-        sh.closed_date as close_date,
-        a.account_type,
-        'Stocks' as asset_type,
-        sh.total_shares,
-        sh.average_price
-      FROM stock_holdings sh
-      JOIN accounts a ON sh.account_id = a.id
-      WHERE sh.user_id = ?
-        AND sh.is_open = 0
-        AND sh.closed_date IS NOT NULL
-        AND sh.closed_date >= ?
-      ORDER BY sh.closed_date DESC
-    `).bind(userId, startDate).all()
-    
-    // Calculate P/L for each closed stock position
-    const stockTrades = await Promise.all(stockPositions.results.map(async (holding: any) => {
-      // Get all transactions for this holding
-      const transactions = await DB.prepare(`
-        SELECT transaction_type, shares, price_per_share, commission
-        FROM stock_transactions
-        WHERE holding_id = ?
-        ORDER BY transaction_date ASC
-      `).bind(holding.holding_id).all()
-      
-      let totalBuyValue = 0
-      let totalBuyCommissions = 0
-      let totalSellValue = 0
-      let totalSellCommissions = 0
-      
-      transactions.results.forEach((tx: any) => {
-        if (tx.transaction_type === 'BUY') {
-          totalBuyValue += tx.shares * tx.price_per_share
-          totalBuyCommissions += tx.commission || 0
-        } else if (tx.transaction_type === 'SELL') {
-          totalSellValue += tx.shares * tx.price_per_share
-          totalSellCommissions += tx.commission || 0
-        }
-      })
-      
-      // P/L = Sale Proceeds - Cost Basis - All Commissions
-      const profitLoss = totalSellValue - totalBuyValue - totalBuyCommissions - totalSellCommissions
-      
-      return {
-        profit_loss: profitLoss,
-        close_date: holding.close_date,
-        account_type: holding.account_type,
-        asset_type: holding.asset_type
-      }
+    // Realized stock P/L: one row per SELL (partial and full), each with its own P/L
+    console.log('Fetching realized stock sells...')
+    const realizedSells = await loadRealizedSells(DB, userId, { from: startDate })
+    const stockTrades = realizedSells.map(s => ({
+      profit_loss: s.realized_pl,
+      close_date: s.sell_date,
+      account_type: s.account_type || 'Unknown',
+      asset_type: 'Stocks'
     }))
-    console.log(`Stock positions fetched and calculated: ${stockTrades.length}`)
+    console.log(`Stock sells fetched and calculated: ${stockTrades.length}`)
     
     // Get option trades
     console.log('Fetching option trades...')
@@ -5529,20 +5530,16 @@ app.get('/api/reports/performance', authMiddleware, async (c) => {
     `).bind(userId).all()
     
     // Get all closed trades for P/L calculations
-    const stockTrades = await DB.prepare(`
-      SELECT 
-        st.profit_loss,
-        st.close_date,
-        st.trade_date
-      FROM stock_trades st
-      WHERE st.user_id = ?
-        AND st.is_open = 0
-        AND st.close_date IS NOT NULL
-        AND st.close_date >= ?
-        AND st.profit_loss IS NOT NULL
-      ORDER BY st.close_date ASC
-    `).bind(userId, startDate).all()
-    
+    // Realized stock P/L per SELL (partial sells included) instead of the legacy stock_trades table
+    const stockSells = await loadRealizedSells(DB, userId, { from: startDate })
+    const stockTrades = {
+      results: stockSells.map(s => ({
+        profit_loss: s.realized_pl,
+        close_date: s.sell_date,
+        trade_date: s.opened_date || s.sell_date
+      }))
+    }
+
     const optionTrades = await DB.prepare(`
       SELECT 
         ot.profit_loss,
@@ -10307,8 +10304,9 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                                     <th class="px-4 py-3 text-left">Opened Date</th>
                                                     <th class="px-4 py-3 text-left">Ticker</th>
                                                     <th class="px-4 py-3 text-left">Closed Date</th>
-                                                    <th class="px-4 py-3 text-right">Shares</th>
-                                                    <th class="px-4 py-3 text-right">Avg Price</th>
+                                                    <th class="px-4 py-3 text-right">Shares Sold</th>
+                                                    <th class="px-4 py-3 text-right">Avg Cost</th>
+                                                    <th class="px-4 py-3 text-right">Sell Price</th>
                                                     <th class="px-4 py-3 text-left">Account</th>
                                                     <th class="px-4 py-3 text-right">P/L</th>
                                                     <th class="px-4 py-3 text-center">Actions</th>
