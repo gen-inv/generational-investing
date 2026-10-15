@@ -1,5 +1,9 @@
 import { Hono } from 'hono'
 import { addCompanyToRoster } from './lib/add-company'
+import { annotateNotes, pruneCandidates } from './lib/notes-retention'
+
+// Auto-prune after every ingest. Leave false until you have reviewed a few 'Prune old notes' previews on the site.
+const AUTO_PRUNE = false
 
 type Bindings = {
   RESEARCH_DB: D1Database
@@ -40,6 +44,21 @@ async function getOrCreateCompanyId(db: D1Database, ticker: string, companyName?
   return result.meta.last_row_id as number
 }
 
+// --- Retention helper: returns the notes it deleted (or would delete when dryRun) ---
+async function pruneCompanyNotes(db: D1Database, companyId: number, dryRun: boolean) {
+  const rows = await db.prepare('SELECT id, doc_type, filing_date, created_at FROM research_notes WHERE company_id = ?').bind(companyId).all()
+  const all = rows.results as any[]
+  const ids = pruneCandidates(all)
+  const idSet = new Set(ids)
+  const doomed = all.filter(r => idSet.has(r.id))
+  if (!dryRun) {
+    for (let i = 0; i < ids.length; i += 50) {
+      const chunk = ids.slice(i, i + 50)
+      await db.prepare('DELETE FROM research_notes WHERE company_id = ? AND id IN (' + chunk.map(() => '?').join(',') + ')').bind(companyId, ...chunk).run()
+    }
+  }
+  return doomed
+}
 // --- POST /api/research/ingest ---
 // Phase 1: core singleton data per ticker (Quick-5, Valuation, Scoresheet, Anti-Fragile, FGR).
 // Phase 2 (later): inversions, events, guru_holdings, peer_comparisons, research_notes.
@@ -328,6 +347,10 @@ researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
       }
     }
     
+    if (AUTO_PRUNE && body.research_notes && Array.isArray(body.research_notes)) {
+      try { await pruneCompanyNotes(db, companyId, false) } catch (e) { console.error('auto-prune failed:', e) }
+    }
+
     return c.json({ success: true, ticker: body.ticker.toUpperCase(), company_id: companyId })
   } catch (err: any) {
     console.error('Research ingest error:', err)
@@ -728,7 +751,7 @@ const [quickFive, valuation, scoresheet, antiFragile, fgr, inversions, events, e
   return c.json({
     company, quick_five: quickFive, valuation, scoresheet, anti_fragile: antiFragile, fgr_triangulation: fgr,
     inversions: inversions.results, events: events.results, event_history: eventHistory.results,
-    guru_holdings: guruHoldings.results, peer_comparisons: peerComparisons.results, research_notes: researchNotes.results,
+    guru_holdings: guruHoldings.results, peer_comparisons: peerComparisons.results, research_notes: annotateNotes(researchNotes.results as any[]).sort((a, b) => b.sort_date.localeCompare(a.sort_date) || b.id - a.id),
   })
 })
 
@@ -757,6 +780,25 @@ researchApp.get('/:ticker/notes/:id', async (c) => {
   return c.json({ note })
 })
 
+// --- Prune old notes (preview or run). Site login required: index.tsx puts authMiddleware in front
+// of this route (fails closed here too if that middleware is ever removed). ---
+// Dry run unless the body says {"dry_run": false}.
+researchApp.post('/:ticker/notes/prune', async (c) => {
+  if (!(c as any).get('userId')) return c.json({ error: 'Unauthorized' }, 401)
+  const db = c.env.RESEARCH_DB
+  const symbol = c.req.param('ticker').toUpperCase()
+  const company = await db.prepare('SELECT id FROM companies WHERE symbol = ?').bind(symbol).first()
+  if (!company) return c.json({ error: 'Company not found' }, 404)
+  let body: any = {}
+  try { body = await c.req.json() } catch (e) {}
+  const dry = body.dry_run !== false
+  const doomed = await pruneCompanyNotes(db, company.id as number, dry)
+  return c.json({
+    dry_run: dry,
+    count: doomed.length,
+    notes: doomed.map((r: any) => ({ id: r.id, doc_type: r.doc_type, filing_date: r.filing_date })),
+  })
+})
 // --- POST /:ticker/fcf-trend-events — Kendry calls this once, with all candidate
 // periods found for this ticker in one request. Creates the audit-trail rows and
 // starts the patient wait (same shape as meaning-clarity, single round-trip instead

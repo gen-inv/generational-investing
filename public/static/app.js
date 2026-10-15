@@ -13807,7 +13807,7 @@ function renderAnalysisTab(data) {
 function renderNotesTab(data) {
     const container = document.getElementById('research-notes-tab')
     const { research_notes, quick_five } = data
-    
+
     // Check if disqualified at Quick-Five stage
     if (quick_five && quick_five.status === 'disqualified') {
         container.innerHTML = `
@@ -13821,7 +13821,7 @@ function renderNotesTab(data) {
         `
         return
     }
-    
+
     if (!research_notes || research_notes.length === 0) {
         container.innerHTML = `
             <div class="text-center py-12 text-gray-600">
@@ -13831,39 +13831,57 @@ function renderNotesTab(data) {
         `
         return
     }
-    
-    let html = '<div class="space-y-4">'
-    
-    research_notes.forEach((note, index) => {
-        const noteId = `note-${note.id}`
-        const docTypeLabel = note.doc_type || 'Research Note'
-        const filingDate = note.filing_date ? new Date(note.filing_date).toLocaleDateString() : 'N/A'
-        
-        html += `
+
+    const symbol = data.company.symbol
+    const counts = {}
+    research_notes.forEach(n => { const t = n.tab || 'filings'; counts[t] = (counts[t] || 0) + 1 })
+    if (_notesTicker !== symbol) { _notesTicker = symbol; notesActiveTab = null }
+    if (!notesActiveTab || !counts[notesActiveTab]) {
+        const first = NOTES_TABS.find(t => counts[t[0]])
+        notesActiveTab = first ? first[0] : 'filings'
+    }
+
+    let html = '<div class="flex flex-wrap items-center justify-between gap-2 mb-4 border-b border-gray-200">'
+    html += '<div class="flex flex-wrap">'
+    NOTES_TABS.forEach(([key, label]) => {
+        const n = counts[key] || 0
+        const active = key === notesActiveTab
+        const cls = active
+            ? 'border-teal-600 text-teal-700 bg-white'
+            : (n ? 'border-transparent text-gray-600 hover:text-teal-600' : 'border-transparent text-gray-300')
+        html += `<button class="px-3 py-2 text-sm font-semibold border-b-2 ${cls}" onclick="switchNotesTab('${key}')">${label} <span class="text-xs font-normal">(${n})</span></button>`
+    })
+    html += '</div>'
+    html += `<button class="text-xs text-gray-500 hover:text-red-600 px-2 py-1" title="Preview and delete notes older than the retention rules" onclick="pruneNotes('${_nEsc(symbol)}')"><i class="fas fa-broom mr-1"></i>Prune old notes</button>`
+    html += '</div>'
+
+    const rows = research_notes
+        .filter(n => (n.tab || 'filings') === notesActiveTab)
+        .sort((a, b) => String(b.sort_date || '').localeCompare(String(a.sort_date || '')) || b.id - a.id)
+
+    if (rows.length === 0) {
+        html += '<p class="text-center py-8 text-gray-500">Nothing in this tab yet.</p>'
+    } else {
+        html += '<div class="space-y-3">'
+        rows.forEach(note => {
+            const noteId = `note-${note.id}`
+            const nonIso = note.filing_date && !/^\d{4}-\d{2}-\d{2}/.test(note.filing_date)
+            const dateLabel = _nEsc(note.sort_date || note.filing_date || 'N/A') + (nonIso ? ` <span class="text-gray-400">(${_nEsc(note.filing_date)})</span>` : '')
+            html += `
             <div class="border border-gray-200 rounded-lg overflow-hidden">
-                <!-- Note Header - Always Visible -->
-                <div class="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition" 
-                     onclick="toggleNoteDetail('${noteId}', '${currentResearchData.company.symbol}', ${note.id})">
+                <div class="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition"
+                     onclick="toggleNoteDetail('${noteId}', '${_nEsc(symbol)}', ${note.id})">
                     <div class="flex items-start justify-between">
                         <div class="flex-1">
                             <div class="flex items-center gap-3 mb-2">
-                                <span class="px-3 py-1 bg-teal-100 text-teal-800 rounded text-sm font-semibold">
-                                    ${docTypeLabel}
-                                </span>
-                                <span class="text-sm text-gray-600">
-                                    <i class="fas fa-calendar-alt mr-1"></i>
-                                    ${filingDate}
-                                </span>
+                                <span class="px-3 py-1 bg-teal-100 text-teal-800 rounded text-sm font-semibold">${_nEsc(note.doc_type || 'Research Note')}</span>
+                                <span class="text-sm text-gray-600"><i class="fas fa-calendar-alt mr-1"></i>${dateLabel}</span>
                             </div>
-                            <p class="text-sm text-gray-700 line-clamp-2">
-                                ${note.abstract || 'Click to view full research note...'}
-                            </p>
+                            <p class="text-sm text-gray-700 line-clamp-2">${_nEsc(note.abstract || 'Click to view full research note...')}</p>
                         </div>
-                        <i class="fas fa-chevron-down text-gray-400 ml-4 transition-transform note-chevron" id="${noteId}-chevron"></i>
+                        <i class="fas fa-chevron-down text-gray-400 ml-3 mt-2 transition-transform note-chevron" id="${noteId}-chevron"></i>
                     </div>
                 </div>
-                
-                <!-- Note Detail - Lazy Loaded -->
                 <div id="${noteId}" class="hidden border-t border-gray-200">
                     <div class="p-6 bg-white">
                         <div class="text-center py-8 text-gray-500">
@@ -13872,14 +13890,44 @@ function renderNotesTab(data) {
                         </div>
                     </div>
                 </div>
-            </div>
-        `
-    })
-    
-    html += '</div>'
+            </div>`
+        })
+        html += '</div>'
+    }
     container.innerHTML = html
 }
 
+const NOTES_TABS = [['quick5', 'Quick 5'], ['deep', 'Deep Checklist'], ['inversions', 'Inversions'], ['events', 'Events'],
+    ['valuation', 'Valuation'], ['scoresheet', 'Scoresheet'], ['antifragile', 'Anti-Fragile'], ['calls', 'Earnings Calls'], ['filings', 'Filings']]
+let notesActiveTab = null
+let _notesTicker = null
+
+function _nEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
+
+function switchNotesTab(key) {
+    notesActiveTab = key
+    renderNotesTab(currentResearchData)
+}
+
+async function pruneNotes(ticker) {
+    try {
+        const url = `${RESEARCH_API_BASE}/api/research/${ticker}/notes/prune`
+        const preview = (await api.post(url, { dry_run: true })).data
+        if (!preview.count) { alert('Nothing to prune: this company is within the retention limits.'); return }
+        const lines = preview.notes.slice(0, 15).map(n => `${n.doc_type}  ${n.filing_date || ''}`).join('\n')
+        const more = preview.count > 15 ? `\n...and ${preview.count - 15} more` : ''
+        if (!confirm(`Permanently delete ${preview.count} old note(s)?\n\n${lines}${more}`)) return
+        await api.post(url, { dry_run: false })
+        const gone = new Set(preview.notes.map(n => n.id))
+        currentResearchData.research_notes = currentResearchData.research_notes.filter(x => !gone.has(x.id))
+        renderNotesTab(currentResearchData)
+    } catch (e) {
+        console.error('Prune failed:', e)
+        alert(e.response && e.response.status === 401 ? 'Please log in again to prune notes.' : 'Prune failed.')
+    }
+}
 // Toggle note detail expansion and lazy-load content
 async function toggleNoteDetail(noteId, ticker, noteIdNum) {
     const detailContainer = document.getElementById(noteId)

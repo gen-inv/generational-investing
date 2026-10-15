@@ -36,6 +36,12 @@ app.use('/api/*', cors())
 // Serve static files
 app.use('/static/*', serveStatic({ root: './' }))
 
+// Prune needs a site login (JWT); reads stay public. authMiddleware is a hoisted function declaration.
+app.use('/api/research/:ticker/notes/*', async (c, next) => {
+  if (c.req.method === 'GET' || c.req.method === 'OPTIONS') return next()
+  return authMiddleware(c, next)
+})
+
 app.route('/api/research', researchApp)
 
 
