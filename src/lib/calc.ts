@@ -53,32 +53,43 @@ export function isDebitSingleLeg(s: string) {
   return s === 'BUYING_PUT' || s === 'LONG_CALL'
 }
 
-// Net profit/loss of a closed option trade, per strategy.
-export function optionPL(a: {
+export interface OptionPLInput {
   strategy: string; contracts: number; open: OptionLegs; close: OptionCloseLegs
   openCommission?: number | null; closeCommission?: number | null
-}) {
+}
+
+// Opening credit, closing cost, commissions and net P/L of a closed option trade, per strategy.
+// Signs match the close-trade panel: credit strategies have openingCredit > 0 and closingCost = what you pay to close;
+// long put / long call have both negative (you paid to open, you receive when you close). net = credit - cost - commissions.
+export function optionPLBreakdown(a: OptionPLInput) {
   const oc = a.openCommission || 0
   const cc = a.closeCommission || 0
   const n = a.contracts
   const m = OPTION_MULTIPLIER
   const o = a.open, c = a.close
+  let openingCredit: number
+  let closingCost: number
 
   if (a.strategy === 'CREDIT_SPREAD' || a.strategy === 'DEBIT_SPREAD') {
-    const openCredit = (o.premium - (o.premium_2 || 0)) * n * m
-    const closeDebit = ((c.close_price || 0) - (c.close_price_2 || 0)) * n * m
-    return openCredit - closeDebit - oc - cc
+    openingCredit = ((o.premium || 0) - (o.premium_2 || 0)) * n * m
+    closingCost = ((c.close_price || 0) - (c.close_price_2 || 0)) * n * m
+  } else if (a.strategy === 'IRON_CONDOR') {
+    openingCredit = (((o.premium || 0) - (o.premium_2 || 0)) + ((o.premium_3 || 0) - (o.premium_4 || 0))) * n * m
+    closingCost = (((c.close_price || 0) - (c.close_price_2 || 0)) + ((c.close_price_3 || 0) - (c.close_price_4 || 0))) * n * m
+  } else if (isDebitSingleLeg(a.strategy)) {
+    openingCredit = -((o.premium || 0) * n * m)
+    closingCost = -((c.close_price || 0) * n * m)
+  } else {
+    // SELLING_PUT*, COVERED_CALL (credit, single leg)
+    openingCredit = (o.premium || 0) * n * m
+    closingCost = (c.close_price || 0) * n * m
   }
-  if (a.strategy === 'IRON_CONDOR') {
-    const openCredit = (((o.premium || 0) - (o.premium_2 || 0)) + ((o.premium_3 || 0) - (o.premium_4 || 0))) * n * m
-    const closeDebit = (((c.close_price || 0) - (c.close_price_2 || 0)) + ((c.close_price_3 || 0) - (c.close_price_4 || 0))) * n * m
-    return openCredit - closeDebit - oc - cc
-  }
-  if (isDebitSingleLeg(a.strategy)) {
-    return (c.close_price - o.premium) * n * m - oc - cc
-  }
-  // SELLING_PUT*, COVERED_CALL (credit, single leg)
-  return (o.premium - c.close_price) * n * m - oc - cc
+  return { openingCredit, closingCost, openCommission: oc, closeCommission: cc, netPL: openingCredit - closingCost - oc - cc }
+}
+
+// Net profit/loss of a closed option trade.
+export function optionPL(a: OptionPLInput) {
+  return optionPLBreakdown(a).netPL
 }
 
 // Gross premium collected when a short option is opened.

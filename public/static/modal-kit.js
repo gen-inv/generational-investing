@@ -7,19 +7,22 @@
 (function (global) {
   'use strict'
 
-  // Approved header colours (Tailwind colour names). Keys match option_trades.strategy_type, plus STOCK.
-  const COLOURS = {
-    STOCK: 'blue',
-    SELLING_PUT: 'emerald',
-    SELLING_PUT_WHEEL: 'teal',
-    SELLING_PUT_LONG_TERM: 'cyan',
-    BUYING_PUT: 'rose',
-    LONG_CALL: 'sky',
-    COVERED_CALL: 'amber',
-    CREDIT_SPREAD: 'indigo',
-    DEBIT_SPREAD: 'violet',
-    IRON_CONDOR: 'fuchsia'
+  // Everything that varies by strategy, in one place. Keys match option_trades.strategy_type.
+  //  legs   = leg labels in column order (strike_price, strike_price_2 ..., premium, premium_2 ..., close_price, close_price_2 ...)
+  //  colour = approved header colour (Tailwind colour name)
+  const STRATEGIES = {
+    SELLING_PUT:           { label: 'Short Put (Stockpiling)', colour: 'emerald', credit: true,  legs: ['Short Put'] },
+    SELLING_PUT_WHEEL:     { label: 'Short Put (Wheel)',       colour: 'teal',    credit: true,  legs: ['Short Put'] },
+    SELLING_PUT_LONG_TERM: { label: 'Short Put (Long Term)',   colour: 'cyan',    credit: true,  legs: ['Short Put'] },
+    BUYING_PUT:            { label: 'Long Put',                colour: 'rose',    credit: false, legs: ['Long Put'] },
+    LONG_CALL:             { label: 'Long Call',               colour: 'sky',     credit: false, legs: ['Long Call'] },
+    COVERED_CALL:          { label: 'Covered Call',            colour: 'amber',   credit: true,  legs: ['Short Call'] },
+    CREDIT_SPREAD:         { label: 'Credit Spread',           colour: 'indigo',  credit: true,  legs: ['Short Leg', 'Long Leg'] },
+    DEBIT_SPREAD:          { label: 'Debit Spread',            colour: 'violet',  credit: false, legs: ['Short Leg', 'Long Leg'] },
+    IRON_CONDOR:           { label: 'Iron Condor',             colour: 'fuchsia', credit: true,  legs: ['Short Call', 'Long Call', 'Short Put', 'Long Put'] }
   }
+  const COLOURS = { STOCK: 'blue' }
+  Object.keys(STRATEGIES).forEach(k => { COLOURS[k] = STRATEGIES[k].colour })
 
   function theme(strategy) {
     const c = COLOURS[strategy] || 'gray'
@@ -147,18 +150,19 @@
 
   const TONES = { good: 'text-green-700', bad: 'text-red-700', neutral: 'text-gray-900' }
 
-  // rows: [{ label, value, sub?, tone? }]; warnings: [string]
-  function renderAnalysis(container, rows, warnings) {
+  // rows: [{ label, value, sub?, tone?, total? }]; warnings: [string]; note: optional line under the rows
+  function renderAnalysis(container, rows, warnings, note) {
     container.innerHTML =
       rows.map(r => `
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between${r.total ? ' pt-2 mt-2 border-t border-gray-300 text-base font-bold' : ''}">
           <span class="text-gray-700">${esc(r.label)}</span>
           <span class="font-semibold ${TONES[r.tone] || TONES.neutral}">${esc(r.value)}${r.sub ? ` <span class="text-xs font-normal text-gray-500">${esc(r.sub)}</span>` : ''}</span>
         </div>`).join('') +
       (warnings || []).map(w => `
         <div class="mt-2 p-2 rounded bg-yellow-50 border border-yellow-300 text-yellow-900 text-xs" data-mk="warning">
           <i class="fas fa-exclamation-triangle mr-1"></i>${esc(w)}
-        </div>`).join('')
+        </div>`).join('') +
+      (note ? `<p class="text-xs text-gray-600 mt-2" data-mk="note"><i class="fas fa-lightbulb mr-1"></i>${esc(note)}</p>` : '')
   }
 
   function buttons(o) {
@@ -174,5 +178,5 @@
       </div>`
   }
 
-  global.ModalKit = { COLOURS, theme, esc, fmt, open, field, grid, stat, summary, analysisPanel, renderAnalysis, buttons }
+  global.ModalKit = { STRATEGIES, COLOURS, theme, esc, fmt, open, field, grid, stat, summary, analysisPanel, renderAnalysis, buttons }
 })(typeof window !== 'undefined' ? window : globalThis)

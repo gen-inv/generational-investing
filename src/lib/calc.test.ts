@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   legacyStockTradePL, adjustedCostBasisPerShare,
-  optionPL, grossPremium, assignmentPL, assignmentDetails, coveredCallAnalysis, daysBetween,
+  optionPL, optionPLBreakdown, grossPremium, assignmentPL, assignmentDetails, coveredCallAnalysis, daysBetween,
 } from './calc'
 
 describe('stock leftovers', () => {
@@ -115,5 +115,32 @@ describe('daysBetween', () => {
     expect(daysBetween('2026-10-01', '2026-10-31')).toBe(30)
     expect(daysBetween('', '2026-10-31')).toBeNull()
     expect(daysBetween('2026-10-31', '2026-10-01')).toBe(-30)
+  })
+})
+describe('optionPLBreakdown (what the close modals show)', () => {
+  const near = (v: number, e: number) => expect(v).toBeCloseTo(e, 6)
+
+  it('short put: credit in, cost out, commissions, net', () => {
+    const b = optionPLBreakdown({ strategy: 'SELLING_PUT', contracts: 3, open: { premium: 1.2 }, close: { close_price: 0.3 }, openCommission: 4, closeCommission: 4 })
+    near(b.openingCredit, 360); near(b.closingCost, 90); expect(b.openCommission).toBe(4); expect(b.closeCommission).toBe(4); near(b.netPL, 262)
+  })
+  it('long call: both sides negative, net is close - open', () => {
+    const b = optionPLBreakdown({ strategy: 'LONG_CALL', contracts: 1, open: { premium: 1.5 }, close: { close_price: 3 }, openCommission: 1, closeCommission: 1 })
+    near(b.openingCredit, -150); near(b.closingCost, -300); near(b.netPL, 148)
+  })
+  it('credit spread and iron condor net the legs', () => {
+    const s = optionPLBreakdown({ strategy: 'CREDIT_SPREAD', contracts: 2, open: { premium: 2.5, premium_2: 1 }, close: { close_price: 0.5, close_price_2: 0.2 }, openCommission: 1.3, closeCommission: 1.3 })
+    near(s.openingCredit, 300); near(s.closingCost, 60); near(s.netPL, 237.4)
+    const ic = optionPLBreakdown({
+      strategy: 'IRON_CONDOR', contracts: 1, open: { premium: 1.0, premium_2: 0.3, premium_3: 0.9, premium_4: 0.2 },
+      close: { close_price: 0.2, close_price_2: 0.05, close_price_3: 0.15, close_price_4: 0.05 }, openCommission: 2.6, closeCommission: 2.6,
+    })
+    near(ic.openingCredit, 140); near(ic.closingCost, 25); near(ic.netPL, 109.8)
+  })
+  it('optionPL is exactly the breakdown net for every strategy', () => {
+    for (const strategy of ['SELLING_PUT', 'SELLING_PUT_WHEEL', 'SELLING_PUT_LONG_TERM', 'BUYING_PUT', 'LONG_CALL', 'COVERED_CALL', 'CREDIT_SPREAD', 'DEBIT_SPREAD', 'IRON_CONDOR']) {
+      const a = { strategy, contracts: 3, open: { premium: 2.1, premium_2: 0.9, premium_3: 1.7, premium_4: 0.4 }, close: { close_price: 0.7, close_price_2: 0.1, close_price_3: 0.5, close_price_4: 0.2 }, openCommission: 3.1, closeCommission: 2.2 }
+      expect(optionPL(a)).toBe(optionPLBreakdown(a).netPL)
+    }
   })
 })
