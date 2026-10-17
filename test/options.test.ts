@@ -103,10 +103,9 @@ describe('covered calls (characterization)', () => {
     expect(o.status).toBe(400)
   })
 
-  // KNOWN BUG (found while reading the code): closing looks up the holding by ticker + user only,
-  // so with the same ticker in two accounts the adjustment can land on the wrong account's holding.
-  // `it.fails` passes while the bug exists and turns red the day it is fixed - then remove `.fails`.
-  it.fails('records the adjustment against the holding in the covered call\'s own account', async () => {
+  // Fixed: closing used to pick the holding by ticker + user only, so with the same ticker in two
+  // accounts the adjustment could land on the wrong account's holding.
+  it('records the adjustment against the holding in the covered call\'s own account', async () => {
     const acct2 = (await DB().prepare("INSERT INTO accounts (user_id, account_name, account_type) VALUES (1, 'TFSA', 'TFSA')").run()).meta.last_row_id as number
     await DB().prepare("UPDATE stock_holdings SET is_open = 0 WHERE ticker = 'CCC'").run()
     const h1 = await holding(accountId)      // lower id, other account

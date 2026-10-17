@@ -5,6 +5,7 @@ import researchApp from './research-api'
 import { fetchCompanyData, fetchYahooFinanceData } from './lib/company-data'
 import { addCompanyToRoster } from './lib/add-company'
 import { loadRealizedSells, sumRealized } from './lib/stock-pl'
+import { optionPL, assignmentPL, grossPremium as calcGrossPremium } from './lib/calc'
 
 type Bindings = {
   DB: D1Database;
@@ -3157,6 +3158,7 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
       SELECT ot.*, sh.id as holding_id
       FROM option_trades ot
       LEFT JOIN stock_holdings sh ON sh.ticker = ot.ticker AND sh.user_id = ot.user_id AND sh.is_open = 1
+        AND (ot.account_id IS NULL OR sh.account_id = ot.account_id)
       WHERE ot.id = ? AND ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
     `).bind(ccId, userId).first()
     
@@ -3176,8 +3178,7 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
     const closePremium = parseFloat(data.close_price) || 0
     const contracts = parseInt(cc.quantity)
     
-    // P/L = (Open Premium - Close Premium) * Contracts * 100 - Open Commission - Close Commission
-    const profitLoss = (openPremium - closePremium) * contracts * 100 - openCommission - closeCommission
+    const profitLoss = optionPL({ strategy: 'COVERED_CALL', contracts, open: { premium: openPremium }, close: { close_price: closePremium }, openCommission, closeCommission })
     
     // Close the covered call
     await DB.prepare(`
@@ -3327,8 +3328,7 @@ app.put('/api/covered-calls/:id', authMiddleware, async (c) => {
       const closePremium = parseFloat(data.close_price)
       const contracts = parseInt(data.quantity)
       
-      // P/L = (Open Premium - Close Premium) * Contracts * 100 - Open Commission - Close Commission
-      const profitLoss = (openPremium - closePremium) * contracts * 100 - openCommission - closeCommission
+      const profitLoss = optionPL({ strategy: 'COVERED_CALL', contracts, open: { premium: openPremium }, close: { close_price: closePremium }, openCommission, closeCommission })
       
       await DB.prepare(`
         UPDATE option_trades SET
@@ -3700,49 +3700,13 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       const contracts = mergedData.quantity
       const strategyType = mergedData.strategy_type
       
-      let profitLoss = 0
-      
-      // Calculate P/L based on strategy type
-      if (strategyType === 'CREDIT_SPREAD' || strategyType === 'DEBIT_SPREAD') {
-        // Two-leg spread
-        const shortOpenPremium = mergedData.premium  // strike_price (short leg)
-        const longOpenPremium = mergedData.premium_2 || 0  // long leg premium
-        const shortClosePremium = mergedData.close_price || 0
-        const longClosePremium = mergedData.close_price_2 || 0
-        
-        const openCredit = (shortOpenPremium - longOpenPremium) * contracts * 100
-        const closeDebit = (shortClosePremium - longClosePremium) * contracts * 100
-        profitLoss = openCredit - closeDebit - openCommission - closeCommission
-        
-      } else if (strategyType === 'IRON_CONDOR') {
-        // Four-leg iron condor
-        const scOpen = mergedData.premium || 0  // Short Call
-        const lcOpen = mergedData.premium_2 || 0  // Long Call premium
-        const spOpen = mergedData.premium_3 || 0  // Short Put premium
-        const lpOpen = mergedData.premium_4 || 0  // Long Put premium
-        
-        const scClose = mergedData.close_price || 0
-        const lcClose = mergedData.close_price_2 || 0
-        const spClose = mergedData.close_price_3 || 0
-        const lpClose = mergedData.close_price_4 || 0
-        
-        const openCredit = ((scOpen - lcOpen) + (spOpen - lpOpen)) * contracts * 100
-        const closeDebit = ((scClose - lcClose) + (spClose - lpClose)) * contracts * 100
-        profitLoss = openCredit - closeDebit - openCommission - closeCommission
-        
-      } else {
-        // Single-leg (SELLING_PUT, SELLING_PUT_LONG_TERM, BUYING_PUT, LONG_CALL, COVERED_CALL)
-        const openPremium = mergedData.premium
-        const closePremium = mergedData.close_price
-        
-        if (strategyType === 'BUYING_PUT' || strategyType === 'LONG_CALL') {
-          // Debit strategies: profit when close > open
-          profitLoss = (closePremium - openPremium) * contracts * 100 - openCommission - closeCommission
-        } else {
-          // Credit strategies: profit when open > close
-          profitLoss = (openPremium - closePremium) * contracts * 100 - openCommission - closeCommission
-        }
-      }
+      const profitLoss = optionPL({
+        strategy: strategyType,
+        contracts,
+        open: { premium: mergedData.premium, premium_2: mergedData.premium_2, premium_3: mergedData.premium_3, premium_4: mergedData.premium_4 },
+        close: { close_price: mergedData.close_price, close_price_2: mergedData.close_price_2, close_price_3: mergedData.close_price_3, close_price_4: mergedData.close_price_4 },
+        openCommission, closeCommission
+      })
       
       await DB.prepare(`
         UPDATE option_trades SET
@@ -3866,9 +3830,9 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
     // Start transaction: Close option and create stock position
     // 1. Close the option with $0 close price (assignment = max profit for short put)
     // When assigned: you keep all the premium collected (minus commission)
-    const grossPremium = option.premium * option.quantity * 100
+    const grossPremium = calcGrossPremium(option.premium, option.quantity)
     const openCommission = parseFloat(option.commission || 0)
-    const profitLoss = grossPremium - openCommission // Max profit: premium collected minus commission paid
+    const profitLoss = assignmentPL({ premium: option.premium, contracts: option.quantity, openCommission }) // premium collected minus commission paid
     
     await DB.prepare(`
       UPDATE option_trades
