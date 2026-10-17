@@ -23,7 +23,8 @@
     "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run db:seed",
     "db:console:local": "wrangler d1 execute webapp-production --local",
     "db:console:prod": "wrangler d1 execute webapp-production",
-    "git:commit": "git add . && git commit -m"
+    "git:commit": "git add . && git commit -m",
+    "test:routes": "vitest run -c vitest.workers.config.mts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",
@@ -34,6 +35,7 @@
     "mysql2": "^3.16.1"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.4",
     "@cloudflare/workers-types": "^4.20260115.0",
     "@hono/vite-build": "^1.2.0",
     "@hono/vite-dev-server": "^0.18.2",

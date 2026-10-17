@@ -1,25 +1,6 @@
 import { defineConfig } from 'vitest/config'
 
+// Kept separate from vite.config.ts so the Cloudflare/Hono build plugins don't load during tests.
 export default defineConfig({
-  test: {
-    globals: true,
-    environment: 'node',
-    testTimeout: 30000, // 30 seconds per test
-    hookTimeout: 30000,
-    teardownTimeout: 30000,
-    env: {
-      NODE_ENV: 'test',
-      ENVIRONMENT: 'test'
-    },
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'json', 'html'],
-      exclude: [
-        'node_modules/',
-        'dist/',
-        'tests/',
-        '*.config.*'
-      ]
-    }
-  }
+  test: { include: ['src/**/*.test.ts'], environment: 'node' },
 })
