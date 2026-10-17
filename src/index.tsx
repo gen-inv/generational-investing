@@ -6,6 +6,7 @@ import { fetchCompanyData, fetchYahooFinanceData } from './lib/company-data'
 import { addCompanyToRoster } from './lib/add-company'
 import { loadRealizedSells, sumRealized } from './lib/stock-pl'
 import { optionPL, assignmentPL, grossPremium as calcGrossPremium } from './lib/calc'
+import { syncCoveredCallAdjustment } from './lib/cc-adjustment'
 
 type Bindings = {
   DB: D1Database;
@@ -3155,10 +3156,8 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
     
     // Verify covered call belongs to user and get details
     const cc = await DB.prepare(`
-      SELECT ot.*, sh.id as holding_id
+      SELECT ot.*
       FROM option_trades ot
-      LEFT JOIN stock_holdings sh ON sh.ticker = ot.ticker AND sh.user_id = ot.user_id AND sh.is_open = 1
-        AND (ot.account_id IS NULL OR sh.account_id = ot.account_id)
       WHERE ot.id = ? AND ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
     `).bind(ccId, userId).first()
     
@@ -3199,20 +3198,8 @@ app.put('/api/covered-calls/:id/close', authMiddleware, async (c) => {
       userId
     ).run()
     
-    // Create cost basis adjustment when closing the covered call
-    // The profit/loss from the covered call reduces the cost basis
-    if (cc.holding_id && profitLoss !== undefined) {
-      await DB.prepare(`
-        INSERT INTO cost_basis_adjustments (user_id, holding_id, adjustment_type, amount, adjustment_date, notes)
-        VALUES (?, ?, 'COVERED_CALL', ?, ?, ?)
-      `).bind(
-        userId,
-        cc.holding_id,
-        profitLoss,
-        data.close_date || new Date().toISOString().split('T')[0],
-        `Covered call closed - Net P/L: $${profitLoss.toFixed(2)} (${cc.quantity} contracts @ $${cc.strike_price}, closed @ $${data.close_price})`
-      ).run()
-    }
+    // The covered call's P/L becomes (or updates) its one cost-basis adjustment
+    await syncCoveredCallAdjustment(DB, userId, ccId)
     
     return c.json({ 
       success: true, 
@@ -3345,6 +3332,8 @@ app.put('/api/covered-calls/:id', authMiddleware, async (c) => {
         WHERE id = ? AND user_id = ?
       `).bind(ccId, userId).run()
     }
+    
+    await syncCoveredCallAdjustment(DB, userId, ccId)
     
     return c.json({ success: true, message: 'Covered call updated successfully' })
   } catch (error) {
@@ -3724,6 +3713,8 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       `).bind(tradeId, userId).run()
     }
     
+    if (mergedData.strategy_type === 'COVERED_CALL') await syncCoveredCallAdjustment(DB, userId, tradeId)
+    
     return c.json({ success: true })
   } catch (error) {
     console.error('Update option trade error:', error)
@@ -3764,6 +3755,8 @@ app.put('/api/options/:id/reopen', authMiddleware, async (c) => {
       WHERE id = ? AND user_id = ?
     `).bind(tradeId, userId).run()
     
+    await syncCoveredCallAdjustment(DB, userId, tradeId)
+    
     return c.json({ success: true, message: 'Trade re-opened successfully' })
   } catch (error) {
     console.error('Re-open option trade error:', error)
@@ -3778,6 +3771,8 @@ app.delete('/api/options/:id', authMiddleware, async (c) => {
   await c.env.DB.prepare(`
     DELETE FROM option_trades WHERE id = ? AND user_id = ?
   `).bind(tradeId, userId).run()
+  // a deleted covered call takes its cost-basis adjustment with it
+  await syncCoveredCallAdjustment(c.env.DB, userId, tradeId)
   
   return c.json({ success: true })
 })
