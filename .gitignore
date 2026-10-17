@@ -39,3 +39,5 @@ backups/
 
 *.bak-*
 .git-msg.txt
+
+public/static/calc.js

@@ -10648,6 +10648,9 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
         </div>
         
         <script src="https://cdn.jsdelivr.net/npm/axios@1.6.0/dist/axios.min.js"></script>
+        <script src="/static/calc.js"></script>
+        <script src="/static/modal-kit.js"></script>
+        <script src="/static/modal-covered-call.js"></script>
         <script src="/static/app.js"></script>
     </body>
     </html>

@@ -7,7 +7,7 @@
     "dev:d1": "wrangler pages dev dist --d1=webapp-production --local --ip 0.0.0.0 --port 3000",
     "start": "node server.js",
     "start:prod": "NODE_ENV=production node server.js",
-    "build": "vite build",
+    "build": "npm run build:calc && vite build",
     "preview": "wrangler pages dev dist",
     "deploy": "npm run build && wrangler pages deploy dist --project-name generational-investing",
     "deploy:prod": "npm run build && wrangler pages deploy dist --project-name generational-investing",
@@ -24,7 +24,8 @@
     "db:console:local": "wrangler d1 execute webapp-production --local",
     "db:console:prod": "wrangler d1 execute webapp-production",
     "git:commit": "git add . && git commit -m",
-    "test:routes": "vitest run -c vitest.workers.config.mts"
+    "test:routes": "vitest run -c vitest.workers.config.mts",
+    "build:calc": "esbuild src/lib/calc.ts --bundle --format=iife --global-name=Calc --outfile=public/static/calc.js"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",
@@ -41,6 +42,8 @@
     "@hono/vite-dev-server": "^0.18.2",
     "@vitest/coverage-v8": "^4.0.18",
     "@vitest/ui": "^4.0.18",
+    "esbuild": "^0.28.2",
+    "jsdom": "^30.1.3",
     "typescript": "^5.9.3",
     "vite": "^6.3.5",
     "vitest": "^4.0.18",
