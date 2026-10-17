@@ -6,6 +6,7 @@ import { fetchCompanyData, fetchYahooFinanceData } from './lib/company-data'
 import { addCompanyToRoster } from './lib/add-company'
 import { loadRealizedSells, sumRealized } from './lib/stock-pl'
 import { optionPL, assignmentPL, grossPremium as calcGrossPremium } from './lib/calc'
+import { getRates } from './lib/fx'
 import { syncCoveredCallAdjustment } from './lib/cc-adjustment'
 
 type Bindings = {
@@ -1310,14 +1311,8 @@ app.post('/api/accounts/:id/snapshot', authMiddleware, async (c) => {
     // Get exchange rates
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
-    let rates = await DB.prepare(`
-      SELECT usd_to_cad, cad_to_usd FROM exchange_rates 
-      WHERE month = ? AND year = ?
-    `).bind(currentMonth, currentYear).first() as any;
+    const rates = await getRates(DB, currentMonth, currentYear);
     
-    if (!rates) {
-      rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
-    }
 
     // Determine balance and currency based on default_currency
     const balance = account.default_currency === 'USD' ? account.balance_usd : account.balance_cad;
@@ -1367,17 +1362,9 @@ app.get('/api/dashboard/totals', authMiddleware, async (c) => {
     `).bind(userId).all();
 
     // Get exchange rate from cache (should already be cached from login)
-    let rates = await DB.prepare(`
-      SELECT usd_to_cad, cad_to_usd FROM exchange_rates 
-      WHERE month = ? AND year = ?
-    `).bind(month, year).first() as any;
+    const rates = await getRates(DB, month, year);
     
-    // If not cached, use fallback rate
-    let isDefaultRate = false;
-    if (!rates) {
-      rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
-      isDefaultRate = true;
-    }
+    const isDefaultRate = rates.is_default;
 
     // Calculate totals in both currencies
     let totalCAD = 0;
@@ -1444,14 +1431,8 @@ app.get('/api/dashboard/ytd-performance', authMiddleware, async (c) => {
     console.log('YTD Performance - User ID:', userId, 'Accounts found:', accounts?.length || 0);
 
     // Get exchange rate
-    let rates = await DB.prepare(`
-      SELECT usd_to_cad, cad_to_usd FROM exchange_rates 
-      WHERE month = ? AND year = ?
-    `).bind(currentMonth, currentYear).first() as any;
+    const rates = await getRates(DB, currentMonth, currentYear);
     
-    if (!rates) {
-      rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
-    }
 
     const accountPerformance = [];
     let totalYTDPL = 0;
@@ -1578,15 +1559,8 @@ app.get('/api/dashboard', authMiddleware, async (c) => {
     `).bind(userId).all();
 
     // Get exchange rate from cache (should already be cached from login)
-    let rates = await DB.prepare(`
-      SELECT usd_to_cad, cad_to_usd FROM exchange_rates 
-      WHERE month = ? AND year = ?
-    `).bind(month, year).first() as any;
+    const rates = await getRates(DB, month, year);
     
-    // If not cached, use fallback rate
-    if (!rates) {
-      rates = { usd_to_cad: 1.35, cad_to_usd: 1 / 1.35 };
-    }
 
     // Calculate totals in both currencies
     let totalCAD = 0;
@@ -1612,7 +1586,7 @@ app.get('/api/dashboard', authMiddleware, async (c) => {
     return c.json({
       total_balance_cad: totalCAD,
       total_balance_usd: totalUSD,
-      exchange_rate: rates,
+      exchange_rate: { usd_to_cad: rates.usd_to_cad, cad_to_usd: rates.cad_to_usd },
       accounts_count: accounts.length,
       stock_trades_count: tradesCount?.stock_count || 0,
       option_trades_count: tradesCount?.option_count || 0,
@@ -4742,13 +4716,10 @@ app.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
     
     // Get exchange rate for conversion
     const currentMonth = new Date().getMonth() + 1
-    const rates = await DB.prepare(`
-      SELECT usd_to_cad, cad_to_usd FROM exchange_rates
-      WHERE month = ? AND year = ?
-    `).bind(currentMonth, currentYear).first() as any
+    const rates = await getRates(DB, currentMonth, currentYear)
     
-    const usdToCad = rates?.usd_to_cad || 1.35
-    const cadToUsd = rates?.cad_to_usd || 0.74
+    const usdToCad = rates.usd_to_cad
+    const cadToUsd = rates.cad_to_usd
     
     // Store original values
     const originalCAD = totalValueCAD
@@ -5791,8 +5762,9 @@ app.get('/api/reports/positions', authMiddleware, async (c) => {
       }
     })
     
-    // Calculate total portfolio value (using 1.4 as CAD/USD rate)
-    const exchangeRate = 1.4
+    // Calculate total portfolio value using this month's cached USD/CAD rate (same lookup as the dashboard)
+    const fxNow = new Date()
+    const exchangeRate = (await getRates(DB, fxNow.getMonth() + 1, fxNow.getFullYear())).usd_to_cad
     let totalPortfolioValue = 0
     accountMap.forEach((acc: any) => {
       totalPortfolioValue += (acc.balance_cad || 0) + ((acc.balance_usd || 0) * exchangeRate)
