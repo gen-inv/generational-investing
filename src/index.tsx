@@ -5,6 +5,7 @@ import researchApp from './research-api'
 import { fetchCompanyData, fetchYahooFinanceData } from './lib/company-data'
 import { addCompanyToRoster } from './lib/add-company'
 import { loadRealizedSells, sumRealized } from './lib/stock-pl'
+import { holdingPosition } from './lib/stock-close'
 import { optionPL, assignmentPL, grossPremium as calcGrossPremium } from './lib/calc'
 import { getRates } from './lib/fx'
 import { syncCoveredCallAdjustment } from './lib/cc-adjustment'
@@ -2254,6 +2255,53 @@ app.put('/api/stocks/:id', authMiddleware, async (c) => {
   } catch (error) {
     console.error('Update stock trade error:', error)
     return c.json({ error: 'Failed to update stock trade' }, 500)
+  }
+})
+
+// What closing this position would sell: shares held now, average cost, and buy commissions not yet
+// carried by an earlier partial sell (same replay the close itself uses), plus open covered calls.
+app.get('/api/stocks/:id/close-preview', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const holdingId = c.req.param('id')
+    const { DB } = c.env
+    const holding = await DB.prepare(`
+      SELECT sh.id, sh.ticker, sh.account_id, sh.opened_date, sh.is_open, a.account_name, a.account_type
+      FROM stock_holdings sh
+      LEFT JOIN accounts a ON sh.account_id = a.id
+      WHERE sh.id = ? AND sh.user_id = ?
+    `).bind(holdingId, userId).first() as any
+    if (!holding) return c.json({ error: 'Stock holding not found' }, 404)
+
+    const txs = await DB.prepare(`
+      SELECT id, transaction_type, shares, price_per_share, transaction_date, commission
+      FROM stock_transactions WHERE holding_id = ?
+    `).bind(holdingId).all()
+    const position = holdingPosition((txs.results || []) as any[])
+
+    const adj = await DB.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total FROM cost_basis_adjustments
+      WHERE holding_id = ? AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL', 'SELLING_PUT')
+    `).bind(holdingId).first() as any
+    const cc = await DB.prepare(`
+      SELECT COUNT(*) as n FROM option_trades
+      WHERE user_id = ? AND ticker = ? AND account_id = ? AND strategy_type = 'COVERED_CALL' AND is_open = 1
+    `).bind(userId, holding.ticker, holding.account_id).first() as any
+
+    return c.json({
+      id: holding.id,
+      ticker: holding.ticker,
+      account_name: holding.account_name,
+      account_type: holding.account_type,
+      opened_date: holding.opened_date,
+      is_open: holding.is_open,
+      ...position,
+      total_adjustments: adj?.total || 0,
+      open_covered_calls: cc?.n || 0
+    })
+  } catch (error) {
+    console.error('Close preview error:', error)
+    return c.json({ error: 'Failed to load close preview' }, 500)
   }
 })
 
@@ -10652,6 +10700,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
         <script src="/static/modal-kit.js"></script>
         <script src="/static/modal-covered-call.js"></script>
         <script src="/static/modal-close.js"></script>
+        <script src="/static/modal-stock-close.js"></script>
         <script src="/static/research-merge.js"></script>
         <script src="/static/app.js"></script>
     </body>
