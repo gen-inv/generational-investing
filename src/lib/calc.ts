@@ -172,3 +172,4 @@ export function daysBetween(fromISO: string, toISO: string): number | null {
 }
 export { stockClosePL } from './stock-close'
 export { optionEntryAnalysis } from './option-entry'
+export { stockEntryAnalysis } from './stock-entry'

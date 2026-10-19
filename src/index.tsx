@@ -3292,7 +3292,7 @@ app.put('/api/covered-calls/:id', authMiddleware, async (c) => {
         data.trade_date,
         data.commission || 0,
         data.close_date || null,
-        data.close_price || null,
+        data.close_price ?? null,
         data.close_commission || null,
         data.notes || null,
         accountIdToSet,
@@ -3323,7 +3323,7 @@ app.put('/api/covered-calls/:id', authMiddleware, async (c) => {
         data.trade_date,
         data.commission || 0,
         data.close_date || null,
-        data.close_price || null,
+        data.close_price ?? null,
         data.close_commission || null,
         data.notes || null,
         ccId,
@@ -10735,6 +10735,8 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
         <script src="/static/modal-stock-close.js"></script>
         <script src="/static/modal-assign.js"></script>
         <script src="/static/modal-option.js"></script>
+        <script src="/static/modal-stock.js"></script>
+        <script src="/static/modal-cc-manage.js"></script>
         <script src="/static/research-merge.js"></script>
         <script src="/static/app.js"></script>
     </body>
