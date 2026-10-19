@@ -171,3 +171,4 @@ export function daysBetween(fromISO: string, toISO: string): number | null {
   return Math.ceil(ms / (1000 * 60 * 60 * 24))
 }
 export { stockClosePL } from './stock-close'
+export { optionEntryAnalysis } from './option-entry'

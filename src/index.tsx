@@ -10734,6 +10734,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
         <script src="/static/modal-close.js"></script>
         <script src="/static/modal-stock-close.js"></script>
         <script src="/static/modal-assign.js"></script>
+        <script src="/static/modal-option.js"></script>
         <script src="/static/research-merge.js"></script>
         <script src="/static/app.js"></script>
     </body>
