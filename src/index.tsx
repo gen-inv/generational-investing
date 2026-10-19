@@ -9,6 +9,8 @@ import { holdingPosition } from './lib/stock-close'
 import { optionPL, assignmentPL, grossPremium as calcGrossPremium } from './lib/calc'
 import { getRates } from './lib/fx'
 import { syncCoveredCallAdjustment } from './lib/cc-adjustment'
+import { syncPutAssignment } from './lib/put-assignment'
+import type { PutAssignmentChange } from './lib/put-assignment'
 
 type Bindings = {
   DB: D1Database;
@@ -3642,6 +3644,23 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
       }
     }
     
+    // An assigned short put owns a stock purchase and a premium adjustment: check the edit can be applied before changing anything
+    const putMergedStrategy = data.strategy_type !== undefined ? data.strategy_type : existingTrade.strategy_type
+    const putMergedClose = data.close_date !== undefined ? data.close_date : existingTrade.close_date
+    const putMergedClosePrice = data.close_price !== undefined ? data.close_price : existingTrade.close_price
+    const putCloses = !!(putMergedClose && putMergedClosePrice !== null && putMergedClosePrice !== undefined)
+    const putReopens = !putCloses && !data.close_date
+    const putStillPut = putMergedStrategy === 'SELLING_PUT' || putMergedStrategy === 'SELLING_PUT_WHEEL'
+    const putChange: PutAssignmentChange = (putReopens || !putStillPut) ? { kind: 'undo' } : { kind: 'keep', option: {
+      quantity: data.quantity !== undefined ? data.quantity : existingTrade.quantity,
+      strike_price: data.strike_price !== undefined ? data.strike_price : existingTrade.strike_price,
+      premium: data.premium !== undefined ? data.premium : existingTrade.premium,
+      commission: data.commission !== undefined ? data.commission : (existingTrade.commission || 0),
+      close_date: putMergedClose
+    } }
+    const putCheck = await syncPutAssignment(DB, userId, tradeId, putChange, 'check')
+    if (!putCheck.ok) return c.json({ error: putCheck.error }, 409)
+
     // Build UPDATE query with only provided fields (PATCH-style)
     // D1 doesn't accept undefined, so use null as fallback
     await DB.prepare(`
@@ -3736,6 +3755,7 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
     }
     
     if (mergedData.strategy_type === 'COVERED_CALL') await syncCoveredCallAdjustment(DB, userId, tradeId)
+    await syncPutAssignment(DB, userId, tradeId, putChange, 'apply')
     
     return c.json({ success: true })
   } catch (error) {
@@ -3763,6 +3783,10 @@ app.put('/api/options/:id/reopen', authMiddleware, async (c) => {
       return c.json({ error: 'Trade is already open' }, 400)
     }
     
+    // An assigned short put owns a stock purchase and a premium adjustment: make sure they can be reversed before changing anything
+    const putCheck = await syncPutAssignment(DB, userId, tradeId, { kind: 'undo' }, 'check')
+    if (!putCheck.ok) return c.json({ error: putCheck.error }, 409)
+
     // Re-open the trade and clear closing data
     await DB.prepare(`
       UPDATE option_trades SET
@@ -3778,6 +3802,7 @@ app.put('/api/options/:id/reopen', authMiddleware, async (c) => {
     `).bind(tradeId, userId).run()
     
     await syncCoveredCallAdjustment(DB, userId, tradeId)
+    await syncPutAssignment(DB, userId, tradeId, { kind: 'undo' }, 'apply')
     
     return c.json({ success: true, message: 'Trade re-opened successfully' })
   } catch (error) {
@@ -3789,13 +3814,18 @@ app.put('/api/options/:id/reopen', authMiddleware, async (c) => {
 app.delete('/api/options/:id', authMiddleware, async (c) => {
   const userId = c.get('userId')
   const tradeId = c.req.param('id')
-  
+
+  // an assigned short put owns a stock purchase and a premium adjustment: refuse if they cannot be reversed
+  const putCheck = await syncPutAssignment(c.env.DB, userId, tradeId, { kind: 'undo' }, 'check')
+  if (!putCheck.ok) return c.json({ error: putCheck.error }, 409)
+
   await c.env.DB.prepare(`
     DELETE FROM option_trades WHERE id = ? AND user_id = ?
   `).bind(tradeId, userId).run()
-  // a deleted covered call takes its cost-basis adjustment with it
+  // a deleted covered call takes its cost-basis adjustment with it; a deleted assigned put takes its shares and premium adjustment
   await syncCoveredCallAdjustment(c.env.DB, userId, tradeId)
-  
+  await syncPutAssignment(c.env.DB, userId, tradeId, { kind: 'undo' }, 'apply')
+
   return c.json({ success: true })
 })
 
@@ -3919,15 +3949,16 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
     await DB.prepare(`
       INSERT INTO stock_transactions (
         user_id, holding_id, transaction_type, shares, price_per_share,
-        transaction_date, commission, notes
-      ) VALUES (?, ?, 'BUY', ?, ?, ?, 0, ?)
+        transaction_date, commission, notes, option_trade_id
+      ) VALUES (?, ?, 'BUY', ?, ?, ?, 0, ?, ?)
     `).bind(
       userId,
       holdingId,
       shares,
       strikePrice,
       data.assignment_date,
-      `Assigned from option: ${shares} shares @ $${strikePrice}`
+      `Assigned from option: ${shares} shares @ $${strikePrice}`,
+      optionId
     ).run()
     
     // 4. Create cost basis adjustment for premium collected
@@ -3938,14 +3969,15 @@ app.post('/api/options/:id/assign', authMiddleware, async (c) => {
     
     await DB.prepare(`
       INSERT INTO cost_basis_adjustments (
-        user_id, holding_id, adjustment_type, amount, adjustment_date, notes
-      ) VALUES (?, ?, 'SELLING_PUT', ?, ?, ?)
+        user_id, holding_id, adjustment_type, amount, adjustment_date, notes, option_trade_id
+      ) VALUES (?, ?, 'SELLING_PUT', ?, ?, ?, ?)
     `).bind(
       userId,
       holdingId,
       netProceeds,
       data.assignment_date,
-      `Premium from assigned ${option.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : 'Stockpiling'} put: ${option.quantity} contract(s) @ $${option.premium}/share = $${grossPremium.toFixed(2)}${openCommission > 0 ? ` - $${openCommission.toFixed(2)} commission = $${netProceeds.toFixed(2)}` : ''}`
+      `Premium from assigned ${option.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : 'Stockpiling'} put: ${option.quantity} contract(s) @ $${option.premium}/share = $${grossPremium.toFixed(2)}${openCommission > 0 ? ` - $${openCommission.toFixed(2)} commission = $${netProceeds.toFixed(2)}` : ''}`,
+      optionId
     ).run()
     
     return c.json({ 
@@ -10701,6 +10733,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
         <script src="/static/modal-covered-call.js"></script>
         <script src="/static/modal-close.js"></script>
         <script src="/static/modal-stock-close.js"></script>
+        <script src="/static/modal-assign.js"></script>
         <script src="/static/research-merge.js"></script>
         <script src="/static/app.js"></script>
     </body>
