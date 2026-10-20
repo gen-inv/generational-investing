@@ -25,7 +25,8 @@
     "db:console:prod": "wrangler d1 execute webapp-production",
     "git:commit": "git add . && git commit -m",
     "test:routes": "vitest run -c vitest.workers.config.mts",
-    "build:calc": "esbuild src/lib/calc.ts --bundle --format=iife --global-name=Calc --outfile=public/static/calc.js"
+    "build:calc": "esbuild src/lib/calc.ts --bundle --format=iife --global-name=Calc --outfile=public/static/calc.js",
+    "smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",
