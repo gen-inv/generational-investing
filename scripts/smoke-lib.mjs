@@ -53,6 +53,13 @@ export async function runSmoke({ baseUrl, fetch: f = fetch, readLocal = () => nu
     if (r.status !== 401) throw new Error('expected 401, got ' + r.status)
   })
 
+  await check('forged token is refused', async () => {
+    const b64 = (v) => Buffer.from(JSON.stringify(v)).toString('base64url')
+    const forged = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ userId: 1, email: 'x@example.com' })}.${Buffer.from('forged').toString('base64url')}`
+    const r = await get('/api/user/profile', { Authorization: 'Bearer ' + forged })
+    if (r.status !== 401) throw new Error('expected 401, got ' + r.status)
+  })
+
   if (!email || !password) {
     results.push({ name: 'authenticated checks', ok: true, skipped: true, detail: 'skipped (set SMOKE_EMAIL and SMOKE_PASSWORD to enable)' })
     return results

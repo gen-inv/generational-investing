@@ -23,7 +23,7 @@ routes.post('/api/auth/register', async (c) => {
       INSERT INTO users (email, password_hash, name) VALUES (?, ?, ?)
     `).bind(email, passwordHash, name).run()
     
-    const token = await generateToken({ userId: result.meta.last_row_id, email })
+    const token = await generateToken({ userId: result.meta.last_row_id, email }, c.env.JWT_SECRET as string)
     
     // Fetch and cache current month's exchange rate on registration
     const now = new Date();
@@ -78,7 +78,7 @@ routes.post('/api/auth/login', async (c) => {
       return c.json({ error: 'Invalid credentials' }, 401)
     }
     
-    const token = await generateToken({ userId: user.id, email: user.email })
+    const token = await generateToken({ userId: user.id, email: user.email }, c.env.JWT_SECRET as string)
     
     // Fetch and cache current month's exchange rate on login
     // This happens once per month, so it's acceptable to await

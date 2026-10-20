@@ -47,6 +47,10 @@ describe('smoke test', () => {
     const r = await run(site({ '/api/options': () => new Response('[]', { status: 200 }) }))
     expect(failing(r)).toEqual(['anonymous /api/options is refused'])
   })
+  it('flags a server that accepts a forged token', async () => {
+    const r = await run(site({ '/api/user/profile': () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }) }))
+    expect(failing(r)).toEqual(['forged token is refused'])
+  })
   it('flags a broken login or a failing API route', async () => {
     expect(failing(await run(site(), { email: 'a@b.c', password: 'bad' }))).toEqual(['login works'])
     const r = await run(site({ '/api/stocks': (init: any) => new Response('boom', { status: 500 }) }), { email: 'a@b.c', password: 'good' })

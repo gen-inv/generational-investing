@@ -27,6 +27,15 @@ api.interceptors.request.use(config => {
     return config
 })
 
+// A 401 on any signed-in call means the saved token is no longer valid (expired, or issued before tokens were signed): sign out.
+api.interceptors.response.use(response => response, error => {
+    const url = (error.config && error.config.url) || ''
+    if (error.response && error.response.status === 401 && token && !url.includes('/api/auth/')) {
+        logout()
+    }
+    return Promise.reject(error)
+})
+
 // Research findings cache
 let researchFindingsCache = null
 let researchFindingsCacheTime = null

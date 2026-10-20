@@ -3,6 +3,7 @@ export type Bindings = {
   DB: D1Database;
   RESEARCH_DB: D1Database;
   RESEARCH_INGEST_TOKEN: string;
+  JWT_SECRET?: string; // signs login tokens: `wrangler pages secret put JWT_SECRET`, or .dev.vars locally
 }
 
 // Alias for use in scheduled handler
