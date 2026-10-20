@@ -6,7 +6,7 @@ import { fetchCompanyData, fetchYahooFinanceData } from './lib/company-data'
 import { addCompanyToRoster } from './lib/add-company'
 import { loadRealizedSells, sumRealized } from './lib/stock-pl'
 import { holdingPosition } from './lib/stock-close'
-import { optionPL, assignmentPL, grossPremium as calcGrossPremium } from './lib/calc'
+import { optionPL, assignmentPL, grossPremium as calcGrossPremium, splitOptionCommission } from './lib/calc'
 import { getRates } from './lib/fx'
 import { syncCoveredCallAdjustment } from './lib/cc-adjustment'
 import { syncPutAssignment } from './lib/put-assignment'
@@ -3761,6 +3761,68 @@ app.put('/api/options/:id', authMiddleware, async (c) => {
   } catch (error) {
     console.error('Update option trade error:', error)
     return c.json({ error: 'Failed to update option trade' }, 500)
+  }
+})
+
+// Close some contracts of an open option position. The closed contracts become their own closed trade (with close date,
+// close prices and P/L); the open trade keeps the rest and its share of the opening commission.
+app.post('/api/options/:id/reduce', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const tradeId = c.req.param('id')
+    const data = await c.req.json()
+    const { DB } = c.env
+
+    const t = await DB.prepare(`SELECT * FROM option_trades WHERE id = ? AND user_id = ?`).bind(tradeId, userId).first() as any
+    if (!t) return c.json({ error: 'Option trade not found' }, 404)
+    if (!t.is_open) return c.json({ error: 'Option trade is already closed' }, 400)
+    if (t.strategy_type === 'COVERED_CALL') return c.json({ error: 'Covered calls are closed from the stock details' }, 400)
+
+    const contracts = Number(data.contracts)
+    if (!Number.isInteger(contracts) || contracts < 1) return c.json({ error: 'Contracts to close must be a whole number of at least 1' }, 400)
+    if (contracts >= t.quantity) return c.json({ error: 'Cannot close all contracts here. Use Close Position instead' }, 400)
+    if (!data.close_date) return c.json({ error: 'Close date is required' }, 400)
+
+    const legCount = t.strategy_type === 'IRON_CONDOR' ? 4 : (t.strategy_type === 'CREDIT_SPREAD' || t.strategy_type === 'DEBIT_SPREAD') ? 2 : 1
+    const keys = ['close_price', 'close_price_2', 'close_price_3', 'close_price_4']
+    const closes: Array<number | null> = []
+    for (let i = 0; i < 4; i++) {
+      if (i >= legCount) { closes.push(null); continue }
+      const raw = data[keys[i]]
+      const v = raw === null || raw === undefined || raw === '' ? NaN : Number(raw)
+      if (!Number.isFinite(v) || v < 0) return c.json({ error: 'A close price is required for every leg' }, 400)
+      closes.push(v)
+    }
+    const closeCommission = Math.max(0, Number(data.close_commission) || 0)
+
+    const split = splitOptionCommission(t.quantity, t.commission, contracts)
+    const profitLoss = optionPL({
+      strategy: t.strategy_type, contracts,
+      open: { premium: t.premium, premium_2: t.premium_2, premium_3: t.premium_3, premium_4: t.premium_4 },
+      close: { close_price: closes[0], close_price_2: closes[1], close_price_3: closes[2], close_price_4: closes[3] },
+      openCommission: split.closedCommission, closeCommission
+    })
+
+    const results = await DB.batch([
+      DB.prepare(`
+        INSERT INTO option_trades (
+          user_id, company_id, account_id, ticker, strategy_type, strike_price, strike_price_2, strike_price_3, strike_price_4,
+          premium, premium_2, premium_3, premium_4, quantity, expiration_date, account_type, trade_date, commission,
+          is_open, close_date, close_price, close_price_2, close_price_3, close_price_4, close_commission, profit_loss, notes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        userId, t.company_id, t.account_id ?? null, t.ticker, t.strategy_type, t.strike_price, t.strike_price_2 ?? null, t.strike_price_3 ?? null, t.strike_price_4 ?? null,
+        t.premium, t.premium_2 ?? null, t.premium_3 ?? null, t.premium_4 ?? null, contracts, t.expiration_date, t.account_type, t.trade_date, split.closedCommission,
+        data.close_date, closes[0], closes[1], closes[2], closes[3], closeCommission, profitLoss, t.notes ?? null
+      ),
+      DB.prepare(`UPDATE option_trades SET quantity = ?, commission = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`)
+        .bind(split.remainingContracts, split.remainingCommission, tradeId, userId)
+    ])
+
+    return c.json({ success: true, closed_id: results[0].meta.last_row_id, remaining_contracts: split.remainingContracts, profit_loss: profitLoss })
+  } catch (error) {
+    console.error('Reduce option position error:', error)
+    return c.json({ error: 'Failed to reduce position' }, 500)
   }
 })
 
@@ -10737,6 +10799,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
         <script src="/static/modal-option.js"></script>
         <script src="/static/modal-stock.js"></script>
         <script src="/static/modal-cc-manage.js"></script>
+        <script src="/static/modal-position.js"></script>
         <script src="/static/research-merge.js"></script>
         <script src="/static/app.js"></script>
     </body>
