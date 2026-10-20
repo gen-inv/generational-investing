@@ -11,9 +11,9 @@ let monthlyPLChart = null
 // API Base URL
 const API_BASE = window.location.origin
 
-// Research API: Use production for complete data including research notes
-// Local seed has MA/UAA core data but not the 12 research notes with markdown content
-const RESEARCH_API_BASE = 'https://generational-investing.pages.dev'
+// Research API: this site's own /api/research routes. They need the login token, which the
+// interceptor and researchFetch below add.
+const RESEARCH_API_BASE = API_BASE
 
 // Axios instance with auth header
 const api = axios.create({
@@ -26,6 +26,19 @@ api.interceptors.request.use(config => {
     }
     return config
 })
+
+// Research calls made with plain axios get the login token too (only for this site's /api/research routes).
+axios.interceptors.request.use(config => {
+    if (token && typeof config.url === 'string' && config.url.startsWith(`${RESEARCH_API_BASE}/api/research/`)) {
+        config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+})
+
+// fetch() to a research route, with the login token
+function researchFetch(path, options = {}) {
+    return fetch(`${RESEARCH_API_BASE}/api/research${path}`, { ...options, headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` } })
+}
 
 // A 401 on any signed-in call means the saved token is no longer valid (expired, or issued before tokens were signed): sign out.
 api.interceptors.response.use(response => response, error => {
@@ -1772,7 +1785,7 @@ async function showCompanyView(companyId) {
         // Check if company exists on research site
         let hasResearchData = false
         try {
-            const researchResponse = await axios.get(`${RESEARCH_API}/api/research/company/${company.ticker}`, {
+            const researchResponse = await axios.get(`${RESEARCH_API_BASE}/api/research/${encodeURIComponent(company.ticker)}`, {
                 validateStatus: function (status) {
                     // Accept 404 as valid status (company doesn't exist yet)
                     return (status >= 200 && status < 300) || status === 404
@@ -7156,7 +7169,8 @@ async function loadResearchQueue() {
     const tbody = document.getElementById('research-queue-table')
     tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Loading...</td></tr>'
     try {
-        const response = await fetch('https://generational-investing.pages.dev/api/research/queue')
+        const response = await researchFetch('/queue')
+        if (!response.ok) throw new Error('Queue request failed: ' + response.status)
         const data = await response.json()
         const queue = data.queue || []
         if (queue.length === 0) {
@@ -7199,7 +7213,7 @@ async function loadResearchQueue() {
 async function retryQueueItem(id) {
     if (!confirm('Retry this item? It will be reset to pending with a fresh attempt count.')) return
     try {
-        await fetch(`https://generational-investing.pages.dev/api/research/queue/${id}/retry`, { method: 'POST' })
+        await researchFetch(`/queue/${id}/retry`, { method: 'POST' })
         loadResearchQueue()
     } catch (error) {
         alert('Failed to retry item.')
@@ -7209,7 +7223,7 @@ async function retryQueueItem(id) {
 async function cancelQueueItem(id) {
     if (!confirm('Cancel this item? It will be removed from active processing.')) return
     try {
-        await fetch(`https://generational-investing.pages.dev/api/research/queue/${id}/cancel`, { method: 'POST' })
+        await researchFetch(`/queue/${id}/cancel`, { method: 'POST' })
         loadResearchQueue()
     } catch (error) {
         alert('Failed to cancel item.')
@@ -9550,63 +9564,8 @@ function updateConcentrationAnalysis(summary) {
 // RESEARCH MODAL FUNCTIONS
 // ============================================================================
 
-// Research API Base URL
-const RESEARCH_API = 'https://research-e79.pages.dev'
-
 // Global research state
 let currentResearchData = null
-
-// Fetch financials from research site (triggers SEC EDGAR fetch)
-async function fetchFinancials(symbol) {
-    const btn = document.getElementById('fetch-financials-btn')
-    const btnText = btn.querySelector('.btn-text')
-    const btnLoading = btn.querySelector('.btn-loading')
-    
-    // Show loading state
-    btn.disabled = true
-    btnText.classList.add('hidden')
-    btnLoading.classList.remove('hidden')
-    
-    try {
-        // Call research API to fetch financial data from SEC EDGAR
-        const response = await axios.post(`${RESEARCH_API}/api/research/fetch/${symbol}`)
-        
-        if (response.data.success) {
-            // Show success message
-            btnLoading.classList.add('hidden')
-            btn.innerHTML = '<i class="fas fa-check-circle mr-2"></i>Fetched Successfully!'
-            btn.classList.remove('bg-amber-600', 'hover:bg-amber-700')
-            btn.classList.add('bg-green-600', 'hover:bg-green-700')
-            
-            // Wait 1 second then open the research modal
-            setTimeout(() => {
-                openResearchModal(symbol)
-            }, 1000)
-        } else {
-            throw new Error(response.data.error || 'Failed to fetch financials')
-        }
-    } catch (error) {
-        console.error('Error fetching financials:', error)
-        
-        // Show error
-        btnLoading.classList.add('hidden')
-        btn.innerHTML = '<i class="fas fa-exclamation-circle mr-2"></i>Fetch Failed'
-        btn.classList.remove('bg-amber-600', 'hover:bg-amber-700')
-        btn.classList.add('bg-red-600', 'hover:bg-red-700')
-        
-        // Show error message
-        const errorMsg = error.response?.data?.error || error.message || 'Failed to fetch financial data'
-        alert(`Error: ${errorMsg}`)
-        
-        // Reset button after 3 seconds
-        setTimeout(() => {
-            btn.disabled = false
-            btn.innerHTML = '<i class="fas fa-download mr-2"></i><span class="btn-text">Fetch Financials</span><span class="btn-loading hidden"><i class="fas fa-spinner fa-spin"></i> Fetching...</span>'
-            btn.classList.remove('bg-red-600', 'hover:bg-red-700')
-            btn.classList.add('bg-amber-600', 'hover:bg-amber-700')
-        }, 3000)
-    }
-}
 
 // Open research modal for a specific symbol
 async function openResearchModal(symbol) {
@@ -10499,7 +10458,7 @@ async function submitResearchUpdate(ticker) {
     
     // Submit request in background (fire-and-forget)
     axios.post(
-        `https://generational-investing.pages.dev/api/research/update/${ticker}`,
+        `${RESEARCH_API_BASE}/api/research/update/${ticker}`,
         body
     ).catch(error => {
         // Log errors silently - request already acknowledged to user
@@ -10535,7 +10494,7 @@ async function performResearch(ticker) {
     
     // Submit request in background (fire-and-forget)
     axios.post(
-        `https://generational-investing.pages.dev/api/research/update/${ticker}`,
+        `${RESEARCH_API_BASE}/api/research/update/${ticker}`,
         { update_type: 'annual' }
     ).catch(error => {
         // Log errors silently - request already acknowledged to user

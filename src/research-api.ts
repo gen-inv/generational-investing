@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { addCompanyToRoster } from './lib/add-company'
 import { annotateNotes, pruneCandidates } from './lib/notes-retention'
+import { researchAccessMiddleware, safeEqual, isValidTicker, MAX_USER_NOTES } from './lib/research-auth'
 
 // Auto-prune after every ingest. Leave false until you have reviewed a few 'Prune old notes' previews on the site.
 const AUTO_PRUNE = false
@@ -8,6 +9,7 @@ const AUTO_PRUNE = false
 type Bindings = {
   RESEARCH_DB: D1Database
   RESEARCH_INGEST_TOKEN: string
+  JWT_SECRET?: string
 }
 
 const researchApp = new Hono<{ Bindings: Bindings }>()
@@ -20,7 +22,7 @@ async function researchAuthMiddleware(c: any, next: any) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
   const token = authHeader.substring(7)
-  if (!c.env.RESEARCH_INGEST_TOKEN || token !== c.env.RESEARCH_INGEST_TOKEN) {
+  if (!c.env.RESEARCH_INGEST_TOKEN || !safeEqual(token, c.env.RESEARCH_INGEST_TOKEN)) {
     return c.json({ error: 'Invalid token' }, 401)
   }
   await next()
@@ -68,6 +70,7 @@ researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
     return c.json({ error: 'ticker is required' }, 400)
   }
   const db = c.env.RESEARCH_DB
+  const warnings: string[] = []
 
   try {
     const companyId = await getOrCreateCompanyId(db, body.ticker, body.company_name, body.sector, body.industry)
@@ -351,7 +354,7 @@ researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
       try { await pruneCompanyNotes(db, companyId, false) } catch (e) { console.error('auto-prune failed:', e) }
     }
 
-    return c.json({ success: true, ticker: body.ticker.toUpperCase(), company_id: companyId })
+    return c.json({ success: true, ticker: body.ticker.toUpperCase(), company_id: companyId, ...(warnings.length ? { warnings } : {}) })
   } catch (err: any) {
     console.error('Research ingest error:', err)
     return c.json({ error: 'Internal error during ingest', detail: String(err) }, 500)
@@ -359,7 +362,7 @@ researchApp.post('/ingest', researchAuthMiddleware, async (c) => {
 })
 
 // --- GET /api/research/findings — list everything, for a dashboard/table view ---
-researchApp.get('/findings', async (c) => {
+researchApp.get('/findings', researchAccessMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const results = await db.prepare(`
     SELECT c.symbol, c.name, c.sector, c.industry, c.last_updated as last_researched_date,
@@ -377,8 +380,8 @@ researchApp.get('/findings', async (c) => {
   return c.json({ findings: results.results })
 })
 
-// --- GET /queue — public, list what's currently pending/in_progress ---
-researchApp.get('/queue', async (c) => {
+// --- GET /queue — login or ingest token required; lists what's currently pending/in_progress ---
+researchApp.get('/queue', researchAccessMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
     const results = await db.prepare(`
     SELECT id, ticker, update_type, user_notes, status, attempts, requested_at, claimed_at,
@@ -426,13 +429,18 @@ researchApp.get('/queue/next', researchAuthMiddleware, async (c) => {
 })
 
 // --- POST /update/:ticker -- enqueues a re-research request for an existing ticker.
-// Public (matches the site's existing auth model -- the main site's own login already
-// gates who can reach this UI at all; this endpoint doesn't need the SER8-only bearer
-// token, since it's a user-facing action, not a machine-to-machine one) ---
-researchApp.post('/update/:ticker', async (c) => {
+// Needs a site login (the website) or the SER8 ingest token. Locked down 2026-10-20: it used to be
+// public, which let anyone queue research text for the research agent to read. ---
+researchApp.post('/update/:ticker', researchAccessMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const symbol = c.req.param('ticker').toUpperCase()
-  const body = await c.req.json()
+  if (!isValidTicker(symbol)) {
+    return c.json({ error: 'Invalid ticker symbol' }, 400)
+  }
+  const body = await c.req.json().catch(() => null)
+  if (!body || typeof body !== 'object') {
+    return c.json({ error: 'Request body must be JSON' }, 400)
+  }
 
   const validTypes = ['quarterly', 'annual', 'info']
   if (!validTypes.includes(body.update_type)) {
@@ -440,6 +448,9 @@ researchApp.post('/update/:ticker', async (c) => {
   }
   if (body.update_type === 'info' && !body.user_notes) {
     return c.json({ error: 'user_notes is required for an info update' }, 400)
+  }
+  if (body.user_notes != null && (typeof body.user_notes !== 'string' || body.user_notes.length > MAX_USER_NOTES)) {
+    return c.json({ error: `user_notes must be text of at most ${MAX_USER_NOTES} characters` }, 400)
   }
 
   // 'annual' means "full research run regardless of what exists" -- so a ticker with
@@ -566,9 +577,8 @@ researchApp.post('/queue/:id/mark-complete', researchAuthMiddleware, async (c) =
 })
 
 // --- POST /queue/:id/retry — resets a queue entry to pending with a fresh attempt
-// budget. Public for now (access restriction deferred to a future broader index.tsx
-// refactor, per Rob's decision 2026-09-14). ---
-researchApp.post('/queue/:id/retry', async (c) => {
+// budget. Needs a site login or the ingest token (locked down 2026-10-20). ---
+researchApp.post('/queue/:id/retry', researchAccessMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const id = c.req.param('id')
 
@@ -585,9 +595,8 @@ researchApp.post('/queue/:id/retry', async (c) => {
   return c.json({ success: true, ticker: row.ticker, status: 'pending' })
 })
 
-// --- POST /queue/:id/cancel — marks a queue entry cancelled. Public for now (access
-// restriction deferred, per Rob's decision 2026-09-14). ---
-researchApp.post('/queue/:id/cancel', async (c) => {
+// --- POST /queue/:id/cancel — marks a queue entry cancelled. Needs a site login or the ingest token (locked down 2026-10-20). ---
+researchApp.post('/queue/:id/cancel', researchAccessMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const id = c.req.param('id')
 
@@ -695,7 +704,7 @@ researchApp.post('/fcf-trend-events/:id/resolve', researchAuthMiddleware, async 
 
 // --- GET /:ticker/fcf-trend-events — lets Kendry (or anyone) see the FCF-trend
 // events on file for a ticker, including which are still awaiting Rob's confirmation. ---
-researchApp.get('/:ticker/fcf-trend-events', async (c) => {
+researchApp.get('/:ticker/fcf-trend-events', researchAccessMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const symbol = c.req.param('ticker').toUpperCase()
 
@@ -724,7 +733,7 @@ researchApp.post('/:ticker/add-to-roster', researchAuthMiddleware, async (c) => 
 })
 
 // --- GET /api/research/:ticker — full picture for one company ---
-researchApp.get('/:ticker', async (c) => {
+researchApp.get('/:ticker', researchAccessMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const symbol = c.req.param('ticker').toUpperCase()
 
@@ -756,7 +765,7 @@ const [quickFive, valuation, scoresheet, antiFragile, fgr, inversions, events, e
 })
 
 // --- GET /:ticker/notes/:id — full content of a single research note ---
-researchApp.get('/:ticker/notes/:id', async (c) => {
+researchApp.get('/:ticker/notes/:id', researchAccessMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const symbol = c.req.param('ticker').toUpperCase()
   const noteId = c.req.param('id')
