@@ -13,7 +13,7 @@ const submit = async (form: string) => { $('#' + form).dispatchEvent(new Event('
 const text = () => $('#position-analysis').textContent.replace(/\s+/g, ' ')
 
 const stock = { id: 7, company_id: 3, account_id: 9, ticker: 'ABC', quantity: 100, avg_price: 50, price: 50, cost_basis: 48, account_name: 'Margin' }
-const put = { id: 21, company_id: 5, is_open: 1, strategy_type: 'SELLING_PUT_WHEEL', ticker: 'ABC', strike_price: 50, premium: 1, quantity: 4, commission: 4, trade_date: '2026-10-01', expiration_date: '2026-12-18', account_type: 'TFSA', account_id: 9, notes: 'n' }
+const put = { id: 21, is_open: 1, strategy_type: 'SELLING_PUT_WHEEL', ticker: 'ABC', strike_price: 50, premium: 1, quantity: 4, commission: 4, trade_date: '2026-10-01', expiration_date: '2026-12-18', account_type: 'TFSA', account_id: 9, notes: 'n' }
 const spread = { ...put, id: 22, strategy_type: 'CREDIT_SPREAD', strike_price: 100, strike_price_2: 95, premium: 3, premium_2: 1 }
 
 function mock(options: any[] = [], preview: any = { avg_cost: 50, pending_buy_commission: 10 }) {
@@ -82,27 +82,23 @@ describe('sell shares from a stock position', () => {
 })
 
 describe('add contracts to an option position', () => {
-  it('uses the strategy colour and records the addition as its own dated trade, leaving the original alone', async () => {
+  it('uses the strategy colour, averages the premium and sends the merged position', async () => {
     await w().addToOptionPosition(21); await flush()
     expect($('[data-mk="header"]').className).toContain('from-teal-600')
-    set('addToPositionForm', 'trade_date', '2026-10-19')
     set('addToPositionForm', 'add_contracts', '4'); set('addToPositionForm', 'premium', '2'); set('addToPositionForm', 'add_commission', '6')
-    expect(text()).toContain('Combined contracts'); expect(text()).toContain('8'); expect(text()).toContain('$1.500'); expect(text()).toContain('$10.00')
+    expect(text()).toContain('8'); expect(text()).toContain('$1.500'); expect(text()).toContain('$10.00')
     await submit('addToPositionForm')
-    expect(w().api.put).not.toHaveBeenCalled()
-    const [url, body] = w().api.post.mock.calls[0]
-    expect(url).toBe('/api/options')
-    expect(body).toMatchObject({ company_id: 5, account_id: 9, ticker: 'ABC', strategy_type: 'SELLING_PUT_WHEEL', strike_price: 50, premium: 2,
-      quantity: 4, commission: 6, trade_date: '2026-10-19', expiration_date: '2026-12-18', is_open: true, notes: null })
-    expect(w().showNotification).toHaveBeenCalledWith('Added 4 contract(s) as a separate trade dated 2026-10-19', 'success')
-    expect($('#option-details-modal')).toBeNull()
+    const [url, body] = w().api.put.mock.calls[0]
+    expect(url).toBe('/api/options/21')
+    expect(body).toMatchObject({ premium: 1.5, quantity: 8, commission: 10, strike_price: 50, account_id: 9, notes: 'n', trade_date: '2026-10-01' })
+    expect(w().showNotification).toHaveBeenCalled(); expect($('#option-details-modal')).toBeNull()
   })
-  it('a spread sends each leg\'s premium and strike for the new trade', async () => {
+  it('a spread averages each leg separately', async () => {
     await w().addToOptionPosition(22); await flush()
-    set('addToPositionForm', 'add_contracts', '2'); set('addToPositionForm', 'premium', '5'); set('addToPositionForm', 'premium_2', '3')
+    set('addToPositionForm', 'add_contracts', '4'); set('addToPositionForm', 'premium', '5'); set('addToPositionForm', 'premium_2', '3')
     await submit('addToPositionForm')
-    const body = w().api.post.mock.calls[0][1]
-    expect(body).toMatchObject({ premium: 5, premium_2: 3, strike_price: 100, strike_price_2: 95, quantity: 2 })
+    const body = w().api.put.mock.calls[0][1]
+    expect(body.premium).toBe(4); expect(body.premium_2).toBe(2); expect(body.strike_price_2).toBe(95); expect(body.quantity).toBe(8)
   })
   it('refuses a closed or missing trade', async () => {
     mock([{ ...put, is_open: 0 }]); await w().addToOptionPosition(21); await flush()

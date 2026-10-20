@@ -1,6 +1,4 @@
 /* Add to / reduce an existing position: stocks (buy more, sell some) and options (add contracts, close some).
- * Adding option contracts records a separate open trade with its own date, premium and commission (the original trade keeps
- * its open date), the same way every stock purchase is its own transaction.
  * Shared ModalKit look: stocks use Stock Blue, options use their strategy colour. Live analysis comes from the tested
  * Calc position functions; closing part of an option position goes through POST /api/options/:id/reduce, which books the
  * closed contracts as their own closed trade (with close date, close prices and P/L) and shrinks the open one. */
@@ -223,11 +221,10 @@ async function addToOptionPosition(optionId) {
       ])}
       <form id="addToPositionForm">
         ${K.grid(2,
-          K.field({ strategy: S, label: 'Trade Date', name: 'trade_date', type: 'date', value: positionToday(), required: true, hint: 'Recorded as its own trade with this date' }) +
           K.field({ strategy: S, label: 'Additional Contracts', name: 'add_contracts', type: 'number', min: 1, step: 1, value: 1, required: true }) +
           legs.map((l, i) => K.field({ strategy: S, label: `${multi ? l.label + ' ' : ''}Premium Per Share`, name: 'premium' + POSITION_COLS[i], type: 'number', step: '0.001', value: l.premium, required: true })).join('') +
           K.field({ strategy: S, label: 'Commission', name: 'add_commission', type: 'number', min: 0, step: '0.01', value: 0 }))}
-        ${K.analysisPanel('position-analysis', S, 'Combined Position After This Addition')}
+        ${K.analysisPanel('position-analysis', S, 'After This Addition')}
         ${K.buttons({ strategy: S, submitLabel: 'Add To Position', submitIcon: 'fa-plus' })}
       </form>`
   })
@@ -242,10 +239,10 @@ async function addToOptionPosition(optionId) {
     })
     if (!r.ready) { K.renderAnalysis(panel, [], [], 'Enter the number of contracts to add'); return }
     K.renderAnalysis(panel, [
-      { label: 'Combined contracts', value: String(r.totalContracts) },
-      ...legs.map((l, i) => ({ label: `Combined average ${multi ? l.label.toLowerCase() + ' ' : ''}premium`, value: '$' + r.avgPremiums[i].toFixed(3), sub: `was $${l.premium.toFixed(3)}` })),
-      { label: 'Combined commission', value: K.fmt.money(r.totalCommission) }
-    ], [], 'Saved as a separate trade with the same strikes and expiration; the original trade keeps its open date')
+      { label: 'Contracts after adding', value: String(r.totalContracts) },
+      ...legs.map((l, i) => ({ label: `Average ${multi ? l.label.toLowerCase() + ' ' : ''}premium`, value: '$' + r.avgPremiums[i].toFixed(3), sub: `was $${l.premium.toFixed(3)}` })),
+      { label: 'Total commission', value: K.fmt.money(r.totalCommission) }
+    ], [], 'Merged into this position; strikes, expiration and the original open date stay as they are')
   }
   form.addEventListener('input', update)
   update()
@@ -253,22 +250,25 @@ async function addToOptionPosition(optionId) {
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault()
-    const n = parseInt(form.elements.add_contracts.value)
-    const newTrade = {
-      company_id: option.company_id, account_id: option.account_id, ticker: option.ticker, strategy_type: option.strategy_type,
+    const r = Calc.addToOptionPosition({
+      contracts: option.quantity, premiums: legs.map(l => l.premium), commission: option.commission,
+      addContracts: form.elements.add_contracts.value, addPremiums: addPremiums(), addCommission: form.elements.add_commission.value
+    })
+    const updateData = {
+      ticker: option.ticker, strategy_type: option.strategy_type,
       strike_price: option.strike_price, strike_price_2: option.strike_price_2 || null,
       strike_price_3: option.strike_price_3 || null, strike_price_4: option.strike_price_4 || null,
-      quantity: n, expiration_date: option.expiration_date,
-      trade_date: form.elements.trade_date.value, commission: parseFloat(form.elements.add_commission.value) || 0,
-      is_open: true, notes: null
+      premium: r.avgPremiums[0], premium_2: option.premium_2 ?? null, premium_3: option.premium_3 ?? null, premium_4: option.premium_4 ?? null,
+      quantity: r.totalContracts, expiration_date: option.expiration_date,
+      account_type: option.account_type, account_id: option.account_id,
+      trade_date: option.trade_date, commission: r.totalCommission, notes: option.notes || null
     }
-    legs.forEach((l, i) => { newTrade['premium' + POSITION_COLS[i]] = parseFloat(form.elements['premium' + POSITION_COLS[i]].value) })
+    legs.forEach((l, i) => { if (i > 0) updateData['premium' + POSITION_COLS[i]] = r.avgPremiums[i] })
     try {
-      await api.post('/api/options', newTrade)
+      await api.put(`/api/options/${optionId}`, updateData)
       m.el.remove()
       loadOptions()
-      if (typeof loadDashboard === 'function') loadDashboard()
-      showNotification(`Added ${n} contract(s) as a separate trade dated ${newTrade.trade_date}`, 'success')
+      showNotification('Position increased successfully', 'success')
       document.getElementById('option-details-modal')?.remove()
     } catch (error) {
       console.error('Error adding to position:', error)

@@ -82,15 +82,3 @@ describe('POST /api/options/:id/reduce', () => {
     expect((await call('/api/options/99999/reduce', 'POST', { contracts: 1, close_date: '2026-10-20', close_price: 0.2 })).status).toBe(404)
   })
 })
-
-describe('adding contracts records a separate open trade (POST /api/options)', () => {
-  it('a spread keeps every leg and its own dates; the original trade is untouched', async () => {
-    const id = await create({ strategy_type: 'CREDIT_SPREAD', short_strike: 100, long_strike: 95, short_premium: 3, long_premium: 1 })
-    const res = await call('/api/options', 'POST', { ...base(), strategy_type: 'CREDIT_SPREAD', strike_price: 100, strike_price_2: 95, premium: 4, premium_2: 2,
-      quantity: 2, commission: 3, trade_date: '2026-10-19', is_open: true })
-    expect(res.status).toBe(201)
-    const added = await row(((await res.json()) as any).id)
-    expect(added).toMatchObject({ strike_price: 100, strike_price_2: 95, premium: 4, premium_2: 2, quantity: 2, trade_date: '2026-10-19', is_open: 1 })
-    expect(await row(id)).toMatchObject({ quantity: 4, trade_date: '2026-10-01', premium: 3, premium_2: 1 })
-  })
-})
