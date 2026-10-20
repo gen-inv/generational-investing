@@ -113,4 +113,30 @@ describe('edit stock modal', () => {
     const sent = w().api.put.mock.calls[0][1]
     expect(sent.close_date).toBe('2026-02-03'); expect(sent.close_price).toBe(0); expect(sent.close_commission).toBe(1)
   })
+  it('editing the closing sale updates the P/L box live and saves through the sell route', async () => {
+    const tx = (id: number, type: string, shares: number, price: number, date: string, commission = 0) =>
+      ({ id, holding_id: 5, transaction_type: type, shares, price_per_share: price, transaction_date: date, commission })
+    const transactions = [tx(1, 'BUY', 100, 50, '2026-01-01', 5), tx(2, 'SELL', 100, 60, '2026-02-03', 2)]
+    mock({ ...open, is_open: 0, quantity: 0, profit_loss: 993, close_date: '2026-02-03', closed_date: '2026-02-03', close_price: 60, close_commission: 2, transactions })
+    await w().showStockForm(5); await flush()
+    set('close_price', '70')
+    expect($('#stock-pl-value').textContent).toContain('+$1,993.00')
+    set('close_price', '40')
+    expect($('#stock-pl-value').textContent).toContain('-$1,007.00')
+    expect($('#stock-pl-box').className).toContain('from-red-50')
+    set('close_date', '2025-12-01')
+    expect($('#stock-pl-label').textContent).toContain('larger than the shares held')
+    set('close_date', '2026-02-10'); set('close_price', '70'); set('close_commission', '4')
+    await submit()
+    expect(w().api.put).toHaveBeenCalledWith('/api/stocks/5/sells/2', { transaction_date: '2026-02-10', price_per_share: 70, commission: 4 })
+    expect(w().api.put.mock.calls.length).toBe(2)
+  })
+  it('does not call the sell route when the closing details are unchanged', async () => {
+    const transactions = [{ id: 1, holding_id: 5, transaction_type: 'BUY', shares: 100, price_per_share: 50, transaction_date: '2026-01-01', commission: 5 },
+      { id: 2, holding_id: 5, transaction_type: 'SELL', shares: 100, price_per_share: 60, transaction_date: '2026-02-03', commission: 2 }]
+    mock({ ...open, is_open: 0, quantity: 0, profit_loss: 993, close_date: '2026-02-03', closed_date: '2026-02-03', close_price: 60, close_commission: 2, transactions })
+    await w().showStockForm(5); await flush()
+    await submit()
+    expect(w().api.put.mock.calls.map((c: any[]) => c[0])).toEqual(['/api/stocks/5'])
+  })
 })

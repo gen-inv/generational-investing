@@ -77,10 +77,10 @@ async function showStockForm(stockId = null) {
         ${K.analysisPanel('stock-analysis', S, 'Risk & Profit Analysis')}
 
         ${isClosed ? `
-        <div class="bg-gradient-to-br ${pl >= 0 ? 'from-green-50 to-green-100 border-green-300' : 'from-red-50 to-red-100 border-red-300'} p-3 rounded-lg border mb-4">
+        <div id="stock-pl-box" class="bg-gradient-to-br ${pl >= 0 ? 'from-green-50 to-green-100 border-green-300' : 'from-red-50 to-red-100 border-red-300'} p-3 rounded-lg border mb-4">
           <div class="flex items-center justify-between">
-            <span class="text-sm font-bold ${pl >= 0 ? 'text-green-900' : 'text-red-900'}">Net profit / loss</span>
-            <span class="text-xl font-bold ${pl >= 0 ? 'text-green-700' : 'text-red-700'}">${K.fmt.money(pl, { plus: true })}</span>
+            <span id="stock-pl-label" class="text-sm font-bold ${pl >= 0 ? 'text-green-900' : 'text-red-900'}">Net profit / loss</span>
+            <span id="stock-pl-value" class="text-xl font-bold ${pl >= 0 ? 'text-green-700' : 'text-red-700'}">${K.fmt.money(pl, { plus: true })}</span>
           </div>
           <p class="text-xs text-gray-600 mt-1">Opened ${K.esc(stock.trade_date)}, closed ${K.esc(stock.closed_date || 'N/A')}</p>
         </div>
@@ -121,8 +121,27 @@ async function showStockForm(stockId = null) {
     }
     K.renderAnalysis(panel, rows, [], null)
   }
-  form.addEventListener('input', update)
-  form.addEventListener('change', update)
+  // Closed trade: the closing sale is editable and the P/L box follows the corrected numbers (same replay the server books).
+  const finalSell = isClosed && stock.transactions
+    ? [...stock.transactions].filter(t => t.transaction_type === 'SELL')
+        .sort((a, b) => a.transaction_date !== b.transaction_date ? (a.transaction_date < b.transaction_date ? -1 : 1) : a.id - b.id).pop()
+    : null
+  function updateClosedPL() {
+    if (!finalSell || !form.elements.close_date) return
+    const r = Calc.previewSellEdit(stock.transactions, finalSell.id, {
+      date: form.elements.close_date.value, price: parseFloat(form.elements.close_price.value), commission: parseFloat(form.elements.close_commission.value) || 0
+    })
+    const box = m.qs('#stock-pl-box'), val = m.qs('#stock-pl-value'), label = m.qs('#stock-pl-label')
+    if (!r.ok) { label.textContent = r.error; return }
+    const v = r.totalRealized, good = v >= 0
+    label.textContent = 'Net profit / loss'
+    label.className = 'text-sm font-bold ' + (good ? 'text-green-900' : 'text-red-900')
+    val.className = 'text-xl font-bold ' + (good ? 'text-green-700' : 'text-red-700')
+    val.textContent = K.fmt.money(v, { plus: true })
+    box.className = 'bg-gradient-to-br ' + (good ? 'from-green-50 to-green-100 border-green-300' : 'from-red-50 to-red-100 border-red-300') + ' p-3 rounded-lg border mb-4'
+  }
+  form.addEventListener('input', () => { update(); updateClosedPL() })
+  form.addEventListener('change', () => { update(); updateClosedPL() })
 
   m.qs('#company_select').addEventListener('change', e => {
     const buyPrice = e.target.options[e.target.selectedIndex].dataset.buyPrice
@@ -180,6 +199,14 @@ async function showStockForm(stockId = null) {
       data.close_commission = parseFloat(form.elements.close_commission.value) || 0
     }
     try {
+      if (isEdit && finalSell && data.close_date) {
+        const changed = data.close_date !== finalSell.transaction_date || data.close_price !== Number(finalSell.price_per_share) || data.close_commission !== (Number(finalSell.commission) || 0)
+        if (changed) {
+          await api.put(`/api/stocks/${stockId}/sells/${finalSell.id}`, {
+            transaction_date: data.close_date, price_per_share: data.close_price, commission: data.close_commission
+          })
+        }
+      }
       if (isEdit) await api.put(`/api/stocks/${stockId}`, data)
       else await api.post('/api/stocks', data)
       m.el.remove()

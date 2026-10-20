@@ -5,6 +5,7 @@ import researchApp from './research-api'
 import { fetchCompanyData, fetchYahooFinanceData } from './lib/company-data'
 import { addCompanyToRoster } from './lib/add-company'
 import { loadRealizedSells, sumRealized } from './lib/stock-pl'
+import { previewSellEdit } from './lib/sell-edit'
 import { holdingPosition } from './lib/stock-close'
 import { optionPL, assignmentPL, grossPremium as calcGrossPremium, splitOptionCommission } from './lib/calc'
 import { getRates } from './lib/fx'
@@ -2384,6 +2385,51 @@ app.put('/api/stocks/:id/close', authMiddleware, async (c) => {
   }
 })
 
+// Edit one SELL (date, price, commission). P/L is always replayed from the transactions, so saving
+// the corrected sell re-books realized P/L everywhere. Shares and sells created by an option
+// assignment are not editable here.
+app.put('/api/stocks/:id/sells/:txId', authMiddleware, async (c) => {
+  try {
+    const userId = c.get('userId')
+    const holdingId = Number(c.req.param('id'))
+    const txId = Number(c.req.param('txId'))
+    const data = await c.req.json()
+    const { DB } = c.env
+
+    const holding = await DB.prepare(`SELECT * FROM stock_holdings WHERE id = ? AND user_id = ?`).bind(holdingId, userId).first() as any
+    if (!holding) return c.json({ error: 'Stock holding not found' }, 404)
+
+    const txs = await DB.prepare(`
+      SELECT id, holding_id, transaction_type, shares, price_per_share, transaction_date, commission, option_trade_id
+      FROM stock_transactions WHERE holding_id = ?
+    `).bind(holdingId).all()
+    const rows = (txs.results || []) as any[]
+    const target = rows.find(t => t.id === txId)
+    if (target && target.option_trade_id) {
+      return c.json({ error: 'This sale came from an option assignment; edit the option trade instead' }, 409)
+    }
+
+    const preview = previewSellEdit(rows, txId, {
+      date: data.transaction_date, price: data.price_per_share, commission: data.commission
+    })
+    if (!preview.ok) return c.json({ error: preview.error }, preview.status)
+
+    await DB.prepare(`UPDATE stock_transactions SET transaction_date = ?, price_per_share = ?, commission = ? WHERE id = ? AND holding_id = ?`)
+      .bind(data.transaction_date, Number(data.price_per_share), Number(data.commission) || 0, txId, holdingId).run()
+
+    // A closed holding's closed date follows its latest sale.
+    if (holding.is_open === 0) {
+      const latest = preview.sells.reduce((d, s) => (s.sell_date > d ? s.sell_date : d), '')
+      if (latest) await DB.prepare(`UPDATE stock_holdings SET closed_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?`).bind(latest, holdingId, userId).run()
+    }
+
+    return c.json({ success: true, realized_pl: preview.sell.realized_pl, total_realized_pl: preview.totalRealized })
+  } catch (error) {
+    console.error('Edit stock sell error:', error)
+    return c.json({ error: 'Failed to update sell' }, 500)
+  }
+})
+
 app.put('/api/stocks/:id/reopen', authMiddleware, async (c) => {
   try {
     const userId = c.get('userId')
@@ -3417,6 +3463,7 @@ app.get('/api/stocks/:id/purchase-history', authMiddleware, async (c) => {
         st.transaction_date as trade_date,
         st.commission,
         st.notes,
+        st.option_trade_id,
         a.account_name,
         1 as is_open
       FROM stock_transactions st
@@ -10800,6 +10847,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
         <script src="/static/modal-stock.js"></script>
         <script src="/static/modal-cc-manage.js"></script>
         <script src="/static/modal-position.js"></script>
+        <script src="/static/modal-sell-edit.js"></script>
         <script src="/static/research-merge.js"></script>
         <script src="/static/app.js"></script>
     </body>

@@ -2730,6 +2730,7 @@ async function showStockDetails(id) {
                                                             <span class="px-2 py-1 rounded ${statusColor} text-xs font-medium">
                                                                 ${statusText}
                                                             </span>
+                                                            ${trade.trade_type === 'SELL' && !trade.option_trade_id ? `<button onclick="editStockSell(${stock.id}, ${trade.id})" class="ml-2 text-indigo-700 hover:text-indigo-900" title="Edit this sale"><i class="fas fa-pen"></i></button>` : ''}
                                                         </td>
                                                     </tr>
                                                 `
