@@ -6,6 +6,16 @@
 const AUTH_READS = ['/api/user/profile', '/api/accounts', '/api/companies', '/api/stocks', '/api/stocks/closed-trades', '/api/options']
 const ANON_BLOCKED = ['/api/stocks', '/api/options', '/api/accounts']
 
+// A Windows checkout uses CRLF line endings and a CI checkout uses LF, so text files are compared with line
+// endings normalised. Binary files (images) must match exactly.
+const TEXT_FILE = /\.(js|mjs|css|html|json|svg|txt|map)$/i
+const unixLines = (b) => Buffer.from(Buffer.from(b).toString('utf8').replace(/\r\n/g, '\n'))
+function sameContent(assetPath, local, served) {
+  const a = Buffer.from(local)
+  const b = Buffer.from(served)
+  return TEXT_FILE.test(assetPath) ? unixLines(a).equals(unixLines(b)) : a.equals(b)
+}
+
 export async function runSmoke({ baseUrl, fetch: f = fetch, readLocal = () => null, email, password, stamp = Date.now() }) {
   const base = baseUrl.replace(/\/+$/, '')
   const results = []
@@ -37,7 +47,7 @@ export async function runSmoke({ baseUrl, fetch: f = fetch, readLocal = () => nu
       if (!body.length) throw new Error('empty response')
       if (a.endsWith('.js') && /^\s*</.test(body.toString('utf8', 0, 40))) throw new Error('served HTML instead of JavaScript (missing file?)')
       const local = readLocal(a)
-      if (local && !Buffer.from(local).equals(body)) throw new Error('differs from the local build (stale deploy or cache?)')
+      if (local && !sameContent(a, local, body)) throw new Error('differs from the local build (stale deploy or cache?)')
       return body.length + ' bytes' + (local ? ', matches local' : '')
     })
   }

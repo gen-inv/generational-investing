@@ -43,6 +43,17 @@ describe('smoke test', () => {
     const r = await run(site(), { readLocal: (a: string) => a === '/static/app.js' ? 'console.log(2)' : null })
     expect(failing(r)).toEqual(['static /static/app.js'])
   })
+  it('treats CRLF and LF copies of a text file as the same file, but still flags real changes', async () => {
+    const onlyApp = (text: string) => (a: string) => a === '/static/app.js' ? text : null
+    const served = (text: string) => site({ '/static/app.js': () => new Response(text, { status: 200 }) })
+    expect(failing(await run(served('console.log(1)\nconsole.log(2)\n'), { readLocal: onlyApp('console.log(1)\r\nconsole.log(2)\r\n') }))).toEqual([])
+    expect(failing(await run(served('console.log(1)\r\nconsole.log(2)\r\n'), { readLocal: onlyApp('console.log(1)\nconsole.log(2)\n') }))).toEqual([])
+    expect(failing(await run(served('console.log(1)\nconsole.log(2)\n'), { readLocal: onlyApp('console.log(1)\r\nconsole.log(3)\r\n') }))).toEqual(['static /static/app.js'])
+  })
+  it('compares images byte for byte', async () => {
+    const f = site({ '/static/logo.png': () => new Response('a\nb', { status: 200 }) })
+    expect(failing(await run(f, { readLocal: (a: string) => a === '/static/logo.png' ? 'a\r\nb' : null }))).toEqual(['static /static/logo.png'])
+  })
   it('flags a protected route that answers anonymous callers', async () => {
     const r = await run(site({ '/api/options': () => new Response('[]', { status: 200 }) }))
     expect(failing(r)).toEqual(['anonymous /api/options is refused'])
