@@ -163,7 +163,6 @@ const EXPECTED = [
   "POST /api/dividend-repository/config",
   "POST /api/dividend-repository/fetch",
   "POST /api/dividend-repository/fetch",
-  "POST /api/cron/test",
   "GET /api/cron/dividend-repository/fetch/:secret",
   "GET /api/cron/dividend-repository/fetch/:secret",
   "POST /api/cron/dividend-repository/fetch",

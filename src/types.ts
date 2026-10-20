@@ -3,6 +3,11 @@ export type Bindings = {
   DB: D1Database;
   RESEARCH_DB: D1Database;
   RESEARCH_INGEST_TOKEN: string;
+  // Secrets: set with `wrangler pages secret put NAME` (production) or in .dev.vars (local). Never commit values.
+  MASSIVE_API_KEY?: string;
+  EODHD_API_KEY?: string;
+  CRON_SECRET?: string;
+  RAPIDAPI_KEY?: string;
   JWT_SECRET?: string; // signs login tokens: `wrangler pages secret put JWT_SECRET`, or .dev.vars locally
 }
 

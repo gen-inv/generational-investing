@@ -97,6 +97,8 @@ routes.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
       return c.json({ message: 'No holdings found', dividends_found: 0, dividends_eligible: 0 })
     }
     
+    if (!c.env.MASSIVE_API_KEY) return c.json({ error: 'MASSIVE_API_KEY is not configured on the server' }, 503)
+
     // Create fetch log immediately
     const logResult = await DB.prepare(`
       INSERT INTO dividend_fetch_logs (user_id, fetch_type, status, tickers_processed, started_at)
@@ -109,7 +111,7 @@ routes.post('/api/dividend-repository/fetch', authMiddleware, async (c) => {
     
     // Run synchronously (no waitUntil - just await the result)
     // This will take 2-3 minutes but ensures reliable completion
-    await performDividendFetchInternal(DB, userId, logId, startTime)
+    await performDividendFetchInternal(DB, userId, logId, startTime, { massive: c.env.MASSIVE_API_KEY || '', eodhd: c.env.EODHD_API_KEY || '' })
     
     console.log(`[DIVIDEND-FETCH] Fetch completed, retrieving results from log`)
     
@@ -157,7 +159,8 @@ async function performDividendFetchInternal(
   DB: any,
   userId: number,
   logId: number,
-  startTime: number
+  startTime: number,
+  keys: { massive: string; eodhd: string }
 ): Promise<void> {
   let totalDividends = 0
   let totalEligible = 0
@@ -170,10 +173,10 @@ async function performDividendFetchInternal(
     console.log(`[DIVIDEND-FETCH-BG] Background processing started for user ${userId}, log ${logId}`)
     
     // Use system-wide Massive (Polygon.io) API key (admin-managed)
-    const MASSIVE_API_KEY = 'x4VbKUBkKwYB10ObRLoRt9eDqfcClxEW'
+    const MASSIVE_API_KEY = keys.massive
     
     // Use EODHD API key for Canadian stocks fallback
-    const EODHD_API_KEY = '69bc75c1788da8.83960172'
+    const EODHD_API_KEY = keys.eodhd
     
     // Minimum date filter: only fetch dividends from 2025-01-01 onwards
     const MIN_DATE = '2025-01-01'
@@ -412,9 +415,9 @@ async function performDividendFetchInternal(
         // Process Massive (Polygon.io) dividends
         for (const div of dividends) {
           const exDate = div.ex_dividend_date
-          const payDate = div.pay_date
-          const recordDate = div.record_date
-          const declaredDate = div.declaration_date
+          const payDate = div.pay_date || null
+          const recordDate = div.record_date || null
+          const declaredDate = div.declaration_date || null
           const amount = parseFloat(div.cash_amount)
           
           if (!exDate || !amount) {
@@ -544,44 +547,13 @@ async function performDividendFetchInternal(
   }
 }
 
-// Cron-specific dividend fetch endpoint (secret key authentication)
-// Test endpoint to verify secret key
-routes.post('/api/cron/test', async (c) => {
-  try {
-    const contentType = c.req.header('Content-Type') || 'not-set'
-    let body = {}
-    let rawBody = ''
-    
-    try {
-      rawBody = await c.req.text()
-      body = JSON.parse(rawBody)
-    } catch (e) {
-      // Couldn't parse as JSON
-    }
-    
-    const secretKey = c.req.header('X-Cron-Secret') || body.secret
-    const CRON_SECRET = c.env.CRON_SECRET || 'dividend-fetch-cron-2026-secret-key'
-    
-    return c.json({
-      content_type: contentType,
-      raw_body: rawBody,
-      parsed_body: body,
-      received_secret: secretKey,
-      expected_secret: CRON_SECRET,
-      matches: secretKey === CRON_SECRET,
-      all_headers: Object.fromEntries(c.req.raw.headers.entries())
-    })
-  } catch (error) {
-    return c.json({ error: String(error) }, 500)
-  }
-})
-
+// Cron-specific dividend fetch endpoints (secret key authentication)
 // Simple GET endpoint for cron - just triggers the existing fetch logic
 routes.get('/api/cron/dividend-repository/fetch/:secret', authMiddleware, async (c) => {
   const urlSecret = c.req.param('secret')
-  const CRON_SECRET = c.env.CRON_SECRET || 'dividend-fetch-cron-2026-secret-key'
+  const CRON_SECRET = c.env.CRON_SECRET
   
-  if (urlSecret !== CRON_SECRET) {
+  if (!CRON_SECRET || urlSecret !== CRON_SECRET) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
   
@@ -601,13 +573,15 @@ routes.post('/api/cron/dividend-repository/fetch', async (c) => {
     
     // Check for secret key in header or body
     const secretKey = c.req.header('X-Cron-Secret') || body.secret
-    const CRON_SECRET = c.env.CRON_SECRET || 'dividend-fetch-cron-2026-secret-key'
+    const CRON_SECRET = c.env.CRON_SECRET
     
-    if (secretKey !== CRON_SECRET) {
+    if (!CRON_SECRET || secretKey !== CRON_SECRET) {
       console.error('Unauthorized cron attempt - invalid secret')
       return c.json({ error: 'Unauthorized' }, 401)
     }
     
+    if (!c.env.MASSIVE_API_KEY) return c.json({ error: 'MASSIVE_API_KEY is not configured on the server' }, 503)
+
     // Get user ID from body or default to first user (admin)
     const targetUserId = body.user_id || 1
     
@@ -621,7 +595,7 @@ routes.post('/api/cron/dividend-repository/fetch', async (c) => {
     // Start the fetch process in the background
     const fetchPromise = (async () => {
       try {
-        await performDividendFetch(DB, targetUserId, startTime)
+        await performDividendFetch(DB, targetUserId, startTime, { massive: c.env.MASSIVE_API_KEY || '', eodhd: c.env.EODHD_API_KEY || '' })
       } catch (error) {
         console.error('[CRON] Background fetch error:', error)
       }
@@ -650,7 +624,7 @@ routes.post('/api/cron/dividend-repository/fetch', async (c) => {
 })
 
 // Extract fetch logic into separate function for background execution
-async function performDividendFetch(DB: any, targetUserId: number, startTime: number) {
+async function performDividendFetch(DB: any, targetUserId: number, startTime: number, keys: { massive: string; eodhd: string }) {
   let logId: any = null
   let totalDividends = 0
   let totalEligible = 0
@@ -663,10 +637,10 @@ async function performDividendFetch(DB: any, targetUserId: number, startTime: nu
     console.log(`[CRON] Background processing started for user ${targetUserId}`)
     
     // Use system-wide Massive (Polygon.io) API key
-    const MASSIVE_API_KEY = 'x4VbKUBkKwYB10ObRLoRt9eDqfcClxEW'
+    const MASSIVE_API_KEY = keys.massive
     
     // Use EODHD API key for Canadian stocks fallback
-    const EODHD_API_KEY = '69bc75c1788da8.83960172'
+    const EODHD_API_KEY = keys.eodhd
     
     // Get all stock holdings for this user
     const holdings = await DB.prepare(`
@@ -787,9 +761,9 @@ async function performDividendFetch(DB: any, targetUserId: number, startTime: nu
         // Process Massive dividends
         for (const div of dividends) {
           const exDate = div.ex_dividend_date
-          const payDate = div.pay_date
-          const recordDate = div.record_date
-          const declaredDate = div.declaration_date
+          const payDate = div.pay_date || null
+          const recordDate = div.record_date || null
+          const declaredDate = div.declaration_date || null
           const amount = parseFloat(div.cash_amount)
           
           if (!exDate || !amount || exDate < MIN_DATE) continue

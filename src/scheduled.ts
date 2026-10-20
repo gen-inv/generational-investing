@@ -7,7 +7,8 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
   
   try {
     // Fetch dividends for all users (system-wide Massive API key)
-    const MASSIVE_API_KEY = 'x4VbKUBkKwYB10ObRLoRt9eDqfcClxEW'
+    const MASSIVE_API_KEY = env.MASSIVE_API_KEY || ''
+    if (!MASSIVE_API_KEY) { console.error('Scheduled dividend fetch skipped: MASSIVE_API_KEY is not configured'); return }
     
     // Get all users with stock holdings
     const users = await env.DB.prepare(`
@@ -79,7 +80,7 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             
             // Fallback to EODHD if Massive returns 0 results
             // This includes Canadian stocks (.TO, .V) and US stocks with incomplete Polygon.io data
-            const EODHD_API_KEY = '69bc75c1788da8.83960172'
+            const EODHD_API_KEY = env.EODHD_API_KEY || ''
             let eodhd_dividends = []
             
             if (dividends.length === 0) {
@@ -167,9 +168,9 @@ export async function scheduled(event: ScheduledEvent, env: CloudflareBindings, 
             // Process Massive (Polygon.io) dividends
             for (const div of dividends) {
               const exDate = div.ex_dividend_date
-              const payDate = div.pay_date
-              const recordDate = div.record_date
-              const declaredDate = div.declaration_date
+              const payDate = div.pay_date || null
+              const recordDate = div.record_date || null
+              const declaredDate = div.declaration_date || null
               const amount = parseFloat(div.cash_amount)
               
               if (!exDate || !amount) {

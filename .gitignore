@@ -41,3 +41,6 @@ backups/
 .git-msg.txt
 
 public/static/calc.js
+# secrets
+.env.*
+!.env.example
