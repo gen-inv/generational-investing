@@ -3496,33 +3496,13 @@ let currentStrategyFilter = 'SELLING_PUT'
 let includeClosedOptions = false
 
 // Strategy type mappings
-const STRATEGY_TYPES = [
-    { value: 'SELLING_PUT', label: 'Short Put (Stockpiling)' },
-    { value: 'SELLING_PUT_WHEEL', label: 'Short Put (Wheel)' },
-    { value: 'SELLING_PUT_LONG_TERM', label: 'Short Put (Long Term)' },
-    { value: 'BUYING_PUT', label: 'Long Put' },
-    { value: 'LONG_CALL', label: 'Long Call' },
-    { value: 'COVERED_CALL', label: 'Covered Call' },
-    { value: 'CREDIT_SPREAD', label: 'Credit Spread' },
-    { value: 'DEBIT_SPREAD', label: 'Debit Spread' },
-    { value: 'IRON_CONDOR', label: 'Iron Condor' }
-]
+// One strategy registry for the whole app: ModalKit.STRATEGIES (modal-kit.js loads before this file).
+const STRATEGY_TYPES = Object.keys(ModalKit.STRATEGIES).map(value => ({ value, label: ModalKit.STRATEGIES[value].label }))
 
 // Helper function to get strategy configuration
 function getStrategyConfig(strategyType) {
-    const configs = {
-        'SELLING_PUT': { legs: 1, isPremiumCredit: true },
-        'SELLING_PUT_WHEEL': { legs: 1, isPremiumCredit: true },
-        'SELLING_PUT_LONG_TERM': { legs: 1, isPremiumCredit: true },
-        'BUYING_PUT': { legs: 1, isPremiumCredit: false },
-        'LONG_CALL': { legs: 1, isPremiumCredit: false },
-        'COVERED_CALL': { legs: 1, isPremiumCredit: true },
-        'CREDIT_SPREAD': { legs: 2, isPremiumCredit: true },
-        'DEBIT_SPREAD': { legs: 2, isPremiumCredit: false },
-        'IRON_CONDOR': { legs: 4, isPremiumCredit: true }
-    }
-    
-    return configs[strategyType] || { legs: 1, isPremiumCredit: true }
+    const st = ModalKit.STRATEGIES[strategyType]
+    return st ? { legs: st.legs.length, isPremiumCredit: st.credit } : { legs: 1, isPremiumCredit: true }
 }
 
 function toggleClosedOptions() {
