@@ -65,6 +65,20 @@ describe('sell shares from a stock position', () => {
     await submit('sellPositionForm')
     expect(w().api.post).toHaveBeenCalledWith('/api/stocks', expect.objectContaining({ trade_type: 'SELL', quantity: 40, price: 60 }))
   })
+  it('previews the cost basis of the shares left: a loss raises it, premiums and earlier sales are spread over what remains', async () => {
+    Object.assign(stock, { total_adjustments: 200, realized_pl: -500 })
+    try {
+      await w().sellStockFromPosition(7); await flush()
+      set('sellPositionForm', 'quantity', '40'); set('sellPositionForm', 'price', '60'); set('sellPositionForm', 'commission', '1')
+      expect(text()).toContain('Cost basis/share now $53.00')            // 50 - (200 - 500) / 100
+      expect(text()).toContain('Cost basis/share after this sale $48.42') // 50 - (200 - 500 + 395) / 60
+      set('sellPositionForm', 'quantity', '40'); set('sellPositionForm', 'price', '40')
+      const after = text().match(/after this sale \$([\d.]+)/)![1]
+      expect(Number(after)).toBeGreaterThan(53)                            // a losing sale raises it
+      set('sellPositionForm', 'quantity', '100')
+      expect(text()).not.toContain('after this sale')                      // nothing left to show
+    } finally { delete (stock as any).total_adjustments; delete (stock as any).realized_pl }
+  })
   it('warns when selling everything and blocks selling more than held', async () => {
     await w().sellStockFromPosition(7); await flush()
     set('sellPositionForm', 'quantity', '100'); set('sellPositionForm', 'price', '60')

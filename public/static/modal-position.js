@@ -156,6 +156,19 @@ async function sellStockFromPosition(stockId) {
       { label: 'Net profit / loss', value: K.fmt.money(r.netPL, { plus: true }), tone: r.netPL >= 0 ? 'good' : 'bad', total: true },
       { label: 'Shares remaining', value: String(r.remainingShares) }
     ]
+    // Cost basis of the shares left after this sale -- same rule as the server (lib/cost-basis.ts): premiums and dividends and
+    // the result of shares sold (this sale included) are spread over the shares that remain; a loss raises it, a gain lowers it.
+    const qty = Number(form.elements.quantity.value) || 0
+    const left = held - qty
+    if (left > 0 && !r.overSell) {
+      const holdingAvg = Number(stock.avg_price || stock.price) || 0
+      const adj = Number(stock.total_adjustments) || 0
+      const soldBefore = Number(stock.realized_pl) || 0
+      const cbNow = holdingAvg - (adj + soldBefore) / held
+      const cbAfter = holdingAvg - (adj + soldBefore + r.netPL) / left
+      rows.push({ label: 'Cost basis/share now', value: K.fmt.money(cbNow) })
+      rows.push({ label: 'Cost basis/share after this sale', value: K.fmt.money(cbAfter), tone: cbAfter > cbNow ? 'bad' : 'good' })
+    }
     const warnings = []
     if (r.overSell) warnings.push(`You only hold ${held} shares`)
     if (r.sellsAll) warnings.push('This sells every share. Use "Close Position" instead so the position is closed properly')
