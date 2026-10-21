@@ -2633,9 +2633,14 @@ async function showStockDetails(id) {
         
         // Calculate cost basis dynamically from ALL cost basis adjustments
         const avgPrice = stock.avg_price || stock.price
-        const totalAdjustments = costBasisAdjustmentsData.reduce((sum, adj) => sum + adj.amount, 0)
-        const costBasis = avgPrice - (totalAdjustments / stock.quantity)
+        // Premiums and dividends collected, plus the result of shares already sold: a loss on those sales raises the cost
+        // basis of the shares left, a gain lowers it (same rule as the server, lib/cost-basis.ts).
+        const premiumsAndDividends = costBasisAdjustmentsData.reduce((sum, adj) => sum + adj.amount, 0)
+        const saleResult = Number(stock.realized_pl) || 0
+        const totalAdjustments = premiumsAndDividends + saleResult
+        const costBasis = stock.quantity > 0 ? avgPrice - (totalAdjustments / stock.quantity) : avgPrice
         const adjustments = totalAdjustments
+        const signedMoney = (n) => `${n < 0 ? '-' : '+'}$${Math.abs(n).toFixed(2)}`
         
         const modal = document.createElement('div')
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50'
@@ -2720,6 +2725,7 @@ async function showStockDetails(id) {
                                 <div>
                                     <p class="text-xs opacity-75">CB Adjustments</p>
                                     <p class="text-lg font-semibold">${adjustments > 0 ? '-' : ''}$${Math.abs(adjustments).toFixed(2)}</p>
+                                    ${saleResult !== 0 ? `<p class="text-xs opacity-75 mt-1">Premiums/dividends ${signedMoney(-premiumsAndDividends)} &middot; Shares sold ${signedMoney(-saleResult)}</p>` : ''}
                                 </div>
                             </div>
                             ${stock.notes ? `

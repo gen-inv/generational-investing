@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { loadRealizedSells, sumRealized } from '../lib/stock-pl'
 import { previewSellEdit } from '../lib/sell-edit'
+import { costBasisPerShare } from '../lib/cost-basis'
 import { holdingPosition } from '../lib/stock-close'
 import { optionPL } from '../lib/calc'
 import { syncCoveredCallAdjustment } from '../lib/cc-adjustment'
@@ -67,10 +68,10 @@ routes.get('/api/stocks', authMiddleware, async (c) => {
   // Calculate avg price, cost basis, P/L, and covered call status for each holding
   const enhancedStocks = await Promise.all(stocks.results.map(async (stock: any) => {
     const avgPrice = stock.average_price
-    const costBasis = avgPrice - (stock.total_adjustments / stock.total_shares || 0)
-
     // Realized P/L from sells: lifetime total for a closed holding, partial sells so far for an open one
     const realizedPL = realizedByHolding.has(stock.id) ? realizedByHolding.get(stock.id)! : null
+    // Premiums/dividends AND the result of shares already sold (a loss raises it, a gain lowers it) -- see lib/cost-basis.ts
+    const costBasis = costBasisPerShare(avgPrice, stock.total_shares, stock.total_adjustments, realizedPL || 0)
     const profitLoss = stock.is_open === 0 ? realizedPL : null
 
     // Calculate days until covered call expiration

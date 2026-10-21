@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { loadRealizedSells, sumRealized } from '../lib/stock-pl'
+import { costBasisPerShare } from '../lib/cost-basis'
 import { optionPL } from '../lib/calc'
 import { getRates } from '../lib/fx'
 import { authMiddleware } from '../lib/auth'
@@ -1124,24 +1125,26 @@ routes.get('/api/reports/positions', authMiddleware, async (c) => {
       `).bind(userId, pos.ticker, userId, pos.account_type).first()
       
       let totalAdjustments = 0
+      let realizedOnSold = 0
       if (holding) {
         const adjustments = await DB.prepare(`
           SELECT COALESCE(SUM(amount), 0) as total
           FROM cost_basis_adjustments
-          WHERE holding_id = ? AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL')
+          WHERE holding_id = ? AND adjustment_type IN ('DIVIDEND', 'COVERED_CALL', 'SELLING_PUT')
         `).bind(holding.id).first()
         totalAdjustments = adjustments?.total || 0
+        // Result of shares already sold: a loss raises the cost basis of the shares left, a gain lowers it (lib/cost-basis.ts)
+        realizedOnSold = sumRealized(await loadRealizedSells(DB, userId, { holdingId: Number(holding.id) }))
       }
       
-      const totalCostBasis = (pos.avg_price * pos.quantity) - totalAdjustments
-      const costBasisPerShare = pos.quantity > 0 ? totalCostBasis / pos.quantity : 0
+      const costBasisPerShareValue = pos.quantity > 0 ? costBasisPerShare(pos.avg_price, pos.quantity, totalAdjustments, realizedOnSold) : 0
       
       return {
         ticker: pos.ticker,
         companyName: pos.company_name || pos.ticker,
         quantity: pos.quantity,
         avgPrice: pos.avg_price,
-        costBasis: costBasisPerShare,
+        costBasis: costBasisPerShareValue,
         value: value,
         weight: weight,
         sector: pos.sector || 'Unknown',
