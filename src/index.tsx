@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serveStatic } from 'hono/cloudflare-workers'
 import researchApp from './research-api'
+import { routes as discoveryRoutes } from './routes/discovery'
 import { authMiddleware } from './lib/auth'
 import { routes as authRoutes } from './routes/auth'
 import { routes as companiesRoutes } from './routes/companies'
@@ -29,6 +30,8 @@ app.use('/api/research/:ticker/notes/*', async (c, next) => {
   return authMiddleware(c, next)
 })
 
+// Discovery routes first: researchApp has a catch-all GET /:ticker that would otherwise swallow /discovery.
+app.route('/api/research/discovery', discoveryRoutes)
 app.route('/api/research', researchApp)
 
 // Route modules, mounted in the same order the routes were originally declared.

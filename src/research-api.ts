@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { addCompanyToRoster } from './lib/add-company'
+import { markDiscoveryAdded } from './routes/discovery'
 import { annotateNotes, pruneCandidates } from './lib/notes-retention'
 import { researchAccessMiddleware, safeEqual, isValidTicker, MAX_USER_NOTES } from './lib/research-auth'
 
@@ -729,6 +730,7 @@ researchApp.get('/:ticker/fcf-trend-events', researchAccessMiddleware, async (c)
 researchApp.post('/:ticker/add-to-roster', researchAuthMiddleware, async (c) => {
   const symbol = c.req.param('ticker').toUpperCase()
   const result = await addCompanyToRoster(c.env, 1, symbol)
+  if (result && result.success) await markDiscoveryAdded(c.env, symbol)
   return c.json(result, result.status)
 })
 

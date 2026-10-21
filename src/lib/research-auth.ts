@@ -42,3 +42,16 @@ export async function researchAccessMiddleware(c: any, next: any) {
   }
   return c.json({ error: 'Invalid token' }, 401)
 }
+
+// For routes only the research machine may write to: the ingest token alone (a site login is not enough).
+export async function researchMachineMiddleware(c: any, next: any) {
+  const header = c.req.header('Authorization')
+  if (!header || !header.startsWith('Bearer ')) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  const ingest = c.env.RESEARCH_INGEST_TOKEN
+  if (!ingest || !safeEqual(header.substring(7), ingest)) {
+    return c.json({ error: 'Invalid token' }, 401)
+  }
+  await next()
+}

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { addCompanyToRoster } from '../lib/add-company'
+import { markDiscoveryAdded } from './discovery'
 import { authMiddleware } from '../lib/auth'
 import { scheduled } from '../scheduled'
 import type { Bindings } from '../types'
@@ -47,6 +48,7 @@ routes.post('/api/companies', authMiddleware, async (c) => {
   const ticker = data.ticker.toUpperCase()
   
     const result = await addCompanyToRoster(c.env, userId, ticker)
+  if (result && result.success) await markDiscoveryAdded(c.env, ticker)
   return c.json(result.success ? result : { error: result.error }, result.status)
 })
 

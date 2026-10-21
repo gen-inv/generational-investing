@@ -1308,6 +1308,9 @@ routes.get('/', (c) => {
                                     <button onclick="showUtilityTab('queue-management'); loadResearchQueue()" data-utility-tab="queue-management" class="utility-tab px-4 py-3 font-semibold text-gray-600 border-b-2 border-transparent hover:text-brand-teal hover:border-brand-teal transition-colors">
                                         <i class="fas fa-list-check mr-2"></i>Research Queue
                                     </button>
+                                    <button onclick="showUtilityTab('discovery'); loadDiscovery()" data-utility-tab="discovery" class="utility-tab px-4 py-3 font-semibold text-gray-600 border-b-2 border-transparent hover:text-brand-teal hover:border-brand-teal transition-colors">
+                                        <i class="fas fa-binoculars mr-2"></i>Discovery
+                                    </button>
                                 </nav>
                             </div>
                         </div>
@@ -1768,6 +1771,27 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                                 
                                 <input type="hidden" id="edit-dividend-id">
                             </div>
+                        </div>
+                    </div>
+                    <!-- Discovery Utility -->
+                    <div id="discovery-utility" class="utility-content hidden">
+                        <div class="card mb-6">
+                            <div class="flex items-start gap-4 mb-4">
+                                <div class="bg-brand-teal text-white p-3 rounded-lg"><i class="fas fa-binoculars text-2xl"></i></div>
+                                <div class="flex-1">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <h3 class="text-xl font-bold text-gray-800">Discovery</h3>
+                                        <button onclick="loadDiscovery()" class="px-3 py-2 bg-gray-100 rounded hover:bg-gray-200 text-sm"><i class="fas fa-sync mr-1"></i>Refresh</button>
+                                    </div>
+                                    <p class="text-gray-600 text-sm">New companies the automatic scans have put on your radar. Click a row to see why.</p>
+                                </div>
+                            </div>
+                            <div class="flex gap-2 mb-4" id="discovery-tabs">
+                                <button data-discovery-tab="guru" onclick="setDiscoveryTab('guru')" class="px-4 py-2 rounded font-semibold text-sm">Guru purchases</button>
+                                <button data-discovery-tab="maturing" onclick="setDiscoveryTab('maturing')" class="px-4 py-2 rounded font-semibold text-sm">Gov't contracts</button>
+                            </div>
+                            <div id="discovery-status" class="text-sm text-gray-700 mb-4"></div>
+                            <div id="discovery-list"></div>
                         </div>
                     </div>
                     <!-- Queue Management Utility -->
@@ -3272,6 +3296,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
         <script src="/static/modal-position.js"></script>
         <script src="/static/modal-sell-edit.js"></script>
         <script src="/static/research-merge.js"></script>
+        <script src="/static/discovery.js"></script>
         <script src="/static/app.js"></script>
     </body>
     </html>
