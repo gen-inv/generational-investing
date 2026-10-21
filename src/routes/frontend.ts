@@ -382,9 +382,17 @@ routes.get('/', (c) => {
                     <div id="companies-section" class="section hidden">
                         <div class="flex justify-between items-center mb-6">
                             <h2 class="text-3xl font-bold text-brand-teal">Company Roster</h2>
-                            <button onclick="showCompanyForm()" class="btn-primary">
-                                <i class="fas fa-plus mr-2"></i>Add Company
-                            </button>
+                            <div class="flex items-center gap-3">
+                                <span id="companies-filter-count" class="text-sm text-gray-500"></span>
+                                <select id="companies-filter" onchange="setCompaniesFilter(this.value)" class="border border-gray-300 rounded px-3 py-2 text-sm bg-white" title="Filter the roster">
+                                    <option value="all">All companies</option>
+                                    <option value="scored">Scored</option>
+                                    <option value="wonderful">Wonderful</option>
+                                </select>
+                                <button onclick="showCompanyForm()" class="btn-primary">
+                                    <i class="fas fa-plus mr-2"></i>Add Company
+                                </button>
+                            </div>
                         </div>
                         
                         <div class="card">

@@ -15,9 +15,18 @@ function mergeResearchIntoCompanies(companies, researchFindings) {
             sticker_price: research.blended_sticker,
             last_researched: research.last_researched_date,
             // "Wonderful" is driven by research score >= 80
-            is_wonderful: research.scoresheet_pct >= 80
+            is_wonderful: research.scoresheet_pct >= 80,
+            // Lets the roster filter tell "has a scoresheet" apart from a stale number on the company row
+            has_scoresheet: research.scoresheet_pct !== null && research.scoresheet_pct !== undefined
         }
     })
+}
+
+// Roster filter. 'scored' = has a research scoresheet; 'wonderful' = scoresheet 80%+ (or the manual star on a company with no research yet).
+function filterCompaniesByResearch(companies, filter) {
+    if (filter === 'scored') return companies.filter(c => c.has_scoresheet === true)
+    if (filter === 'wonderful') return companies.filter(c => !!c.is_wonderful)
+    return companies
 }
 
 async function fetchCompaniesWithResearch() {

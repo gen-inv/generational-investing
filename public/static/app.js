@@ -1407,6 +1407,16 @@ async function loadDashboard() {
 let companiesSortColumn = localStorage.getItem('companiesSortColumn') || 'ticker'
 let companiesSortDirection = localStorage.getItem('companiesSortDirection') || 'asc'
 
+// Roster filter: all | scored | wonderful (remembered between visits)
+let companiesFilter = localStorage.getItem('companiesFilter') || 'all'
+if (!['all', 'scored', 'wonderful'].includes(companiesFilter)) companiesFilter = 'all'
+
+function setCompaniesFilter(value) {
+    companiesFilter = ['all', 'scored', 'wonderful'].includes(value) ? value : 'all'
+    localStorage.setItem('companiesFilter', companiesFilter)
+    loadCompanies()
+}
+
 function updateSortIndicators() {
     // Reset all sort indicators
     const sortableColumns = ['ticker', 'company_name', 'research_score', 'anti_fragile_score']
@@ -1456,6 +1466,19 @@ async function loadCompanies() {
             return
         }
         
+        // Filter (All / Scored / Wonderful)
+        const totalCompanies = companies.length
+        companies = filterCompaniesByResearch(companies, companiesFilter)
+        const filterSelect = document.getElementById('companies-filter')
+        if (filterSelect) filterSelect.value = companiesFilter
+        const filterCount = document.getElementById('companies-filter-count')
+        if (filterCount) filterCount.textContent = companies.length === totalCompanies ? `${totalCompanies} companies` : `${companies.length} of ${totalCompanies}`
+        if (companies.length === 0) {
+            updateSortIndicators()
+            table.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-gray-500">No companies match this filter.</td></tr>'
+            return
+        }
+
         // Sort companies
         companies.sort((a, b) => {
             let aVal, bVal
