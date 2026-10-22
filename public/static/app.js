@@ -3830,7 +3830,7 @@ async function showOptionDetails(id) {
                                 <span class="font-medium">Reduce From Position</span>
                             </button>
                             
-                            ${(option.strategy_type === 'SELLING_PUT' || option.strategy_type === 'SELLING_PUT_WHEEL') ? `
+                            ${(option.strategy_type === 'SELLING_PUT' || option.strategy_type === 'SELLING_PUT_WHEEL' || option.strategy_type === 'SELLING_PUT_LONG_TERM') ? `
                             <button onclick="assignStockPosition(${id})" class="w-full text-left px-4 py-3 bg-white hover:bg-amber-600 hover:text-white rounded-lg border border-gray-200 transition-colors group">
                                 <i class="fas fa-exchange-alt mr-2 text-amber-600 group-hover:text-white"></i>
                                 <span class="font-medium">Assign Stock Position</span>

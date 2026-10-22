@@ -216,7 +216,7 @@ routes.put('/api/options/:id', authMiddleware, async (c) => {
     const putMergedClosePrice = data.close_price !== undefined ? data.close_price : existingTrade.close_price
     const putCloses = !!(putMergedClose && putMergedClosePrice !== null && putMergedClosePrice !== undefined)
     const putReopens = !putCloses && !data.close_date
-    const putStillPut = putMergedStrategy === 'SELLING_PUT' || putMergedStrategy === 'SELLING_PUT_WHEEL'
+    const putStillPut = putMergedStrategy === 'SELLING_PUT' || putMergedStrategy === 'SELLING_PUT_WHEEL' || putMergedStrategy === 'SELLING_PUT_LONG_TERM'
     const putChange: PutAssignmentChange = (putReopens || !putStillPut) ? { kind: 'undo' } : { kind: 'keep', option: {
       quantity: data.quantity !== undefined ? data.quantity : existingTrade.quantity,
       strike_price: data.strike_price !== undefined ? data.strike_price : existingTrade.strike_price,
@@ -481,7 +481,7 @@ routes.post('/api/options/:id/assign', authMiddleware, async (c) => {
     const ticker = option.company_ticker || option.ticker
     
     // Validate this is a short put strategy
-    if (option.strategy_type !== 'SELLING_PUT' && option.strategy_type !== 'SELLING_PUT_WHEEL') {
+    if (option.strategy_type !== 'SELLING_PUT' && option.strategy_type !== 'SELLING_PUT_WHEEL' && option.strategy_type !== 'SELLING_PUT_LONG_TERM') {
       return c.json({ error: 'Assignment is only available for Short Put strategies' }, 400)
     }
     
@@ -500,6 +500,8 @@ routes.post('/api/options/:id/assign', authMiddleware, async (c) => {
     const strikePrice = parseFloat(option.strike_price)
     
     // Determine strategy type based on option strategy
+    // (a long-term put does not change the strategy of a position you already hold; a new position starts as Stockpiling)
+    const longTermPut = option.strategy_type === 'SELLING_PUT_LONG_TERM'
     const strategyType = option.strategy_type === 'SELLING_PUT_WHEEL' ? 'WHEEL' : 'STOCKPILING'
     
     // Start transaction: Close option and create stock position
@@ -528,7 +530,7 @@ routes.post('/api/options/:id/assign', authMiddleware, async (c) => {
     
     // 2. Check if stock holding already exists for this ticker + account
     const existingHolding = await DB.prepare(`
-      SELECT id, total_shares, average_price 
+      SELECT id, total_shares, average_price, strategy_type 
       FROM stock_holdings 
       WHERE user_id = ? AND company_id = ? AND account_id = ? AND is_open = 1
     `).bind(userId, option.company_id, option.account_id).first() as any
@@ -548,7 +550,7 @@ routes.post('/api/options/:id/assign', authMiddleware, async (c) => {
             strategy_type = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND user_id = ?
-      `).bind(totalShares, newAvgPrice, strategyType, existingHolding.id, userId).run()
+      `).bind(totalShares, newAvgPrice, longTermPut ? (existingHolding.strategy_type || strategyType) : strategyType, existingHolding.id, userId).run()
       
       holdingId = existingHolding.id
     } else {
@@ -604,7 +606,7 @@ routes.post('/api/options/:id/assign', authMiddleware, async (c) => {
       holdingId,
       netProceeds,
       data.assignment_date,
-      `Premium from assigned ${option.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : 'Stockpiling'} put: ${option.quantity} contract(s) @ $${option.premium}/share = $${grossPremium.toFixed(2)}${openCommission > 0 ? ` - $${openCommission.toFixed(2)} commission = $${netProceeds.toFixed(2)}` : ''}`,
+      `Premium from assigned ${option.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : longTermPut ? 'Long-Term' : 'Stockpiling'} put: ${option.quantity} contract(s) @ $${option.premium}/share = $${grossPremium.toFixed(2)}${openCommission > 0 ? ` - $${openCommission.toFixed(2)} commission = $${netProceeds.toFixed(2)}` : ''}`,
       optionId
     ).run()
     

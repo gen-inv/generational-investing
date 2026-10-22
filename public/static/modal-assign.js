@@ -6,7 +6,7 @@ async function assignStockPosition(optionId) {
   try {
     option = (await api.get('/api/options')).data.find(o => o.id === optionId)
     if (!option) { alert('Option trade not found'); return }
-    if (option.strategy_type !== 'SELLING_PUT' && option.strategy_type !== 'SELLING_PUT_WHEEL') {
+    if (option.strategy_type !== 'SELLING_PUT' && option.strategy_type !== 'SELLING_PUT_WHEEL' && option.strategy_type !== 'SELLING_PUT_LONG_TERM') {
       alert('Assignment is only available for Short Put strategies')
       return
     }
@@ -26,6 +26,8 @@ async function assignStockPosition(optionId) {
   const K = ModalKit
   const S = option.strategy_type
   const wheel = S === 'SELLING_PUT_WHEEL'
+  const longTerm = S === 'SELLING_PUT_LONG_TERM'
+  const stratName = wheel ? 'Wheel' : longTerm ? 'Long Term' : 'Stockpiling'
   const accountDisplay = account ? `${account.account_name} (${account.account_type})` : option.account_type || 'N/A'
   const strike = parseFloat(option.strike_price)
   const d = Calc.assignmentDetails({
@@ -46,7 +48,7 @@ async function assignStockPosition(optionId) {
     body: `
       ${K.summary('Assignment Summary', [
         K.stat('Ticker', option.ticker),
-        K.stat('Strategy', wheel ? 'Wheel' : 'Stockpiling'),
+        K.stat('Strategy', stratName),
         K.stat('Shares', String(d.shares)),
         K.stat('Strike', K.fmt.money(strike)),
         K.stat('Account', accountDisplay),
@@ -72,7 +74,9 @@ async function assignStockPosition(optionId) {
   if (existing) {
     rows.push({ label: 'Position after assignment', value: `${d.totalShares} sh @ ${K.fmt.money(d.averagePrice)}`, sub: `(was ${existing.totalShares} @ ${K.fmt.money(existing.averagePrice)})` })
   }
-  K.renderAnalysis(m.qs('#assign-analysis'), rows, [], `Strategy will be set to ${wheel ? 'Wheel' : 'Stockpiling'}; the account stays ${accountDisplay}`)
+  K.renderAnalysis(m.qs('#assign-analysis'), rows, [], longTerm
+    ? `A position you already hold keeps its strategy (a new one starts as Stockpiling); the account stays ${accountDisplay}`
+    : `Strategy will be set to ${wheel ? 'Wheel' : 'Stockpiling'}; the account stays ${accountDisplay}`)
 
   m.qs('[data-mk="cancel"]').addEventListener('click', m.close)
 

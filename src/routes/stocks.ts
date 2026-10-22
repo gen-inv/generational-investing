@@ -1004,7 +1004,7 @@ routes.get('/api/stocks/:id/assignment-history', authMiddleware, async (c) => {
         AND ot.company_id = ?
         AND ot.is_open = 0
         AND ot.close_price = 0
-        AND (ot.strategy_type = 'SELLING_PUT' OR ot.strategy_type = 'SELLING_PUT_WHEEL')
+        AND (ot.strategy_type = 'SELLING_PUT' OR ot.strategy_type = 'SELLING_PUT_WHEEL' OR ot.strategy_type = 'SELLING_PUT_LONG_TERM')
         AND (ot.notes LIKE '%ASSIGNED%' OR ot.notes LIKE '%assigned%')
       ORDER BY ot.close_date DESC
     `).bind(holdingId, userId, holding.company_id).all()

@@ -49,6 +49,30 @@ describe('assigning a short put links what it creates to the put', () => {
   })
 })
 
+describe('a Short Put (Long Term) can be assigned too', () => {
+  it('creates the holding, BUY and premium adjustment, labelled Long-Term; undo reverses it', async () => {
+    const t = await newCompany(); const id = await put(t, { strategy: 'SELLING_PUT_LONG_TERM' })
+    expect((await assign(id)).status).toBe(200)
+    const tx = await all('SELECT * FROM stock_transactions WHERE option_trade_id = ?', id)
+    expect(tx).toHaveLength(1)
+    expect(tx[0]).toMatchObject({ transaction_type: 'BUY', shares: 200, price_per_share: 50 })
+    const adj = await all("SELECT * FROM cost_basis_adjustments WHERE option_trade_id = ? AND adjustment_type = 'SELLING_PUT'", id)
+    expect(adj).toHaveLength(1)
+    expect(adj[0].amount).toBeCloseTo(398.7, 6)
+    expect(adj[0].notes).toContain('Long-Term')
+    expect((await first('SELECT strategy_type, total_shares FROM stock_holdings WHERE id = ?', tx[0].holding_id))).toMatchObject({ strategy_type: 'STOCKPILING', total_shares: 200 })
+    expect((await call('PUT', `/api/options/${id}/reopen`)).status).toBe(200)
+    expect(await all('SELECT id FROM stock_transactions WHERE option_trade_id = ?', id)).toHaveLength(0)
+    expect(await all('SELECT id FROM cost_basis_adjustments WHERE option_trade_id = ?', id)).toHaveLength(0)
+  })
+  it('adds to a position you already hold without changing its strategy', async () => {
+    const t = await newCompany(); const id = await put(t, { strategy: 'SELLING_PUT_LONG_TERM', qty: 1, strike: 60 })
+    const h = (await DB().prepare(`INSERT INTO stock_holdings (user_id, company_id, ticker, account_id, total_shares, average_price, is_open, opened_date, strategy_type) VALUES (?, ?, ?, ?, 100, 40, 1, '2026-01-01', 'WHEEL')`).bind(uid, co, t, acct).run()).meta.last_row_id
+    expect((await assign(id)).status).toBe(200)
+    expect((await first('SELECT total_shares, average_price, strategy_type FROM stock_holdings WHERE id = ?', h))).toMatchObject({ total_shares: 200, average_price: 50, strategy_type: 'WHEEL' })
+  })
+})
+
 describe('re-opening or deleting an assigned put reverses the assignment', () => {
   it('re-open: put is open again, adjustment and BUY are gone, the holding it created is removed', async () => {
     const t = await newCompany(); const id = await put(t)

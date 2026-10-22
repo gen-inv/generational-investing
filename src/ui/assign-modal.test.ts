@@ -66,6 +66,19 @@ describe('assignStockPosition modal', () => {
     expect($('#option-details-modal')).toBeNull()
     expect(w().loadStocks).toHaveBeenCalled()
   })
+  it('works for Short Put (Long Term): cyan header, Long Term label, keeps an existing position strategy', async () => {
+    mockApi([], { ...option, strategy_type: 'SELLING_PUT_LONG_TERM' })
+    await w().assignStockPosition(5); await flush()
+    expect(w().alert).not.toHaveBeenCalled()
+    const html = $('#assign-stock-modal').innerHTML
+    expect(html).toContain('from-cyan-600')
+    expect(html).toContain('Long Term')
+    expect($('#assign-analysis').textContent).toContain('keeps its strategy')
+    $('#assignmentForm').elements.assignment_date.value = '2026-10-15'
+    $('#assignmentForm').dispatchEvent(new Event('submit', { cancelable: true }))
+    await flush()
+    expect(w().api.post).toHaveBeenCalledWith('/api/options/5/assign', expect.objectContaining({ assignment_date: '2026-10-15' }))
+  })
   it('refuses a put that is not a short put', async () => {
     mockApi([], { ...option, strategy_type: 'COVERED_CALL' })
     await w().assignStockPosition(5); await flush()

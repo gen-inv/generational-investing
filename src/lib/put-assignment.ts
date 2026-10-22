@@ -111,7 +111,7 @@ export async function syncPutAssignment(
       stmts.push(DB.prepare(`UPDATE stock_holdings SET total_shares = ?, average_price = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newTotal, newAvg, holding.id))
     }
     if (adjs.length) {
-      const wheel = row.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : 'Stockpiling'
+      const wheel = row.strategy_type === 'SELLING_PUT_WHEEL' ? 'Wheel' : row.strategy_type === 'SELLING_PUT_LONG_TERM' ? 'Long-Term' : 'Stockpiling'
       const notes = `Premium from assigned ${wheel} put: ${v.quantity} contract(s) @ $${v.premium}/share = $${gross.toFixed(2)}${commission > 0 ? ` - $${commission.toFixed(2)} commission = $${net.toFixed(2)}` : ''}`
       stmts.push(DB.prepare(`UPDATE cost_basis_adjustments SET amount = ?, adjustment_date = ?, notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
         .bind(net, date, notes, adjs[0].id))
