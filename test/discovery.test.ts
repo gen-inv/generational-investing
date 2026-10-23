@@ -56,6 +56,41 @@ describe('discovery api', () => {
   })
 })
 
+describe('trade setups', () => {
+  const post = (b: any) => req('POST', '/api/research/discovery/findings', { token: INGEST, body: b })
+  const candles = (n: number) => Array.from({ length: n }, () => [101.23, 102.34, 100.12, 101.45])
+  it('accepts a setup with chart data, refreshes it in place when its status changes', async () => {
+    const base = { scan_type: 'setup', ticker: 'AAA', headline: 'Bullish bounce', tier: 'Bullish', source_key: 'AAA|2026-10-21|bullish', data: { direction: 'bullish', candles: candles(70) } }
+    expect((await post({ ...base, status: 'candidate' })).status).toBe(201)
+    expect((await post({ ...base, status: 'confirmed' })).status).toBe(200)
+    const list: any = await (await req('GET', '/api/research/discovery?scan_type=setup', { token: site })).json()
+    expect(list.findings.filter((f: any) => f.ticker === 'AAA')).toHaveLength(1)
+    expect(list.findings[0]).toMatchObject({ status: 'confirmed', tier: 'Bullish' })
+    expect(list.findings[0].data.candles).toHaveLength(70)
+  })
+  it('allows more chart data for setups than for other findings, but not unlimited', async () => {
+    const big = { direction: 'bullish', candles: candles(300) }
+    expect(JSON.stringify(big).length).toBeGreaterThan(8000)
+    expect((await post({ scan_type: 'setup', ticker: 'BIG', headline: 'h', data: big })).status).toBe(201)
+    expect((await post({ scan_type: 'guru', ticker: 'BIG', headline: 'h', data: big })).status).toBe(400)
+    expect((await post({ scan_type: 'setup', ticker: 'HUGE', headline: 'h', data: { candles: candles(1000) } })).status).toBe(400)
+  })
+  it('recording a setup scan drops setups older than 45 days and leaves other types alone', async () => {
+    const db = (env as any).RESEARCH_DB
+    await db.prepare("INSERT INTO discovery_findings (scan_type, ticker, found_at, status, headline, source_key) VALUES ('setup', 'OLDS', '2026-01-01T00:00:00.000Z', 'expired', 'h', 'OLDS|x')").run()
+    await db.prepare("INSERT INTO discovery_findings (scan_type, ticker, found_at, status, headline, source_key) VALUES ('guru', 'OLDG', '2026-01-01T00:00:00.000Z', 'alerted', 'h', 'OLDG|x')").run()
+    expect((await req('POST', '/api/research/discovery/scans', { token: INGEST, body: { scan_type: 'setup', candidates_found: 1 } })).status).toBe(200)
+    expect(await db.prepare("SELECT id FROM discovery_findings WHERE ticker = 'OLDS'").first()).toBeNull()
+    expect(await db.prepare("SELECT id FROM discovery_findings WHERE ticker = 'OLDG'").first()).not.toBeNull()
+  })
+  it('the full list keeps each type separately limited', async () => {
+    const all: any = await (await req('GET', '/api/research/discovery?limit=1', { token: site })).json()
+    const types = all.findings.map((f: any) => f.scan_type)
+    expect(types.filter((t: string) => t === 'setup')).toHaveLength(1)
+    expect(types).toContain('guru')
+  })
+})
+
 describe('marking findings added to the roster', () => {
   it('marks open findings for the ticker, leaves others alone, and never throws', async () => {
     const post = (b: any) => req('POST', '/api/research/discovery/findings', { token: INGEST, body: b })

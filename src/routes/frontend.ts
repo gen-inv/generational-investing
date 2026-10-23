@@ -1789,6 +1789,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
                             <div class="flex gap-2 mb-4" id="discovery-tabs">
                                 <button data-discovery-tab="guru" onclick="setDiscoveryTab('guru')" class="px-4 py-2 rounded font-semibold text-sm">Guru purchases</button>
                                 <button data-discovery-tab="maturing" onclick="setDiscoveryTab('maturing')" class="px-4 py-2 rounded font-semibold text-sm">Gov't contracts</button>
+                                <button data-discovery-tab="setup" onclick="setDiscoveryTab('setup')" class="px-4 py-2 rounded font-semibold text-sm">Trade setups</button>
                             </div>
                             <div id="discovery-status" class="text-sm text-gray-700 mb-4"></div>
                             <div id="discovery-list"></div>

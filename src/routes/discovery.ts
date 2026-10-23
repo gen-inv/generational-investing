@@ -6,9 +6,9 @@ import { researchAccessMiddleware, researchMachineMiddleware, isValidTicker } fr
 // Reading needs a site login or the ingest token; writing is for the research machine only (ingest token).
 export const routes = new Hono<{ Bindings: Bindings }>()
 
-export const SCAN_TYPES = ['guru', 'maturing', 'event']
+export const SCAN_TYPES = ['guru', 'maturing', 'event', 'setup']
 const STATUS_RE = /^[a-z][a-z_ ]{0,29}$/
-const MAX = { headline: 300, details: 8000, company: 200, tier: 40, note: 500, source_key: 120, data: 8000 }
+const MAX = { headline: 300, details: 8000, company: 200, tier: 40, note: 500, source_key: 120, data: 8000, setupData: 16000 }
 
 // SQLite-style "YYYY-MM-DD HH:MM:SS" is UTC; anything else must parse as a date. Always stored as ISO.
 export function normalizeTime(v: unknown): string | null {
@@ -38,6 +38,10 @@ routes.post('/scans', researchMachineMiddleware, async (c) => {
     ON CONFLICT(scan_type) DO UPDATE SET last_run_at = excluded.last_run_at, gurus_scanned = excluded.gurus_scanned,
       candidates_found = excluded.candidates_found, status = excluded.status, note = excluded.note, updated_at = CURRENT_TIMESTAMP
   `).bind(body.scan_type, lastRun, optInt(body.gurus_scanned), optInt(body.candidates_found), status ?? 'ok', note).run()
+  // trade setups pile up daily and go stale: keep 45 days
+  if (body.scan_type === 'setup') {
+    await c.env.RESEARCH_DB.prepare("DELETE FROM discovery_findings WHERE scan_type = 'setup' AND found_at < ?").bind(new Date(Date.now() - 45 * 86400000).toISOString()).run()
+  }
   return c.json({ success: true, scan_type: body.scan_type, last_run_at: lastRun })
 })
 
@@ -63,7 +67,7 @@ routes.post('/findings', researchMachineMiddleware, async (c) => {
   if (body.data !== undefined && body.data !== null) {
     if (typeof body.data !== 'object' || Array.isArray(body.data)) return c.json({ error: 'data must be an object' }, 400)
     dataJson = JSON.stringify(body.data)
-    if (dataJson.length > MAX.data) return c.json({ error: 'data is too large' }, 400)
+    if (dataJson.length > (body.scan_type === 'setup' ? MAX.setupData : MAX.data)) return c.json({ error: 'data is too large' }, 400)
   }
 
   const db = c.env.RESEARCH_DB
@@ -87,10 +91,10 @@ routes.get('/', researchAccessMiddleware, async (c) => {
   const db = c.env.RESEARCH_DB
   const scans = await db.prepare('SELECT scan_type, last_run_at, gurus_scanned, candidates_found, status, note FROM discovery_scans ORDER BY scan_type').all()
   const cols = 'id, scan_type, ticker, company_name, found_at, tier, status, headline, details, data_json'
-  const rows = scanType
-    ? await db.prepare(`SELECT ${cols} FROM discovery_findings WHERE scan_type = ? ORDER BY found_at DESC, id DESC LIMIT ?`).bind(scanType, limit).all()
-    : await db.prepare(`SELECT ${cols} FROM discovery_findings ORDER BY found_at DESC, id DESC LIMIT ?`).bind(limit).all()
-  const findings = (rows.results as any[]).map(({ data_json, ...rest }) => {
+  // the limit applies per scan type, so a busy tab (trade setups) can never push another tab's findings off the list
+  const one = (t: string) => db.prepare(`SELECT ${cols} FROM discovery_findings WHERE scan_type = ? ORDER BY found_at DESC, id DESC LIMIT ?`).bind(t, limit).all()
+  const results = scanType ? (await one(scanType)).results : (await Promise.all(SCAN_TYPES.map(one))).flatMap((r) => r.results)
+  const findings = (results as any[]).map(({ data_json, ...rest }) => {
     let data = null
     try { data = data_json ? JSON.parse(data_json) : null } catch { data = null }
     return { ...rest, data }
