@@ -201,7 +201,7 @@
       var chart = chartSvg(d)
       var detail = (chart ? '<div class="mb-2">' + chart + '</div>' : '') +
         '<div class="text-sm text-gray-700 mb-2">' + setupMetrics(d) + '</div>' +
-        '<div class="text-sm text-gray-600 mb-2">Reversal candle: ' + escapeHtml(d.candle_date || '') + (num(d.trigger) !== null ? ' &middot; confirms on a close ' + (bull ? 'above ' : 'below ') + money(d.trigger) : '') + (num(d.invalidation) !== null ? ' &middot; fails on a close ' + (bull ? 'below ' : 'above ') + money(d.invalidation) : '') + '</div>' +
+        '<div class="text-sm text-gray-600 mb-2">Reversal candle: ' + escapeHtml(d.candle_date || '') + (num(d.trigger) !== null ? ' &middot; confirms when price trades ' + (bull ? 'above ' : 'below ') + money(d.trigger) : '') + (num(d.invalidation) !== null ? ' &middot; fails on a close ' + (bull ? 'below ' : 'above ') + money(d.invalidation) : '') + '</div>' +
         '<a href="' + escapeHtml(stockChartsUrl(f.ticker)) + '" target="_blank" rel="noopener" class="text-sm text-brand-teal underline"><i class="fas fa-external-link-alt mr-1"></i>Open ' + escapeHtml(f.ticker) + ' on StockCharts</a>'
       return '<div class="border-b border-gray-200' + dim + '">' +
         '<button type="button" data-discovery-row="' + i + '" class="w-full text-left py-3 hover:bg-gray-50 flex items-start gap-3">' +

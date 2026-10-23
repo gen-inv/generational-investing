@@ -46,11 +46,11 @@ describe('discovery view', () => {
       const html = list([setup()])
       expect(html).toContain('AAA'); expect(html).toContain('Bullish'); expect(html).toContain('Awaiting confirmation')
       expect(html).toContain('<svg'); expect(html).toContain('Support 99.20'); expect(html).toContain('Confirm 101.20'); expect(html).toContain('Fails 99.40')
-      expect(html).toContain('https://stockcharts.com/h-sc/ui?s=AAA'); expect(html).toContain('confirms on a close above $101.20')
+      expect(html).toContain('https://stockcharts.com/h-sc/ui?s=AAA'); expect(html).toContain('confirms when price trades above $101.20')
     })
     it('bearish rows say resistance and below', () => {
       const html = list([setup({ ticker: 'BBB' }, { direction: 'bearish', level: 120, trigger: 118, invalidation: 120.9 })])
-      expect(html).toContain('Bearish'); expect(html).toContain('Resistance 120.00'); expect(html).toContain('confirms on a close below $118.00')
+      expect(html).toContain('Bearish'); expect(html).toContain('Resistance 120.00'); expect(html).toContain('confirms when price trades below $118.00')
     })
     it('confirmed first, then waiting, then failed/expired (dimmed); two-week-old rows are hidden', () => {
       const rows = [setup({ ticker: 'FFF', status: 'failed' }), setup({ ticker: 'CCC', status: 'confirmed' }), setup({ ticker: 'WWW' }),
