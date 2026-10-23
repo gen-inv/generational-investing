@@ -19,6 +19,14 @@
     return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
   }
 
+  // Time of day, in the viewer's own time zone. Only for timestamps that carry a time zone (a bare "2026-10-23 15:02:46" would be misread).
+  function fmtTime(iso) {
+    if (!/T.*(Z|[+-]\d\d:?\d\d)$/.test(String(iso || ''))) return ''
+    var d = new Date(iso)
+    if (isNaN(d.getTime())) return ''
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })
+  }
+
   function daysAgo(iso, now) {
     var t = Date.parse(iso)
     if (isNaN(t)) return null
@@ -28,7 +36,7 @@
   function statusLine(scan, tab, now) {
     if (!scan) return '<span class="text-gray-500">This scan has not reported in yet.</span>'
     var ago = daysAgo(scan.last_run_at, now)
-    var when = fmtDate(scan.last_run_at) + (ago === null ? '' : ago <= 0 ? ' (today)' : ' (' + ago + (ago === 1 ? ' day' : ' days') + ' ago)')
+    var when = fmtDate(scan.last_run_at) + (fmtTime(scan.last_run_at) ? ', ' + fmtTime(scan.last_run_at) : '') + (ago === null ? '' : ago <= 0 ? ' (today)' : ' (' + ago + (ago === 1 ? ' day' : ' days') + ' ago)')
     var stale = ago !== null && ago > TABS[tab].every * 2
     var bits = ['<strong>Last ran:</strong> ' + escapeHtml(when)]
     if (scan.gurus_scanned != null) bits.push(escapeHtml(scan.gurus_scanned) + ' gurus scanned')

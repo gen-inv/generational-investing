@@ -28,6 +28,12 @@ describe('discovery view', () => {
     expect(fresh).toContain('2 days ago'); expect(fresh).toContain('70 gurus'); expect(fresh).not.toContain('overdue')
     expect(V().statusLine({ scan_type: 'guru', last_run_at: '2026-09-20T12:00:00Z' }, 'guru', NOW)).toContain('overdue')
   })
+  it('shows the time of day a scan ran, when the timestamp carries a time zone', () => {
+    const t = V().statusLine({ scan_type: 'setup', last_run_at: '2026-10-20T15:02:46.000Z' }, 'setup', NOW)
+    expect(t).toMatch(/\d{1,2}:\d{2}/); expect(t).toContain('(today)')
+    const bare = V().statusLine({ scan_type: 'guru', last_run_at: '2026-10-18 12:00:00' }, 'guru', NOW)
+    expect(bare).not.toMatch(/\d{1,2}:\d{2}/)
+  })
   it('shows a status badge for added and override findings, none for plain alerts', () => {
     const mk = (status: string) => V().render({ scans: [], findings: [{ scan_type: 'guru', ticker: 'MCO', headline: 'h', status, found_at: '2026-10-18T00:00:00Z' }] }, 'guru', NOW).list
     expect(mk('added')).toContain('Added to roster')
