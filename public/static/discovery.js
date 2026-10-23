@@ -244,13 +244,70 @@
     }).join('')
   }
 
+  // The rules, posted on the page. Both versions are in the page; the toggle only shows one (no repaint, so an opened panel stays open).
+  var RULES = {
+    bullish: {
+      name: 'Bullish (bounce off support)',
+      items: [
+        ['Support level', 'At least 3 swing lows (each the lowest of the 4 sessions either side of it) that sit within 0.75 ATR of each other. Each must have been followed by a bounce of at least 0.75 ATR within 5 sessions, so it really acted as support, and all of them must come before the reversal candle. The chart covers 6 months and so does the search. Wicks or closes, whichever fits the line better. Earlier swing highs at the same price (old resistance) only add supporting evidence.'],
+        ['Arrival candle', 'A down candle (closes below its open and below the prior close) that is the lowest close of the last 5 sessions, closes in the lower half of its range (not a hammer), and closes inside the support band.'],
+        ['Run into support', 'At least 3 down closes in the last 5 sessions, and the arrival close is lower than the close 5 sessions earlier.'],
+        ['Reversal candle', 'The next session: an up candle that closes above the arrival close and in the upper half of its range, has a range of at least 0.4 ATR, whose low held inside the support band, and which closes at or above the support line.'],
+        ['Oscillators: 2 of 3', 'RSI(14) at or below 30 within the 3 sessions up to the reversal candle. Slow Stochastic (14,3,3) %K at or below 20 within 5 sessions and turning up on the reversal candle. MACD(12,26,9) histogram rising on the reversal candle. Any two are enough, and each row says which ones confirmed.'],
+        ['Confirmation', 'Within 3 sessions, price trades one cent above the high of the reversal candle. The scan runs about an hour after the open, so the partial bar for today can confirm.'],
+        ['Fails / lapses', 'It fails on a close below the low of the reversal candle before it has confirmed. It lapses if 3 sessions pass with neither. Within one session, confirming wins over the close of that session.']
+      ]
+    },
+    bearish: {
+      name: 'Bearish (rejection at resistance)',
+      items: [
+        ['Resistance level', 'At least 3 swing highs (each the highest of the 4 sessions either side of it) that sit within 0.75 ATR of each other. Each must have been followed by a drop of at least 0.75 ATR within 5 sessions, so it really acted as resistance, and all of them must come before the reversal candle. The chart covers 6 months and so does the search. Wicks or closes, whichever fits the line better. Earlier swing lows at the same price (old support) only add supporting evidence.'],
+        ['Arrival candle', 'An up candle (closes above its open and above the prior close) that is the highest close of the last 5 sessions, closes in the upper half of its range (not a shooting star), and closes inside the resistance band.'],
+        ['Run into resistance', 'At least 3 up closes in the last 5 sessions, and the arrival close is higher than the close 5 sessions earlier.'],
+        ['Reversal candle', 'The next session: a down candle that closes below the arrival close and in the lower half of its range, has a range of at least 0.4 ATR, whose high held inside the resistance band, and which closes at or below the resistance line.'],
+        ['Oscillators: 2 of 3', 'RSI(14) at or above 70 within the 3 sessions up to the reversal candle. Slow Stochastic (14,3,3) %K at or above 80 within 5 sessions and turning down on the reversal candle. MACD(12,26,9) histogram falling on the reversal candle. Any two are enough, and each row says which ones confirmed.'],
+        ['Confirmation', 'Within 3 sessions, price trades one cent below the low of the reversal candle. The scan runs about an hour after the open, so the partial bar for today can confirm.'],
+        ['Fails / lapses', 'It fails on a close above the high of the reversal candle before it has confirmed. It lapses if 3 sessions pass with neither. Within one session, confirming wins over the close of that session.']
+      ]
+    }
+  }
+
+  function rulesPanel() {
+    var btn = function (side, on) {
+      return '<button type="button" data-rules-side="' + side + '" class="px-3 py-1 text-sm font-semibold ' + (on ? RULES_ON : RULES_OFF) + '">' + (side === 'bullish' ? '&#9650; Bullish' : '&#9660; Bearish') + '</button>'
+    }
+    var pane = function (side, shown) {
+      var r = RULES[side]
+      return '<div data-rules-pane="' + side + '" class="' + (shown ? '' : 'hidden') + '"><div class="font-semibold text-gray-800 mb-2">' + escapeHtml(r.name) + '</div><ol class="list-decimal pl-5 space-y-2">' +
+        r.items.map(function (it) { return '<li><span class="font-semibold">' + escapeHtml(it[0]) + '.</span> ' + escapeHtml(it[1]) + '</li>' }).join('') + '</ol></div>'
+    }
+    return '<details class="mb-4 border border-gray-200 rounded bg-gray-50" data-rules-panel>' +
+      '<summary class="cursor-pointer px-4 py-2 font-semibold text-gray-700">How these setups are found</summary>' +
+      '<div class="px-4 pb-4 text-sm text-gray-700">' +
+      '<div class="inline-flex rounded border border-gray-300 overflow-hidden mb-3">' + btn('bullish', true) + btn('bearish', false) + '</div>' +
+      pane('bullish', true) + pane('bearish', false) +
+      '<div class="mt-3 text-gray-500">ATR = average true range over 14 sessions. The scan covers the companies on the research roster plus 30 liquid ETFs (average volume of 250,000 or more), on weekdays after 8:35 a.m. Edmonton time. A reversal candle that follows within 3 sessions of an earlier one at the same level is treated as part of the same bounce. The oscillators are on the StockCharts link for every row.</div>' +
+      '</div></details>'
+  }
+
+  var RULES_ON = 'bg-brand-teal text-white', RULES_OFF = 'bg-white text-gray-700 hover:bg-gray-100'
+
+  // Show one side's rules; used by the toggle buttons.
+  function rulesSwitch(container, side) {
+    container.querySelectorAll('[data-rules-pane]').forEach(function (p) { p.classList.toggle('hidden', p.getAttribute('data-rules-pane') !== side) })
+    container.querySelectorAll('[data-rules-side]').forEach(function (b) {
+      var on = b.getAttribute('data-rules-side') === side
+      b.className = 'px-3 py-1 text-sm font-semibold ' + (on ? RULES_ON : RULES_OFF)
+    })
+  }
+
   function render(state, tab, now) {
     var scan = (state.scans || []).filter(function (s) { return s.scan_type === tab })[0]
     var list = (state.findings || []).filter(function (f) { return f.scan_type === tab })
     if (tab === 'setup') list = activeSetups(list, now)
     return {
       status: statusLine(scan, tab, now),
-      list: list.length ? (tab === 'setup' ? renderSetups(list) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>'
+      list: (tab === 'setup' ? rulesPanel() : '') + (list.length ? (tab === 'setup' ? renderSetups(list) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>')
     }
   }
 
@@ -262,6 +319,9 @@
     doc.getElementById('discovery-status').innerHTML = out.status
     var list = doc.getElementById('discovery-list')
     list.innerHTML = out.list
+    list.querySelectorAll('[data-rules-side]').forEach(function (b) {
+      b.addEventListener('click', function (e) { e.preventDefault(); rulesSwitch(list, b.getAttribute('data-rules-side')) })
+    })
     list.querySelectorAll('[data-discovery-row]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var d = doc.getElementById('discovery-detail-' + btn.getAttribute('data-discovery-row'))
@@ -296,7 +356,7 @@
     }
   }
 
-  var api = { escapeHtml: escapeHtml, render: render, statusLine: statusLine, loadDiscovery: loadDiscovery, setDiscoveryTab: setDiscoveryTab, TABS: TABS, chartSvg: chartSvg, activeSetups: activeSetups }
+  var api = { escapeHtml: escapeHtml, render: render, statusLine: statusLine, loadDiscovery: loadDiscovery, setDiscoveryTab: setDiscoveryTab, TABS: TABS, chartSvg: chartSvg, activeSetups: activeSetups, rulesSwitch: rulesSwitch }
   root.escapeHtmlDiscovery = escapeHtml
   root.loadDiscovery = loadDiscovery
   root.setDiscoveryTab = setDiscoveryTab

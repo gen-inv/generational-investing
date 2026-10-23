@@ -94,6 +94,22 @@ describe('discovery view', () => {
       expect(V().render({ scans: [{ scan_type: 'setup', last_run_at: '2026-10-22T14:00:00Z', candidates_found: 3 }], findings: [] }, 'setup', NOW2).status).toContain('3 setups')
       expect(list([])).toContain('No trade setups')
     })
+    it('posts the rules for both directions, with a toggle that shows one at a time', () => {
+      const html = list([setup()])
+      expect(html).toContain('How these setups are found')
+      expect(html).toContain('at least 3 swing lows'.replace('at', 'At')); expect(html).toContain('At least 3 swing highs')
+      expect(html).toContain('Oscillators: 2 of 3'); expect(html).toContain('one cent above the high of the reversal candle'); expect(html).toContain('one cent below the low of the reversal candle')
+      document.body.innerHTML = '<div id="c">' + html + '</div>'
+      const c = document.getElementById('c') as HTMLElement
+      const pane = (s: string) => c.querySelector('[data-rules-pane="' + s + '"]') as HTMLElement
+      expect(pane('bullish').classList.contains('hidden')).toBe(false); expect(pane('bearish').classList.contains('hidden')).toBe(true)
+      V().rulesSwitch(c, 'bearish')
+      expect(pane('bullish').classList.contains('hidden')).toBe(true); expect(pane('bearish').classList.contains('hidden')).toBe(false)
+      expect((c.querySelector('[data-rules-side="bearish"]') as HTMLElement).className).toContain('bg-brand-teal')
+    })
+    it('shows the rules even when there are no setups', () => {
+      expect(list([])).toContain('How these setups are found'); expect(list([])).toContain('No trade setups')
+    })
     it('the page has the tab button', () => {
       const html = fs.readFileSync(path.resolve(__dirname, '../routes/frontend.ts'), 'utf8')
       expect(html).toContain("setDiscoveryTab('setup')")
