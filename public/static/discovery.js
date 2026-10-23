@@ -109,7 +109,8 @@
 
   function stockChartsUrl(ticker) { return 'https://stockcharts.com/h-sc/ui?s=' + encodeURIComponent(String(ticker)) }
 
-  // The setup drawn: candles, the support/resistance line, the reversal candle, the price that confirms it and the price that kills it, RSI below.
+  // The setup drawn: candles, the support/resistance level as a band with every touch marked, the arrival and reversal candles, the price that
+  // confirms it and the price that kills it, RSI below.
   function chartSvg(d) {
     var cs = (d && d.candles) || []
     if (cs.length < 5) return ''
@@ -117,15 +118,16 @@
     if (!ok) return ''
     var W = 640, H = 230, RH = 56, L = 54, R = 76, T = 8, B = 18
     var n = cs.length, plotW = W - L - R, step = plotW / n, bw = Math.max(2, step * 0.62)
-    var level = num(d.level), trig = num(d.trigger), inv = num(d.invalidation)
+    var level = num(d.level), band = num(d.band), trig = num(d.trigger), inv = num(d.invalidation)
     var lo = Infinity, hi = -Infinity
     cs.forEach(function (c) { lo = Math.min(lo, Number(c[2])); hi = Math.max(hi, Number(c[1])) })
-    ;[level, trig, inv].forEach(function (p) { if (p !== null) { lo = Math.min(lo, p); hi = Math.max(hi, p) } })
+    ;[level, band, trig, inv].forEach(function (p) { if (p !== null) { lo = Math.min(lo, p); hi = Math.max(hi, p) } })
     var pad = (hi - lo) * 0.05 || 1
     lo -= pad; hi += pad
     function y(p) { return T + (hi - p) / (hi - lo) * (H - T - B) }
     function x(i) { return L + step * (i + 0.5) }
     var bull = d.direction !== 'bearish'
+    var lineCol = bull ? '#0d9488' : '#9333ea'
     var out = []
     for (var g = 0; g <= 4; g++) {
       var gp = lo + (hi - lo) * g / 4
@@ -133,9 +135,14 @@
       out.push('<text x="' + (L - 6) + '" y="' + (y(gp) + 3).toFixed(1) + '" text-anchor="end" font-size="10" fill="#6b7280">' + gp.toFixed(2) + '</text>')
     }
     var ci = num(d.candle_idx)
-    if (ci !== null && ci >= 0 && ci < n) {
-      out.push('<rect x="' + (L + step * ci).toFixed(1) + '" y="' + T + '" width="' + step.toFixed(1) + '" height="' + (H - T - B) + '" fill="#f59e0b" opacity="0.18"/>')
-      out.push('<text x="' + x(ci).toFixed(1) + '" y="' + (T + 9) + '" text-anchor="middle" font-size="9" fill="#b45309">reversal</text>')
+    if (ci !== null && ci >= 1 && ci < n) {
+      out.push('<rect x="' + (L + step * (ci - 1)).toFixed(1) + '" y="' + T + '" width="' + step.toFixed(1) + '" height="' + (H - T - B) + '" fill="#9ca3af" opacity="0.2"/>')
+      out.push('<rect x="' + (L + step * ci).toFixed(1) + '" y="' + T + '" width="' + step.toFixed(1) + '" height="' + (H - T - B) + '" fill="#f59e0b" opacity="0.2"/>')
+      out.push('<text x="' + (L + step * ci).toFixed(1) + '" y="' + (T + 9) + '" text-anchor="end" font-size="9" fill="#6b7280">arrival</text>')
+      out.push('<text x="' + (L + step * (ci + 1)).toFixed(1) + '" y="' + (T + 9) + '" text-anchor="start" font-size="9" fill="#b45309">reversal</text>')
+    }
+    if (level !== null && band !== null) {
+      out.push('<rect x="' + L + '" y="' + Math.min(y(level), y(band)).toFixed(1) + '" width="' + plotW + '" height="' + Math.max(2, Math.abs(y(level) - y(band))).toFixed(1) + '" fill="' + lineCol + '" opacity="0.13"/>')
     }
     cs.forEach(function (c, i) {
       var o = Number(c[0]), h = Number(c[1]), l = Number(c[2]), cl = Number(c[3])
@@ -150,7 +157,7 @@
       out.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(p).toFixed(1) + '" y2="' + y(p).toFixed(1) + '" stroke="' + color + '" stroke-width="1.5"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>')
       labels.push({ y: y(p), color: color, text: label + ' ' + p.toFixed(2) })
     }
-    hline(level, bull ? '#0d9488' : '#9333ea', '', bull ? 'Support' : 'Resistance')
+    hline(level, lineCol, '', bull ? 'Support' : 'Resistance')
     hline(trig, '#d97706', '6 4', 'Confirm')
     hline(inv, '#9ca3af', '2 3', 'Fails')
     labels.sort(function (a, b) { return a.y - b.y })
@@ -158,6 +165,16 @@
     labels.forEach(function (lb) {
       out.push('<text x="' + (W - R + 4) + '" y="' + (lb.y + 3).toFixed(1) + '" font-size="10" fill="' + lb.color + '">' + escapeHtml(lb.text) + '</text>')
     })
+    // every touch that built the level (filled), and earlier swing points of the opposite kind at the same level (hollow)
+    function dots(list, filled) {
+      ;(list || []).forEach(function (pt) {
+        var k = num(pt && pt[0]), p = num(pt && pt[1])
+        if (k === null || p === null || k < 0 || k >= n) return
+        out.push('<circle cx="' + x(k).toFixed(1) + '" cy="' + y(p).toFixed(1) + '" r="' + (filled ? 3.6 : 3) + '" fill="' + (filled ? lineCol : '#ffffff') + '" stroke="' + (filled ? '#ffffff' : lineCol) + '" stroke-width="1.2"/>')
+      })
+    }
+    dots(d.flip_pts, false)
+    dots(d.touch_pts, true)
     var dates = d.dates || []
     ;[0, Math.floor((n - 1) / 2), n - 1].forEach(function (i, k) {
       if (dates[i] === undefined) return
@@ -177,18 +194,33 @@
       if (pts.length > 1) out.push('<polyline points="' + pts.join(' ') + '" fill="none" stroke="#2563eb" stroke-width="1.5"/>')
       out.push('<text x="' + (W - R + 4) + '" y="' + (oy + 10) + '" font-size="10" fill="#2563eb">RSI</text>')
     }
-    return '<svg viewBox="0 0 ' + W + ' ' + (H + RH + 10) + '" class="w-full max-w-3xl" role="img" aria-label="Price chart with the reversal candle and key levels">' + out.join('') + '</svg>'
+    return '<svg viewBox="0 0 ' + W + ' ' + (H + RH + 10) + '" class="w-full max-w-3xl" role="img" aria-label="Price chart with the support or resistance level, its touches, and the arrival and reversal candles">' + out.join('') + '</svg>'
   }
 
+  // Which of the three oscillators confirmed (2 of 3 are needed for a setup to be reported), then what the level is made of.
   function setupMetrics(d) {
+    var c = d.confirmations
+    var h = ''
+    var bull = d.direction !== 'bearish'
+    if (c && c.rsi && c.stoch && c.macd) {
+      var part = function (ok, text, tip) {
+        return '<span title="' + escapeHtml(tip) + '" class="' + (ok ? 'text-green-700 font-semibold' : 'text-gray-400') + '">' + (ok ? '&#10003; ' : '&#10007; ') + escapeHtml(text) + '</span>'
+      }
+      var n3 = [c.rsi, c.stoch, c.macd].filter(function (x) { return x && x.ok }).length
+      h += '<div><strong>Confirming:</strong> ' +
+        part(!!c.rsi.ok, 'RSI ' + fix(c.rsi.value, 1), bull ? 'RSI(14) at or below 30 within the 3 sessions up to the reversal candle' : 'RSI(14) at or above 70 within the 3 sessions up to the reversal candle') + ' &middot; ' +
+        part(!!c.stoch.ok, 'Stochastic %K ' + fix(c.stoch.k, 1), bull ? 'Slow %K at or below 20 within 5 sessions and turning up at the reversal candle' : 'Slow %K at or above 80 within 5 sessions and turning down at the reversal candle') + ' &middot; ' +
+        part(!!c.macd.ok, 'MACD histogram ' + fix(c.macd.hist, 3), bull ? 'MACD histogram rising at the reversal candle' : 'MACD histogram falling at the reversal candle') +
+        ' <span class="text-gray-500">(' + n3 + ' of 3 confirm; 2 are needed)</span></div>'
+    }
     var bits = []
-    if (num(d.rsi) !== null) bits.push('RSI ' + fix(d.rsi, 1) + (num(d.rsi_at_candle) !== null ? ' (' + fix(d.rsi_at_candle, 1) + ' at the candle)' : ''))
-    if (num(d.stoch_k) !== null) bits.push('Stochastic %K ' + fix(d.stoch_k, 1) + ' / %D ' + fix(d.stoch_d, 1))
-    if (num(d.macd_hist) !== null) bits.push('MACD histogram ' + fix(d.macd_hist, 3) + (d.macd_turning ? ' (turning with the setup)' : ' (not turning yet)'))
+    if (num(d.touches) !== null) {
+      var flips = (d.flip_pts || []).length
+      bits.push((bull ? 'Support' : 'Resistance') + ': ' + num(d.touches) + ' touches' + (d.basis ? ' (' + d.basis + ')' : '') + (flips ? ', also acted as ' + (bull ? 'resistance' : 'support') + ' ' + flips + (flips === 1 ? ' time' : ' times') : ''))
+    }
     if (d.trend) bits.push(String(d.trend))
-    if (num(d.touches) !== null) bits.push(num(d.touches) + ' touches of the level')
     if (num(d.avg_volume) !== null) bits.push('avg volume ' + Number(d.avg_volume).toLocaleString())
-    return bits.map(escapeHtml).join(' &middot; ')
+    return h + (bits.length ? '<div class="mt-1">' + bits.map(escapeHtml).join(' &middot; ') + '</div>' : '')
   }
 
   function renderSetups(list) {
@@ -201,7 +233,7 @@
       var chart = chartSvg(d)
       var detail = (chart ? '<div class="mb-2">' + chart + '</div>' : '') +
         '<div class="text-sm text-gray-700 mb-2">' + setupMetrics(d) + '</div>' +
-        '<div class="text-sm text-gray-600 mb-2">Reversal candle: ' + escapeHtml(d.candle_date || '') + (num(d.trigger) !== null ? ' &middot; confirms when price trades ' + (bull ? 'above ' : 'below ') + money(d.trigger) : '') + (num(d.invalidation) !== null ? ' &middot; fails on a close ' + (bull ? 'below ' : 'above ') + money(d.invalidation) : '') + '</div>' +
+        '<div class="text-sm text-gray-600 mb-2">' + (d.arrival_date ? 'Arrival candle: ' + escapeHtml(d.arrival_date) + ' &middot; ' : '') + 'Reversal candle: ' + escapeHtml(d.candle_date || '') + (num(d.trigger) !== null ? ' &middot; confirms when price trades ' + (bull ? 'above ' : 'below ') + money(d.trigger) : '') + (num(d.invalidation) !== null ? ' &middot; fails on a close ' + (bull ? 'below ' : 'above ') + money(d.invalidation) : '') + '</div>' +
         '<a href="' + escapeHtml(stockChartsUrl(f.ticker)) + '" target="_blank" rel="noopener" class="text-sm text-brand-teal underline"><i class="fas fa-external-link-alt mr-1"></i>Open ' + escapeHtml(f.ticker) + ' on StockCharts</a>'
       return '<div class="border-b border-gray-200' + dim + '">' +
         '<button type="button" data-discovery-row="' + i + '" class="w-full text-left py-3 hover:bg-gray-50 flex items-start gap-3">' +
