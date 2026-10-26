@@ -231,22 +231,47 @@
     return h + (bits.length ? '<div class="mt-1">' + bits.map(escapeHtml).join(' &middot; ') + '</div>' : '')
   }
 
-  function renderSetups(list) {
+  // Next earnings (stocks only; an ETF has none and already carries its own badge). Days are counted from the viewer's today.
+  function earningsInfo(d, now) {
+    if (!d || d.kind === 'etf') return null
+    var unknown = { short: 'Earnings unknown', long: 'Next earnings date unavailable', cls: 'bg-gray-100 text-gray-500', days: null }
+    var e = d.next_earnings
+    if (!e || typeof e.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) return unknown
+    var base = Date.parse(e.date + 'T12:00:00Z')
+    var t = new Date(now || Date.now())
+    var days = Math.round((Date.parse(e.date + 'T00:00:00Z') - Date.UTC(t.getFullYear(), t.getMonth(), t.getDate())) / 86400000)
+    if (isNaN(base) || isNaN(days) || days < 0) return unknown
+    var est = !!e.estimate
+    var short = new Date(base).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    var full = new Date(base).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+    var when = days === 0 ? 'today' : days === 1 ? 'tomorrow' : 'in ' + days + ' days'
+    return {
+      short: 'Earnings ' + (est ? '~' : '') + short + ' (' + when + (est ? ', estimate' : '') + ')',
+      long: 'Next earnings: ' + full + (est ? ' (estimated date)' : ' (confirmed date)') + ' - ' + when,
+      cls: days <= 14 ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800',
+      days: days
+    }
+  }
+
+  function renderSetups(list, now) {
     return list.map(function (f, i) {
       var d = f.data || {}
       var bull = d.direction !== 'bearish'
       var dir = d.direction ? '<span class="ml-2 px-2 py-0.5 rounded text-xs font-semibold ' + (bull ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700') + '">' + (bull ? '&#9650; Bullish' : '&#9660; Bearish') + '</span>' : ''
       var etf = d.kind === 'etf' ? '<span class="ml-2 px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs">ETF</span>' : ''
+      var ei = earningsInfo(d, now)
+      var earn = ei ? '<span data-earnings class="ml-2 px-2 py-0.5 rounded text-xs ' + ei.cls + '">' + escapeHtml(ei.short) + '</span>' : ''
       var dim = f.status === 'failed' || f.status === 'expired' ? ' opacity-60' : ''
       var chart = chartSvg(d)
       var detail = (chart ? '<div class="mb-2">' + chart + '</div>' : '') +
         '<div class="text-sm text-gray-700 mb-2">' + setupMetrics(d) + '</div>' +
         '<div class="text-sm text-gray-600 mb-2">' + (d.arrival_date ? 'Arrival candle: ' + escapeHtml(d.arrival_date) + ' &middot; ' : '') + 'Reversal candle: ' + escapeHtml(d.candle_date || '') + (num(d.trigger) !== null ? ' &middot; confirms when price trades ' + (bull ? 'above ' : 'below ') + money(d.trigger) : '') + (num(d.invalidation) !== null ? ' &middot; fails on a close ' + (bull ? 'below ' : 'above ') + money(d.invalidation) : '') + '</div>' +
+        (ei ? '<div class="text-sm text-gray-600 mb-2">' + escapeHtml(ei.long) + '</div>' : '') +
         '<a href="' + escapeHtml(stockChartsUrl(f.ticker)) + '" target="_blank" rel="noopener" class="text-sm text-brand-teal underline"><i class="fas fa-external-link-alt mr-1"></i>Open ' + escapeHtml(f.ticker) + ' on StockCharts</a>'
       return '<div class="border-b border-gray-200' + dim + '">' +
         '<button type="button" data-discovery-row="' + i + '" class="w-full text-left py-3 hover:bg-gray-50 flex items-start gap-3">' +
         '<span class="font-bold w-20 shrink-0">' + escapeHtml(f.ticker) + '</span>' +
-        '<span class="flex-1"><span class="text-gray-800">' + escapeHtml(f.headline) + '</span>' + dir + statusBadge(f.status) + etf + '</span>' +
+        '<span class="flex-1"><span class="text-gray-800">' + escapeHtml(f.headline) + '</span>' + dir + statusBadge(f.status) + earn + etf + '</span>' +
         '<span class="text-sm text-gray-500 shrink-0">' + escapeHtml(fmtDate(d.candle_date ? d.candle_date + 'T12:00:00Z' : f.found_at)) + '</span></button>' +
         '<div id="discovery-detail-' + i + '" class="hidden pb-4 pl-24">' + detail + '</div></div>'
     }).join('')
@@ -315,7 +340,7 @@
     if (tab === 'setup') list = activeSetups(list, now)
     return {
       status: statusLine(scan, tab, now),
-      list: (tab === 'setup' ? rulesPanel() : '') + (list.length ? (tab === 'setup' ? renderSetups(list) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>')
+      list: (tab === 'setup' ? rulesPanel() : '') + (list.length ? (tab === 'setup' ? renderSetups(list, now) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>')
     }
   }
 

@@ -96,6 +96,36 @@ describe('discovery view', () => {
       expect(svg).toContain('arrival'); expect(svg).toContain('reversal'); expect(svg).toContain('opacity="0.13"')
       expect(V().chartSvg(setup({}, { touch_pts: [[99, 99.2], ['x', 1]], flip_pts: null }).data)).not.toContain('<circle')   // junk points are ignored
     })
+    describe('next earnings', () => {
+      const earn = (date: any, extra: any = {}, data: any = {}) => list([setup({}, { next_earnings: { date, estimate: false, ...extra }, ...data })])
+      it('shows the date and days away right after the status badge, on stocks only', () => {
+        const html = earn('2026-12-10')
+        expect(html).toMatch(/Earnings Dec 10 \(in \d+ days\)/)
+        expect(html.indexOf('Awaiting confirmation')).toBeLessThan(html.indexOf('data-earnings'))
+        expect(html).toMatch(/data-earnings class="[^"]*bg-blue-100/)
+        expect(html).toContain('Next earnings: Dec 10, 2026 (confirmed date)')
+        const etf = list([setup({ ticker: 'SPY' }, { kind: 'etf' })])
+        expect(etf).not.toContain('data-earnings'); expect(etf).not.toContain('Next earnings'); expect(etf).toContain('>ETF<')
+      })
+      it('turns amber when earnings are within two weeks, and says today/tomorrow', () => {
+        expect(earn('2026-11-02')).toMatch(/data-earnings class="[^"]*bg-amber-100/)
+        const t = new Date(NOW2), p = (n: number) => String(n).padStart(2, '0')
+        const iso = (d: Date) => d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+        expect(earn(iso(t))).toContain('(today)')
+        expect(earn(iso(new Date(t.getTime() + 86400000)))).toContain('(tomorrow)')
+      })
+      it('marks an estimated date', () => {
+        const html = earn('2026-12-10', { estimate: true })
+        expect(html).toContain('Earnings ~Dec 10'); expect(html).toContain('estimate)'); expect(html).toContain('(estimated date)')
+      })
+      it('says unknown when the date is missing, in the past, or junk, and escapes it', () => {
+        expect(list([setup()])).toContain('Earnings unknown')
+        expect(earn('2026-10-01')).toContain('Earnings unknown')
+        const evil = earn('<img src=x onerror=alert(1)>')
+        expect(evil).toContain('Earnings unknown'); expect(evil).not.toContain('<img')
+        expect(list([setup({}, { next_earnings: null })])).toContain('Earnings unknown')
+      })
+    })
     it('the status line counts setups and the empty state explains itself', () => {
       expect(V().render({ scans: [{ scan_type: 'setup', last_run_at: '2026-10-22T14:00:00Z', candidates_found: 3 }], findings: [] }, 'setup', NOW2).status).toContain('3 setups')
       expect(list([])).toContain('No trade setups')
