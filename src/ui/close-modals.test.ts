@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import * as Calc from '../lib/calc'
@@ -7,7 +7,7 @@ import * as Calc from '../lib/calc'
 const load = (f: string) => (window as any).eval(fs.readFileSync(path.resolve(__dirname, '../../public/static/' + f), 'utf8'))
 const w = () => window as any
 
-const cc = { id: 5, ticker: 'ABC', strike_price: 55, premium: 0.85, quantity: 1, commission: 1.3, expiration_date: '2026-12-18' }
+const cc = { id: 5, ticker: 'ABC', strike_price: 55, premium: 0.85, quantity: 1, commission: 1.3, expiration_date: '2026-12-18', account_name: 'Interactive Brokers', account_type_name: 'Margin' }
 const put = { id: 1, ticker: 'XYZ', strategy_type: 'SELLING_PUT', strike_price: 50, premium: 1.2, quantity: 3, commission: 4, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
 const spread = { id: 2, ticker: 'XYZ', strategy_type: 'CREDIT_SPREAD', strike_price: 50, strike_price_2: 45, premium: 2.5, premium_2: 1, quantity: 2, commission: 1.3, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
 const condor = { id: 3, ticker: 'XYZ', strategy_type: 'IRON_CONDOR', strike_price: 60, strike_price_2: 65, strike_price_3: 45, strike_price_4: 40, premium: 1.0, premium_2: 0.3, premium_3: 0.9, premium_4: 0.2, quantity: 1, commission: 2.6, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
@@ -39,14 +39,49 @@ beforeEach(() => {
 
 describe('close covered call modal', () => {
   const open = () => w().closeCoveredCall(5, 9)
+  const dateField = () => document.querySelector('#closeCoveredCallForm [name="close_date"]') as HTMLInputElement
+  const hint = () => dateField().closest('div')!.querySelector('small')!.textContent
+  // 8:30 pm on Oct 26, local time: in a zone behind UTC the UTC date is already Oct 27, which must not leak into the default
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 26, 20, 30)) })
+  afterEach(() => { vi.useRealTimers() })
 
-  it('opens amber, replaces the details modal, defaults the close date to expiration, and shows the opening P/L', async () => {
+  it('opens amber, replaces the details modal, defaults the close date to today, and shows the opening P/L', async () => {
     await open()
     const modal = document.getElementById('close-covered-call-modal')!
     expect(modal.querySelector('[data-mk="header"]')!.className).toContain('from-amber-600')
     expect(document.getElementById('stock-details-modal')).toBeNull()
-    expect((modal.querySelector('[name="close_date"]') as HTMLInputElement).value).toBe('2026-12-18')
+    expect((modal.querySelector('[name="close_date"]') as HTMLInputElement).value).toBe('2026-10-26')
     expect(analysis()).toContain('Net profit / loss +$83.70')   // 0.85 x 100 - 1.30, close price 0
+  })
+
+  it('close date: today until the expiration date has passed, then the expiration date', async () => {
+    await open()
+    expect(dateField().value).toBe('2026-10-26'); expect(hint()).toBe('Defaults to current date')
+    api.get.mockResolvedValueOnce({ data: [{ ...cc, expiration_date: '2026-10-26' }] })      // expires today: not passed yet
+    await open()
+    expect(dateField().value).toBe('2026-10-26'); expect(hint()).toBe('Defaults to current date')
+    api.get.mockResolvedValueOnce({ data: [{ ...cc, expiration_date: '2026-10-23' }] })      // already expired
+    await open()
+    expect(dateField().value).toBe('2026-10-23'); expect(hint()).toBe('Defaults to expiration date (exp date has passed)')
+    api.get.mockResolvedValueOnce({ data: [{ ...cc, expiration_date: '2026-10-27' }] })      // tomorrow
+    await open()
+    expect(dateField().value).toBe('2026-10-26')
+  })
+
+  it('shows the account in the header: name plus type, once, escaped, and nothing without an account', async () => {
+    const acct = () => document.querySelector('#close-covered-call-modal [data-mk="account"]')
+    await open()
+    expect(acct()!.textContent).toContain('Account: Interactive Brokers (Margin)')
+    expect(document.querySelector('#close-covered-call-modal [data-mk="header"]')!.contains(acct())).toBe(true)
+    api.get.mockResolvedValueOnce({ data: [{ ...cc, account_name: 'Questrade RRSP', account_type_name: 'RRSP' }] })
+    await open()
+    expect(acct()!.textContent).toContain('Account: Questrade RRSP'); expect(acct()!.textContent).not.toContain('(RRSP)')
+    api.get.mockResolvedValueOnce({ data: [{ ...cc, account_name: '<img src=x onerror=alert(1)>', account_type_name: null }] })
+    await open()
+    expect(document.querySelector('#close-covered-call-modal img')).toBeNull(); expect(acct()!.textContent).toContain('<img')
+    api.get.mockResolvedValueOnce({ data: [{ ...cc, account_name: null, account_type_name: null }] })
+    await open()
+    expect(acct()).toBeNull()
   })
 
   it('live P/L follows close price and commission', async () => {
@@ -84,6 +119,22 @@ describe('close covered call modal', () => {
     api.get.mockResolvedValueOnce({ data: [] })
     await open()
     expect(w().alert).toHaveBeenCalledWith('Covered call not found')
+  })
+})
+
+describe('ModalKit account line and label', () => {
+  it('accountLabel combines name and type without repeating it', () => {
+    const L = w().ModalKit.accountLabel
+    expect(L('Interactive Brokers', 'Margin')).toBe('Interactive Brokers (Margin)')
+    expect(L('Questrade RRSP', 'RRSP')).toBe('Questrade RRSP')
+    expect(L('Questrade', 'rrsp')).toBe('Questrade (rrsp)')
+    expect(L('Cash', null)).toBe('Cash'); expect(L(null, 'TFSA')).toBe('TFSA'); expect(L(null, null)).toBe(''); expect(L('  ', undefined)).toBe('')
+  })
+  it('any modal can show an account by passing account to ModalKit.open; none shown when omitted', () => {
+    const m = w().ModalKit.open({ id: 'x', strategy: 'SELLING_PUT', title: 'T', subtitle: 'S', account: 'Cash', body: '' })
+    expect(m.qs('[data-mk="account"]').textContent).toContain('Account: Cash')
+    const n = w().ModalKit.open({ id: 'y', strategy: 'SELLING_PUT', title: 'T', body: '' })
+    expect(n.qs('[data-mk="account"]')).toBeNull()
   })
 })
 

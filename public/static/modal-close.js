@@ -3,6 +3,12 @@
 
 var CLOSE_COLS = ['', '_2', '_3', '_4']   // leg i -> strike_price / premium / close_price + CLOSE_COLS[i]
 
+// Today as YYYY-MM-DD in the user's own time zone (toISOString would already say tomorrow in the evening).
+function closeModalToday() {
+  const d = new Date(), p = n => String(n).padStart(2, '0')
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+}
+
 async function closeCoveredCall(ccId, stockId) {
   let cc
   try {
@@ -20,12 +26,16 @@ async function closeCoveredCall(ccId, stockId) {
 
   const K = ModalKit
   const S = 'COVERED_CALL'
+  // Close date: today, unless the expiration date has already passed (then the expiration date).
+  const expDate = String(cc.expiration_date || '').slice(0, 10)
+  const expired = !!expDate && expDate < closeModalToday()
   const m = K.open({
     id: 'close-covered-call-modal',
     strategy: S,
     icon: 'fa-check-circle',
     title: 'Close Covered Call',
     subtitle: `${cc.ticker} - Finalize Position`,
+    account: K.accountLabel(cc.account_name, cc.account_type_name),
     onClose: () => showStockDetails(stockId),
     body: `
       ${K.summary('Position Summary', [
@@ -36,7 +46,7 @@ async function closeCoveredCall(ccId, stockId) {
       ])}
       <form id="closeCoveredCallForm">
         ${K.grid(3,
-          K.field({ strategy: S, label: 'Close Date', name: 'close_date', type: 'date', value: cc.expiration_date, required: true, hint: 'Defaults to expiration date' }) +
+          K.field({ strategy: S, label: 'Close Date', name: 'close_date', type: 'date', value: expired ? expDate : closeModalToday(), required: true, hint: expired ? 'Defaults to expiration date (exp date has passed)' : 'Defaults to current date' }) +
           K.field({ strategy: S, label: 'Close Price/Share', name: 'close_price', type: 'number', step: '0.001', value: 0, placeholder: '0.000', required: true }) +
           K.field({ strategy: S, label: 'Commission', name: 'commission', type: 'number', step: '0.01', value: 0, placeholder: '0.00', required: true }))}
         ${K.analysisPanel('close-analysis', S, 'P/L Calculation')}

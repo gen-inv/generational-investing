@@ -56,6 +56,14 @@
     }
   }
 
+  // "Questrade (RRSP)": the account name plus its type, unless the name already says it. '' when there is no account.
+  function accountLabel(name, type) {
+    const n = String(name == null ? '' : name).trim(), ty = String(type == null ? '' : type).trim()
+    if (!n) return ty
+    if (!ty || n.toLowerCase().indexOf(ty.toLowerCase()) !== -1) return n
+    return n + ' (' + ty + ')'
+  }
+
   const SIZES = { '2xl': 'max-w-2xl', '3xl': 'max-w-3xl', '4xl': 'max-w-4xl', '5xl': 'max-w-5xl' }
   const COLS = { 1: 'md:grid-cols-1', 2: 'md:grid-cols-2', 3: 'md:grid-cols-3', 4: 'md:grid-cols-4' }
 
@@ -77,6 +85,7 @@
                 ${o.icon ? `<i class="fas ${esc(o.icon)} mr-2"></i>` : ''}${esc(o.title)}
               </h3>
               ${o.subtitle ? `<p class="${t.sub} text-sm">${esc(o.subtitle)}</p>` : ''}
+              ${o.account ? `<p data-mk="account" class="${t.sub} text-sm font-semibold"><i class="fas fa-wallet mr-1"></i>Account: ${esc(o.account)}</p>` : ''}
             </div>
             <button type="button" data-mk="x" class="text-white ${t.closeHover} text-xl" aria-label="Close">
               <i class="fas fa-times"></i>
@@ -178,5 +187,5 @@
       </div>`
   }
 
-  global.ModalKit = { STRATEGIES, COLOURS, theme, esc, fmt, open, field, grid, stat, summary, analysisPanel, renderAnalysis, buttons }
+  global.ModalKit = { STRATEGIES, COLOURS, theme, esc, fmt, accountLabel, open, field, grid, stat, summary, analysisPanel, renderAnalysis, buttons }
 })(typeof window !== 'undefined' ? window : globalThis)
