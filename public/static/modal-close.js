@@ -128,6 +128,7 @@ async function closeOption(optionId) {
     icon: 'fa-check-circle',
     title: 'Close Option Trade',
     subtitle: `${option.ticker} - ${spec.label}`,
+    account: K.accountLabel(option.account_name, option.account_type_name),
     size: '3xl',
     body: `
       ${K.summary('Position Summary', [
@@ -137,7 +138,7 @@ async function closeOption(optionId) {
         K.stat('Open commission', K.fmt.money(parseFloat(option.commission || 0)))
       ])}
       <form id="closeOptionForm">
-        ${K.grid(2, K.field({ strategy: S, label: 'Close Date', name: 'close_date', type: 'date', value: new Date().toISOString().split('T')[0], required: true }) +
+        ${K.grid(2, K.field({ strategy: S, label: 'Close Date', name: 'close_date', type: 'date', value: closeModalToday(), required: true }) +
                     K.field({ strategy: S, label: 'Close Commission', name: 'close_commission', type: 'number', step: '0.01', value: 0, placeholder: '0.00' }))}
         ${K.grid(2, spec.legs.map(legField).join(''))}
         ${K.analysisPanel('close-analysis', S, 'Trade Analysis')}

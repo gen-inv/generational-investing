@@ -8,7 +8,7 @@ const load = (f: string) => (window as any).eval(fs.readFileSync(path.resolve(__
 const w = () => window as any
 
 const cc = { id: 5, ticker: 'ABC', strike_price: 55, premium: 0.85, quantity: 1, commission: 1.3, expiration_date: '2026-12-18', account_name: 'Interactive Brokers', account_type_name: 'Margin' }
-const put = { id: 1, ticker: 'XYZ', strategy_type: 'SELLING_PUT', strike_price: 50, premium: 1.2, quantity: 3, commission: 4, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
+const put = { id: 1, ticker: 'XYZ', strategy_type: 'SELLING_PUT', strike_price: 50, premium: 1.2, quantity: 3, commission: 4, trade_date: '2026-10-01', expiration_date: '2026-12-18', account_name: 'Questrade', account_type_name: 'RRSP' }
 const spread = { id: 2, ticker: 'XYZ', strategy_type: 'CREDIT_SPREAD', strike_price: 50, strike_price_2: 45, premium: 2.5, premium_2: 1, quantity: 2, commission: 1.3, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
 const condor = { id: 3, ticker: 'XYZ', strategy_type: 'IRON_CONDOR', strike_price: 60, strike_price_2: 65, strike_price_3: 45, strike_price_4: 40, premium: 1.0, premium_2: 0.3, premium_3: 0.9, premium_4: 0.2, quantity: 1, commission: 2.6, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
 const longCall = { id: 4, ticker: 'XYZ', strategy_type: 'LONG_CALL', strike_price: 60, premium: 1.5, quantity: 1, commission: 1, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
@@ -177,6 +177,17 @@ describe('close option modal', () => {
     ;['close_price', 'close_price_2', 'close_price_3', 'close_price_4'].forEach((n, i) => type('closeOptionForm', n, ['0.2', '0.05', '0.15', '0.05'][i]))
     type('closeOptionForm', 'close_commission', '2.6')
     expect(analysis()).toContain('Net profit / loss +$109.80')
+  })
+
+  it('shows the account in the header, and defaults the close date to today in local time', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 26, 20, 30))   // 8:30 pm local: the UTC date may already be the 27th
+    try {
+      await open(1)
+      expect(document.querySelector('#close-option-modal [data-mk="account"]')!.textContent).toContain('Account: Questrade (RRSP)')
+      expect((document.querySelector('#closeOptionForm [name="close_date"]') as HTMLInputElement).value).toBe('2026-10-26')
+      await open(2)   // this row carries no account
+      expect(document.querySelector('#close-option-modal [data-mk="account"]')).toBeNull()
+    } finally { vi.useRealTimers() }
   })
 
   it('shows a loss clearly', async () => {
