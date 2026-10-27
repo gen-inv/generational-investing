@@ -89,6 +89,30 @@ describe('covered call entry modal', () => {
     expect(warnings.some(w => /below your cost basis of \$50\.00/.test(w!))).toBe(true)
   })
 
+  it('below cost basis, states the cumulative loss if called away (premium included)', async () => {
+    await open()
+    type('strike_price', '45'); type('premium', '1'); type('quantity', '2'); type('commission', '0')
+    const warnings = [...document.querySelectorAll('[data-mk="warning"]')].map(e => e.textContent!)
+    expect(warnings.some(w => /If called away, you will have a cumulative loss of \$800\.00/.test(w))).toBe(true)
+    expect(warnings.some(w => /realise|on the shares/.test(w))).toBe(false)
+  })
+
+  it('below cost basis but covered by premium, states a cumulative profit instead', async () => {
+    await open()
+    type('strike_price', '49.5'); type('premium', '3'); type('quantity', '2'); type('commission', '0')
+    const warnings = [...document.querySelectorAll('[data-mk="warning"]')].map(e => e.textContent!)
+    expect(warnings.some(w => /below your cost basis of \$50\.00/.test(w) && /cumulative profit of \$500\.00/.test(w))).toBe(true)
+  })
+
+  it('defaults the trade date to the local date, not the UTC date', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 9, 26, 20, 30))
+    try {
+      await open()
+      expect((document.querySelector('#coveredCallForm [name="trade_date"]') as HTMLInputElement).value).toBe('2026-10-26')
+    } finally { vi.useRealTimers() }
+  })
+
   it('saves the covered call with the right payload, then returns to the stock details', async () => {
     await open()
     type('strike_price', '55'); type('premium', '0.85'); type('quantity', '2'); type('commission', '1.3')

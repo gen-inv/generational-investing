@@ -25,7 +25,9 @@ async function initiateCoveredCall(stockId) {
 
   const K = ModalKit
   const S = 'COVERED_CALL'
-  const today = new Date().toISOString().split('T')[0]
+  const pad = n => String(n).padStart(2, '0')
+  const nowLocal = new Date()
+  const today = `${nowLocal.getFullYear()}-${pad(nowLocal.getMonth() + 1)}-${pad(nowLocal.getDate())}`
 
   const m = K.open({
     id: 'covered-call-modal',
@@ -76,7 +78,7 @@ async function initiateCoveredCall(stockId) {
     const ann = r => (r == null ? '' : `${K.fmt.pct(r, 1)} annualized`)
     const warnings = []
     if (contracts > maxContracts) warnings.push(`You only hold enough shares for ${maxContracts} contract${maxContracts === 1 ? '' : 's'}.`)
-    if (a.lockedInLoss) warnings.push(`Strike is below your cost basis of ${K.fmt.money(costBasis)}. If called away you would realise a loss of ${K.fmt.money(Math.abs((strike - costBasis) * a.shares))} on the shares, before premium.`)
+    if (a.lockedInLoss) warnings.push(`Strike is below your cost basis of ${K.fmt.money(costBasis)}. If called away, you will have a cumulative ${a.gainIfCalled < 0 ? 'loss' : 'profit'} of ${K.fmt.money(Math.abs(a.gainIfCalled))} (including premium).`)
 
     K.renderAnalysis(panel, [
       { label: 'Net premium income', value: K.fmt.money(a.netPremium, { plus: true }), tone: a.netPremium >= 0 ? 'good' : 'bad' },
