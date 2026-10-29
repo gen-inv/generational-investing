@@ -102,6 +102,13 @@ routes.get('/', researchAccessMiddleware, async (c) => {
   return c.json({ scans: scans.results, findings })
 })
 
+// The tickers on Rob's Company Roster (user 1), for the trade-setup scan on the research machine. Ingest token only: a site login is not enough.
+routes.get('/roster', researchMachineMiddleware, async (c) => {
+  const rows = await c.env.DB.prepare('SELECT ticker FROM companies WHERE user_id = ? ORDER BY ticker ASC').bind(1).all()
+  const tickers = [...new Set(((rows.results || []) as any[]).map((r) => String(r.ticker || '').trim().toUpperCase()).filter(isValidTicker))].sort()
+  return c.json({ tickers })
+})
+
 // Called when a company is added to the roster (by the website or by Kendry): marks any open discovery finding for that ticker "added".
 // Never throws -- a Discovery hiccup must not break adding a company.
 export async function markDiscoveryAdded(env: any, ticker: string): Promise<void> {
