@@ -137,11 +137,22 @@ describe('discovery view', () => {
     it('the status line names setups first reported by the latest run', () => {
       const scan = { scan_type: 'setup', last_run_at: '2026-10-23T14:00:00Z', candidates_found: 3 }
       const st = (rows: any[]) => V().render({ scans: [scan], findings: rows }, 'setup', NOW2).status
-      const one = st([setup({ ticker: 'NEW', found_at: '2026-10-23T13:58:00Z' }), setup({ ticker: 'OLD' })])
+      const fresh = { candle_date: '2026-10-22' }   // the session before this Friday run
+      const one = st([setup({ ticker: 'NEW' }, fresh), setup({ ticker: 'OLD' })])
       expect(one).toContain('Found 1 new setup: NEW'); expect(one).not.toContain('OLD'); expect(one).not.toContain('Nothing new')
-      const two = st([setup({ ticker: 'N1', found_at: '2026-10-23T13:58:00Z' }), setup({ ticker: 'N2', found_at: '2026-10-23T13:59:00Z' })])
+      const two = st([setup({ ticker: 'N1' }, fresh), setup({ ticker: 'N2' }, fresh)])
       expect(two).toContain('Found 2 new setups: N1, N2')
-      expect(st([setup({ ticker: '<b>x</b>', found_at: '2026-10-23T13:58:00Z' })])).not.toContain('<b>')
+      expect(st([setup({ ticker: '<b>x</b>' }, fresh)])).not.toContain('<b>')
+    })
+    it('an old setup that was re-stamped today (waiting -> confirmed) is not new', () => {
+      const scan = { scan_type: 'setup', last_run_at: '2026-10-29T14:50:24.369Z' }
+      const html = V().render({ scans: [scan], findings: [setup({ ticker: 'UNH', status: 'confirmed', found_at: '2026-10-29T14:50:23.920Z' }, { candle_date: '2026-10-23' })] }, 'setup', Date.parse('2026-10-29T15:00:00Z')).status
+      expect(html).toContain('Nothing new'); expect(html).not.toContain('UNH')
+    })
+    it('a Monday run counts the Friday reversal candle as new, the Thursday one as old', () => {
+      const scan = { scan_type: 'setup', last_run_at: '2026-10-26T14:50:00Z' }
+      const st = (candle: string) => V().render({ scans: [scan], findings: [setup({ ticker: 'MON' }, { candle_date: candle })] }, 'setup', Date.parse('2026-10-26T15:00:00Z')).status
+      expect(st('2026-10-23')).toContain('Found 1 new setup: MON'); expect(st('2026-10-22')).toContain('Nothing new')
     })
     it('other tabs still show their counts', () => {
       expect(V().statusLine({ scan_type: 'maturing', last_run_at: '2026-10-20T00:00:00Z', candidates_found: 5 }, 'maturing', NOW)).toContain('5 candidates examined')

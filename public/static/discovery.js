@@ -33,13 +33,24 @@
     return Math.floor(((now || Date.now()) - t) / 86400000)
   }
 
-  // Trade setups: say only whether the latest run found anything new (first reported by that run), never what is still active.
+  // The last weekday before the day a scan ran (YYYY-MM-DD, UTC date of the run). A reversal candle on or after it is news; older ones are not.
+  function prevTradingDay(iso) {
+    var t = Date.parse(iso)
+    if (isNaN(t)) return null
+    var d = new Date(t)
+    d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+    do { d.setUTCDate(d.getUTCDate() - 1) } while (d.getUTCDay() === 0 || d.getUTCDay() === 6)
+    return d.toISOString().slice(0, 10)
+  }
+
+  // Trade setups: say only whether the latest run found anything new, never what is still active. New = its reversal candle is from the latest
+  // session (found_at is not used: the scanner re-stamps it when a setup changes status, e.g. waiting -> confirmed).
   function newSetupsText(scan, findings) {
-    var run = Date.parse(scan.last_run_at)
+    var since = prevTradingDay(scan.last_run_at)
     var seen = {}, names = []
     ;(findings || []).forEach(function (f) {
-      var t = Date.parse(f.found_at)
-      if (isNaN(run) || isNaN(t) || t < run - 3 * 3600000 || seen[f.ticker]) return
+      var c = f.data && f.data.candle_date
+      if (!since || typeof c !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(c) || c < since || seen[f.ticker]) return
       seen[f.ticker] = true; names.push(f.ticker)
     })
     if (!names.length) return '<span data-new-setups="none">Nothing new</span>'
