@@ -33,16 +33,33 @@
     return Math.floor(((now || Date.now()) - t) / 86400000)
   }
 
-  function statusLine(scan, tab, now) {
+  // Trade setups: say only whether the latest run found anything new (first reported by that run), never what is still active.
+  function newSetupsText(scan, findings) {
+    var run = Date.parse(scan.last_run_at)
+    var seen = {}, names = []
+    ;(findings || []).forEach(function (f) {
+      var t = Date.parse(f.found_at)
+      if (isNaN(run) || isNaN(t) || t < run - 3 * 3600000 || seen[f.ticker]) return
+      seen[f.ticker] = true; names.push(f.ticker)
+    })
+    if (!names.length) return '<span data-new-setups="none">Nothing new</span>'
+    return '<span data-new-setups="found" class="text-green-700 font-semibold">Found ' + names.length + ' new ' + (names.length === 1 ? 'setup' : 'setups') + ': ' + names.map(escapeHtml).join(', ') + '</span>'
+  }
+
+  function statusLine(scan, tab, now, findings) {
     if (!scan) return '<span class="text-gray-500">This scan has not reported in yet.</span>'
     var ago = daysAgo(scan.last_run_at, now)
     var when = fmtDate(scan.last_run_at) + (fmtTime(scan.last_run_at) ? ', ' + fmtTime(scan.last_run_at) : '') + (ago === null ? '' : ago <= 0 ? ' (today)' : ' (' + ago + (ago === 1 ? ' day' : ' days') + ' ago)')
     var stale = ago !== null && ago > TABS[tab].every * 2
     var bits = ['<strong>Last ran:</strong> ' + escapeHtml(when)]
-    if (scan.gurus_scanned != null) bits.push(escapeHtml(scan.gurus_scanned) + ' gurus scanned')
-    if (scan.candidates_found != null) bits.push(escapeHtml(scan.candidates_found) + ' ' + (TABS[tab].unit || 'candidates examined'))
+    if (tab === 'setup') {
+      bits.push(newSetupsText(scan, findings))
+    } else {
+      if (scan.gurus_scanned != null) bits.push(escapeHtml(scan.gurus_scanned) + ' gurus scanned')
+      if (scan.candidates_found != null) bits.push(escapeHtml(scan.candidates_found) + ' ' + (TABS[tab].unit || 'candidates examined'))
+    }
     var out = bits.join(' &middot; ')
-    if (scan.note) out += '<div class="text-gray-500">' + escapeHtml(scan.note) + '</div>'
+    if (scan.note && tab !== 'setup') out += '<div class="text-gray-500">' + escapeHtml(scan.note) + '</div>'
     if (stale) out += '<div class="text-red-600 font-semibold">This scan is overdue &mdash; it should run about every ' + TABS[tab].every + ' days.</div>'
     return out
   }
@@ -337,9 +354,10 @@
   function render(state, tab, now) {
     var scan = (state.scans || []).filter(function (s) { return s.scan_type === tab })[0]
     var list = (state.findings || []).filter(function (f) { return f.scan_type === tab })
+    var reported = list
     if (tab === 'setup') list = activeSetups(list, now)
     return {
-      status: statusLine(scan, tab, now),
+      status: statusLine(scan, tab, now, reported),
       list: (tab === 'setup' ? rulesPanel() : '') + (list.length ? (tab === 'setup' ? renderSetups(list, now) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>')
     }
   }

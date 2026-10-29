@@ -126,8 +126,27 @@ describe('discovery view', () => {
         expect(list([setup({}, { next_earnings: null })])).toContain('Earnings unknown')
       })
     })
-    it('the status line counts setups and the empty state explains itself', () => {
-      expect(V().render({ scans: [{ scan_type: 'setup', last_run_at: '2026-10-22T14:00:00Z', candidates_found: 3 }], findings: [] }, 'setup', NOW2).status).toContain('3 setups')
+    it('the status line says Nothing new when the latest run found nothing new, and never mentions what is still active', () => {
+      const scan = { scan_type: 'setup', last_run_at: '2026-10-23T14:00:00Z', candidates_found: 3, note: '3 active setups' }
+      const st = (rows: any[]) => V().render({ scans: [scan], findings: rows }, 'setup', NOW2).status
+      const old = st([setup()])   // found the day before
+      expect(old).toContain('Last ran:'); expect(old).toContain('Nothing new')
+      expect(old).not.toMatch(/\d+ setups/); expect(old).not.toContain('active'); expect(old).not.toContain('AAA')
+      expect(st([])).toContain('Nothing new')
+    })
+    it('the status line names setups first reported by the latest run', () => {
+      const scan = { scan_type: 'setup', last_run_at: '2026-10-23T14:00:00Z', candidates_found: 3 }
+      const st = (rows: any[]) => V().render({ scans: [scan], findings: rows }, 'setup', NOW2).status
+      const one = st([setup({ ticker: 'NEW', found_at: '2026-10-23T13:58:00Z' }), setup({ ticker: 'OLD' })])
+      expect(one).toContain('Found 1 new setup: NEW'); expect(one).not.toContain('OLD'); expect(one).not.toContain('Nothing new')
+      const two = st([setup({ ticker: 'N1', found_at: '2026-10-23T13:58:00Z' }), setup({ ticker: 'N2', found_at: '2026-10-23T13:59:00Z' })])
+      expect(two).toContain('Found 2 new setups: N1, N2')
+      expect(st([setup({ ticker: '<b>x</b>', found_at: '2026-10-23T13:58:00Z' })])).not.toContain('<b>')
+    })
+    it('other tabs still show their counts', () => {
+      expect(V().statusLine({ scan_type: 'maturing', last_run_at: '2026-10-20T00:00:00Z', candidates_found: 5 }, 'maturing', NOW)).toContain('5 candidates examined')
+    })
+    it('the empty state explains itself', () => {
       expect(list([])).toContain('No trade setups')
     })
     it('posts the rules for both directions, with a toggle that shows one at a time', () => {
