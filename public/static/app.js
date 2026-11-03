@@ -261,6 +261,7 @@ function logout() {
     token = null
     currentUser = null
     localStorage.removeItem('token')
+    if (typeof MenuSettings !== 'undefined') MenuSettings.reset()
     document.getElementById('auth-screen').classList.remove('hidden')
     document.getElementById('main-app').classList.add('hidden')
     showLogin()
@@ -474,6 +475,9 @@ function showMainApp() {
         console.error('Failed to load user profile:', err)
         // Don't block login if profile load fails
     })
+
+    // Menu choices (Profile > Menu Settings), non-blocking
+    if (typeof MenuSettings !== 'undefined') MenuSettings.load()
 }
 
 // ============================================================================
@@ -481,6 +485,9 @@ function showMainApp() {
 // ============================================================================
 
 function showSection(sectionName) {
+    // A switched-off area (Menu Settings) falls back to the dashboard
+    if (typeof MenuSettings !== 'undefined') sectionName = MenuSettings.guard(sectionName)
+
     // Hide all sections
     document.querySelectorAll('.section').forEach(section => {
         section.classList.add('hidden')

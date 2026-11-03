@@ -320,6 +320,9 @@ routes.get('/', (c) => {
                                     <a href="#" onclick="showPasswordModal(); return false;" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                                         <i class="fas fa-key mr-2"></i>Change Password
                                     </a>
+                                    <a href="#" onclick="showMenuSettings(); return false;" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                        <i class="fas fa-sliders-h mr-2"></i>Menu Settings
+                                    </a>
                                     <div class="border-t border-gray-200 my-1"></div>
                                     <a href="#" onclick="logout(); return false;" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50">
                                         <i class="fas fa-sign-out-alt mr-2"></i>Logout
@@ -3298,6 +3301,7 @@ Transaction History[TAB]Data[TAB]2025-01-24[TAB]U***13773[TAB]NVDA 07FEB25 138 P
         <script src="/static/modal-sell-edit.js"></script>
         <script src="/static/research-merge.js"></script>
         <script src="/static/discovery.js"></script>
+        <script src="/static/menu-settings.js"></script>
         <script src="/static/app.js"></script>
     </body>
     </html>

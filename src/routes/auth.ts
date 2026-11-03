@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { hashPassword, verifyPassword, generateToken, fetchAndCacheExchangeRate, authMiddleware } from '../lib/auth'
 import type { Bindings } from '../types'
+import { SWITCHABLE_SECTIONS, cleanHidden, getHiddenSections, saveHiddenSections } from '../lib/user-prefs'
 
 export const routes = new Hono<{ Bindings: Bindings }>()
 
@@ -190,6 +191,32 @@ routes.put('/api/user/profile', authMiddleware, async (c) => {
   } catch (error) {
     console.error('Update profile error:', error)
     return c.json({ error: 'Failed to update profile' }, 500)
+  }
+})
+
+// Menu preferences: which main-menu areas this user has switched off (the Dashboard is always on)
+routes.get('/api/user/preferences', authMiddleware, async (c) => {
+  try {
+    const hidden = await getHiddenSections(c.env.DB, c.get('userId'))
+    return c.json({ hidden })
+  } catch (error) {
+    console.error('Get preferences error:', error)
+    return c.json({ error: 'Failed to get preferences' }, 500)
+  }
+})
+
+routes.put('/api/user/preferences', authMiddleware, async (c) => {
+  try {
+    const body: any = await c.req.json().catch(() => null)
+    if (!body || !Array.isArray(body.hidden)) return c.json({ error: 'hidden must be a list of menu items' }, 400)
+    const unknown = body.hidden.filter((k: any) => !(SWITCHABLE_SECTIONS as readonly string[]).includes(k))
+    if (unknown.length) return c.json({ error: `Unknown menu item: ${unknown.join(', ')}` }, 400)
+    const hidden = cleanHidden(body.hidden)
+    await saveHiddenSections(c.env.DB, c.get('userId'), hidden)
+    return c.json({ hidden })
+  } catch (error) {
+    console.error('Save preferences error:', error)
+    return c.json({ error: 'Failed to save preferences' }, 500)
   }
 })
 
