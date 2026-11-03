@@ -10,7 +10,7 @@
     { key: 'utilities', label: 'Utilities', icon: 'fa-tools' },
     { key: 'reports', label: 'Reports', icon: 'fa-file-alt' }
   ]
-  var INTRO = "Switch off the areas you don't use and they disappear from the main menu. Nothing is deleted: switch an area back on and it returns with all its data. The Dashboard is always on."
+  var INTRO = "Switch off the areas you don't use. They disappear from the main menu, and the reports leave out their trades and numbers. Nothing is deleted: switch an area back on and it all returns. The Dashboard is always on."
   var CACHE_KEY = 'menuHidden'
   var hidden = []
 
@@ -28,10 +28,30 @@
   // Where to go when asked for a section that is switched off.
   function guard(key) { return isHidden(key) ? 'dashboard' : key }
 
+  // Reports: hide the tabs and filter choices that only make sense for an area that is switched off
+  function applyReportAreas() {
+    var doc = root.document
+    var noStocks = isHidden('stocks'), noOptions = isHidden('options'), noDaily = isHidden('daily-trade')
+    var tabs = { positions: noStocks, dividends: noStocks, strategy: noOptions && noDaily, 'closed-trades': noStocks && noOptions }
+    Object.keys(tabs).forEach(function (t) {
+      doc.querySelectorAll('.report-tab[data-tab="' + t + '"]').forEach(function (b) { b.classList.toggle('hidden', tabs[t]) })
+    })
+    var sel = doc.getElementById('closed-trade-type')
+    if (sel) {
+      Array.prototype.forEach.call(sel.options, function (o) {
+        var off = (o.value === 'stocks' && noStocks) || (o.value === 'options' && noOptions)
+        o.hidden = off
+        o.disabled = off
+      })
+      if (sel.selectedOptions[0] && sel.selectedOptions[0].disabled) sel.value = 'all'
+    }
+  }
+
   function apply() {
     root.document.querySelectorAll('.nav-link[data-section]').forEach(function (a) {
       a.classList.toggle('hidden', isHidden(a.getAttribute('data-section')))
     })
+    applyReportAreas()
   }
 
   function reset() {

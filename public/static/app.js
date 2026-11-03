@@ -4191,7 +4191,7 @@ async function loadClosedTrades() {
         const tradeType = document.getElementById('closed-trade-type').value
         
         // Load closed stock trades
-        if (tradeType === 'all' || tradeType === 'stocks') {
+        if ((tradeType === 'all' || tradeType === 'stocks') && !(typeof MenuSettings !== 'undefined' && MenuSettings.isHidden('stocks'))) {
             // One row per SELL: partial sells (position still open) and full closes
             const stocksResponse = await api.get('/api/stocks/closed-trades')
             const closedStocks = stocksResponse.data
@@ -4244,7 +4244,7 @@ async function loadClosedTrades() {
         }
         
         // Load closed option trades
-        if (tradeType === 'all' || tradeType === 'options') {
+        if ((tradeType === 'all' || tradeType === 'options') && !(typeof MenuSettings !== 'undefined' && MenuSettings.isHidden('options'))) {
             const optionsResponse = await api.get('/api/options?closed=true')
             const closedOptions = optionsResponse.data
             

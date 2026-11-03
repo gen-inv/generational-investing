@@ -3,6 +3,7 @@ import { loadRealizedSells, sumRealized } from '../lib/stock-pl'
 import { costBasisPerShare } from '../lib/cost-basis'
 import { optionPL } from '../lib/calc'
 import { getRates } from '../lib/fx'
+import { getFeatures } from '../lib/user-prefs'
 import { authMiddleware } from '../lib/auth'
 import type { Bindings } from '../types'
 
@@ -68,25 +69,26 @@ routes.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
     
     // Get YTD P/L from all closed trades
     // Stock P/L = realized P/L of every SELL (partial sells included), not the legacy stock_trades table
-    const allStockSells = await loadRealizedSells(DB, userId)
+    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const allStockSells = F.stocks ? await loadRealizedSells(DB, userId) : []
     const stockPL = {
       total_pl: sumRealized(allStockSells.filter(s => s.sell_date.startsWith(`${currentYear}`)))
     }
 
-    const optionPL = await DB.prepare(`
+    const optionPL = !F.options ? { total_pl: 0 } : await DB.prepare(`
       SELECT COALESCE(SUM(profit_loss), 0) as total_pl
       FROM option_trades
       WHERE user_id = ? AND is_open = 0 AND close_date LIKE ?
     `).bind(userId, `${currentYear}%`).first() as any
     
-    const dailyPL = await DB.prepare(`
+    const dailyPL = !F.daily ? { total_pl: 0 } : await DB.prepare(`
       SELECT COALESCE(SUM(profit_loss), 0) as total_pl
       FROM daily_trades
       WHERE user_id = ? AND is_open = 0 AND strftime('%Y', trade_date) = ?
     `).bind(userId, currentYear.toString()).first() as any
     
     // Get YTD dividends
-    const dividends = await DB.prepare(`
+    const dividends = !F.stocks ? { total_dividends: 0 } : await DB.prepare(`
       SELECT COALESCE(SUM(cba.amount), 0) as total_dividends
       FROM cost_basis_adjustments cba
       WHERE cba.user_id = ?
@@ -105,11 +107,11 @@ routes.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
         AVG(profit_loss) as avg_pl,
         MAX(profit_loss) as best_trade
       FROM (
-        SELECT profit_loss FROM option_trades WHERE user_id = ? AND is_open = 0
+        SELECT profit_loss FROM option_trades WHERE user_id = ? AND is_open = 0 AND ? = 1
         UNION ALL
-        SELECT profit_loss FROM daily_trades WHERE user_id = ? AND is_open = 0
+        SELECT profit_loss FROM daily_trades WHERE user_id = ? AND is_open = 0 AND ? = 1
       )
-    `).bind(userId, userId).first() as any
+    `).bind(userId, F.options ? 1 : 0, userId, F.daily ? 1 : 0).first() as any
 
     // Fold the stock sells (one trade per SELL) into the option/daily statistics
     const sellPLs = allStockSells.map(s => s.realized_pl)
@@ -140,19 +142,19 @@ routes.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
         pl: sumRealized(allStockSells.filter(s => s.sell_date.startsWith(`${year}-${monthStr}`)))
       }
 
-      const monthlyOptionPL = await DB.prepare(`
+      const monthlyOptionPL = !F.options ? { pl: 0 } : await DB.prepare(`
         SELECT COALESCE(SUM(profit_loss), 0) as pl
         FROM option_trades
         WHERE user_id = ? AND is_open = 0 AND close_date LIKE ?
       `).bind(userId, `${year}-${monthStr}%`).first() as any
       
-      const monthlyDailyPL = await DB.prepare(`
+      const monthlyDailyPL = !F.daily ? { pl: 0 } : await DB.prepare(`
         SELECT COALESCE(SUM(profit_loss), 0) as pl
         FROM daily_trades
         WHERE user_id = ? AND is_open = 0 AND strftime('%Y-%m', trade_date) = ?
       `).bind(userId, `${year}-${monthStr}`).first() as any
       
-      const monthlyDividends = await DB.prepare(`
+      const monthlyDividends = !F.stocks ? { pl: 0 } : await DB.prepare(`
         SELECT COALESCE(SUM(amount), 0) as pl
         FROM cost_basis_adjustments
         WHERE user_id = ? AND adjustment_type = 'DIVIDEND' AND adjustment_date LIKE ?
@@ -263,7 +265,8 @@ routes.get('/api/reports/pl', authMiddleware, async (c) => {
   const month = c.req.query('month')
   
   // Stock P/L = realized P/L of each SELL (partial and full), grouped by month and account type
-  const stockSells = await loadRealizedSells(c.env.DB, userId)
+  const F = await getFeatures(c.env.DB, userId) // Menu Settings
+  const stockSells = F.stocks ? await loadRealizedSells(c.env.DB, userId) : []
   const stockGroups = new Map<string, { year: string, month: string, account_type: string | null, total: number }>()
   for (const s of stockSells) {
     const sellYear = s.sell_date.slice(0, 4)
@@ -316,7 +319,7 @@ routes.get('/api/reports/pl', authMiddleware, async (c) => {
   
   optionQuery += ` GROUP BY year, month, account_type, strategy_type`
   
-  const optionPL = await c.env.DB.prepare(optionQuery).bind(...optionParams).all()
+  const optionPL = !F.options ? { results: [] as any[] } : await c.env.DB.prepare(optionQuery).bind(...optionParams).all()
   
   return c.json({
     stocks: stockPL.results,
@@ -363,7 +366,8 @@ routes.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     
     // Realized stock P/L: one row per SELL (partial and full), each with its own P/L
     console.log('Fetching realized stock sells...')
-    const realizedSells = await loadRealizedSells(DB, userId, { from: startDate })
+    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const realizedSells = F.stocks ? await loadRealizedSells(DB, userId, { from: startDate }) : []
     const stockTrades = realizedSells.map(s => ({
       profit_loss: s.realized_pl,
       close_date: s.sell_date,
@@ -374,7 +378,7 @@ routes.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     
     // Get option trades
     console.log('Fetching option trades...')
-    const optionTrades = await DB.prepare(`
+    const optionTrades = !F.options ? { results: [] as any[] } : await DB.prepare(`
       SELECT 
         ot.profit_loss,
         ot.close_date,
@@ -392,7 +396,7 @@ routes.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     
     // Get daily trades
     console.log('Fetching daily trades...')
-    const dailyTrades = await DB.prepare(`
+    const dailyTrades = !F.daily ? { results: [] as any[] } : await DB.prepare(`
       SELECT 
         dt.profit_loss,
         dt.trade_date as close_date,
@@ -409,7 +413,7 @@ routes.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     
     // Get dividends
     console.log('Fetching dividends...')
-    const dividends = await DB.prepare(`
+    const dividends = !F.stocks ? { results: [] as any[] } : await DB.prepare(`
       SELECT 
         cba.amount as profit_loss,
         cba.adjustment_date as close_date,
@@ -585,7 +589,8 @@ routes.get('/api/reports/strategy-analysis', authMiddleware, async (c) => {
     }
     
     // Get all closed trades with strategy information
-    const optionTrades = await DB.prepare(`
+    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const optionTrades = !F.options ? { results: [] as any[] } : await DB.prepare(`
       SELECT 
         ot.profit_loss,
         ot.close_date,
@@ -601,7 +606,7 @@ routes.get('/api/reports/strategy-analysis', authMiddleware, async (c) => {
       ORDER BY ot.close_date ASC
     `).bind(userId, startDate).all()
     
-    const dailyTrades = await DB.prepare(`
+    const dailyTrades = !F.daily ? { results: [] as any[] } : await DB.prepare(`
       SELECT 
         dt.profit_loss,
         dt.trade_date as close_date,
@@ -800,7 +805,8 @@ routes.get('/api/reports/performance', authMiddleware, async (c) => {
     
     // Get all closed trades for P/L calculations
     // Realized stock P/L per SELL (partial sells included) instead of the legacy stock_trades table
-    const stockSells = await loadRealizedSells(DB, userId, { from: startDate })
+    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const stockSells = F.stocks ? await loadRealizedSells(DB, userId, { from: startDate }) : []
     const stockTrades = {
       results: stockSells.map(s => ({
         profit_loss: s.realized_pl,
@@ -809,7 +815,7 @@ routes.get('/api/reports/performance', authMiddleware, async (c) => {
       }))
     }
 
-    const optionTrades = await DB.prepare(`
+    const optionTrades = !F.options ? { results: [] as any[] } : await DB.prepare(`
       SELECT 
         ot.profit_loss,
         ot.close_date,
@@ -823,7 +829,7 @@ routes.get('/api/reports/performance', authMiddleware, async (c) => {
       ORDER BY ot.close_date ASC
     `).bind(userId, startDate).all()
     
-    const dailyTrades = await DB.prepare(`
+    const dailyTrades = !F.daily ? { results: [] as any[] } : await DB.prepare(`
       SELECT 
         dt.profit_loss,
         dt.trade_date as close_date,
@@ -835,7 +841,7 @@ routes.get('/api/reports/performance', authMiddleware, async (c) => {
       ORDER BY dt.trade_date ASC
     `).bind(userId, startDate).all()
     
-    const dividends = await DB.prepare(`
+    const dividends = !F.stocks ? { results: [] as any[] } : await DB.prepare(`
       SELECT 
         cba.amount as profit_loss,
         cba.adjustment_date as close_date,
@@ -1052,7 +1058,8 @@ routes.get('/api/reports/positions', authMiddleware, async (c) => {
     console.log(`Position Analysis request: userId=${userId}`)
     
     // Get all open stock positions with company details from stock_holdings
-    const stockPositions = await DB.prepare(`
+    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const stockPositions = !F.stocks ? { results: [] as any[] } : await DB.prepare(`
       SELECT 
         sh.ticker,
         a.account_type,
@@ -1382,6 +1389,11 @@ routes.get('/api/reports/dividends', authMiddleware, async (c) => {
     
     console.log(`Date range: startDate=${startDate}`)
     
+    // Dividends come from stock holdings: with Stock Trades switched off there is nothing to report
+    if (!(await getFeatures(DB, userId)).stocks) {
+      return c.json({ groupBy: groupBy === 'account' ? 'account' : 'stock', period, data: [], total: 0 })
+    }
+
     if (groupBy === 'account') {
       // Group dividends by account
       const dividends = await DB.prepare(`
@@ -1463,9 +1475,12 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     const nextYear = parseInt(month) === 12 ? parseInt(year) + 1 : parseInt(year)
     const endDate = `${nextYear}-${nextMonth.toString().padStart(2, '0')}-01`
     
+    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const none = { results: [] as any[] }
+
     // Stock Investments Income
     // Dividend ETFs
-    const dividendETFsClosedPL = await DB.prepare(`
+    const dividendETFsClosedPL = !F.stocks ? none : await DB.prepare(`
       SELECT sh.ticker, SUM(st.shares * (st.price_per_share - sh.average_price)) as profit_loss
       FROM stock_transactions st
       INNER JOIN stock_holdings sh ON st.holding_id = sh.id
@@ -1476,7 +1491,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       GROUP BY sh.ticker
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
-    const dividendETFsCoveredCalls = await DB.prepare(`
+    const dividendETFsCoveredCalls = !F.options ? none : await DB.prepare(`
       SELECT ot.ticker, SUM(ot.profit_loss) as amount
       FROM option_trades ot
       INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
@@ -1487,7 +1502,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       GROUP BY ot.ticker
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
-    const dividendETFsDividends = await DB.prepare(`
+    const dividendETFsDividends = !F.stocks ? none : await DB.prepare(`
       SELECT sh.ticker, SUM(cba.amount) as amount
       FROM cost_basis_adjustments cba
       INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
@@ -1499,7 +1514,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // Stockpiling
-    const stockpilingClosedPL = await DB.prepare(`
+    const stockpilingClosedPL = !F.stocks ? none : await DB.prepare(`
       SELECT sh.ticker, SUM(st.shares * (st.price_per_share - sh.average_price)) as profit_loss
       FROM stock_transactions st
       INNER JOIN stock_holdings sh ON st.holding_id = sh.id
@@ -1510,7 +1525,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       GROUP BY sh.ticker
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
-    const stockpilingCoveredCalls = await DB.prepare(`
+    const stockpilingCoveredCalls = !F.options ? none : await DB.prepare(`
       SELECT ot.ticker, SUM(ot.profit_loss) as amount
       FROM option_trades ot
       INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
@@ -1521,7 +1536,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       GROUP BY ot.ticker
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
-    const stockpilingDividends = await DB.prepare(`
+    const stockpilingDividends = !F.stocks ? none : await DB.prepare(`
       SELECT sh.ticker, SUM(cba.amount) as amount
       FROM cost_basis_adjustments cba
       INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
@@ -1533,7 +1548,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // Wheel Stock
-    const wheelClosedPL = await DB.prepare(`
+    const wheelClosedPL = !F.stocks ? none : await DB.prepare(`
       SELECT sh.ticker, SUM(st.shares * (st.price_per_share - sh.average_price)) as profit_loss
       FROM stock_transactions st
       INNER JOIN stock_holdings sh ON st.holding_id = sh.id
@@ -1544,7 +1559,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       GROUP BY sh.ticker
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
-    const wheelCoveredCalls = await DB.prepare(`
+    const wheelCoveredCalls = !F.options ? none : await DB.prepare(`
       SELECT ot.ticker, SUM(ot.profit_loss) as amount
       FROM option_trades ot
       INNER JOIN stock_holdings sh ON ot.ticker = sh.ticker AND ot.account_id = sh.account_id
@@ -1555,7 +1570,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       GROUP BY ot.ticker
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
-    const wheelDividends = await DB.prepare(`
+    const wheelDividends = !F.stocks ? none : await DB.prepare(`
       SELECT sh.ticker, SUM(cba.amount) as amount
       FROM cost_basis_adjustments cba
       INNER JOIN stock_holdings sh ON cba.holding_id = sh.id
@@ -1568,7 +1583,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     
     // Option Trades Income
     // Short Puts (Wheel)
-    const shortPutsWheel = await DB.prepare(`
+    const shortPutsWheel = !F.options ? none : await DB.prepare(`
       SELECT ticker, SUM(profit_loss) as profit_loss
       FROM option_trades
       WHERE user_id = ? AND strategy_type = 'SELLING_PUT_WHEEL'
@@ -1578,7 +1593,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // Short Puts (Stockpiling)
-    const shortPutsStockpiling = await DB.prepare(`
+    const shortPutsStockpiling = !F.options ? none : await DB.prepare(`
       SELECT ticker, SUM(profit_loss) as profit_loss
       FROM option_trades
       WHERE user_id = ? AND strategy_type = 'SELLING_PUT'
@@ -1588,7 +1603,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // Short Puts (Long Term)
-    const shortPutsLongTerm = await DB.prepare(`
+    const shortPutsLongTerm = !F.options ? none : await DB.prepare(`
       SELECT ticker, SUM(profit_loss) as profit_loss
       FROM option_trades
       WHERE user_id = ? AND strategy_type = 'SELLING_PUT_LONG_TERM'
@@ -1598,7 +1613,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
     // 0 DTE SPX Trades
-    const dteTrades = await DB.prepare(`
+    const dteTrades = !F.daily ? null : await DB.prepare(`
       SELECT SUM(profit_loss) as profit_loss, COUNT(*) as trade_count
       FROM daily_trades
       WHERE user_id = ? AND is_open = 0
