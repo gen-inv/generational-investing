@@ -10701,6 +10701,11 @@ async function loadMonthlyIncome() {
     }
 }
 
+// A switched-off area (Profile > Menu Settings) is left out of the report
+function menuAreaOff(key) {
+    return typeof MenuSettings !== 'undefined' && MenuSettings.isHidden(key)
+}
+
 // Render the complete monthly income report
 function renderMonthlyIncomeReport(data) {
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -10723,11 +10728,11 @@ function renderMonthlyIncomeReport(data) {
     let grandTotal = 0
     
     // STOCK INVESTMENTS SECTION
-    html += renderStockInvestmentsSection(data.stockInvestments)
+    if (!(menuAreaOff('stocks') && menuAreaOff('options'))) html += renderStockInvestmentsSection(data.stockInvestments)
     grandTotal += calculateStockInvestmentsTotal(data.stockInvestments)
     
     // OPTION TRADES SECTION
-    html += renderOptionTradesSection(data.optionTrades)
+    if (!(menuAreaOff('options') && menuAreaOff('daily-trade'))) html += renderOptionTradesSection(data.optionTrades)
     grandTotal += calculateOptionTradesTotal(data.optionTrades)
     
     // GRAND TOTAL
@@ -10964,19 +10969,21 @@ function renderOptionTradesSection(optionTrades) {
     `
     
     // Short Puts - Wheel
-    html += renderOptionStrategySubsection('Short Puts (Wheel)', '🎯', optionTrades.shortPutsWheel)
+    if (!menuAreaOff('options')) html += renderOptionStrategySubsection('Short Puts (Wheel)', '🎯', optionTrades.shortPutsWheel)
     
     // Short Puts - Stockpiling
-    html += renderOptionStrategySubsection('Short Puts (Stockpiling)', '📦', optionTrades.shortPutsStockpiling)
+    if (!menuAreaOff('options')) html += renderOptionStrategySubsection('Short Puts (Stockpiling)', '📦', optionTrades.shortPutsStockpiling)
     
     // Short Puts - Long Term
-    html += renderOptionStrategySubsection('Short Puts (Long Term)', '📅', optionTrades.shortPutsLongTerm)
+    if (!menuAreaOff('options')) html += renderOptionStrategySubsection('Short Puts (Long Term)', '📅', optionTrades.shortPutsLongTerm)
     
     // 0DTE SPX Trades (no ticker breakdown)
     const dtePL = parseFloat(optionTrades.dteTrades?.profitLoss || 0)
     const dteCount = parseInt(optionTrades.dteTrades?.tradeCount || 0)
     
-    if (dteCount > 0) {
+    if (menuAreaOff('daily-trade')) {
+        // 0DTE SPX is switched off: leave the line out
+    } else if (dteCount > 0) {
         html += `
                 <div class="mb-6">
                     <div class="flex justify-between items-center mb-3">
