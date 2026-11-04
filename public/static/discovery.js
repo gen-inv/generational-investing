@@ -339,7 +339,7 @@
         ['Triggered', 'Within 3 sessions, price trades one cent above the high of the signal candle. The scan runs about an hour after the open, so the partial bar for today counts.'],
         ['Confirmed', 'A session after the signal candle closes above the high of the signal candle.'],
         ['Fails / lapses', 'It fails on a close below the low of the signal candle before it has confirmed. It lapses if 3 sessions pass with neither.'],
-        ['Volume badge', 'Volume on the signal candle as a multiple of the previous 20-session average, highlighted at 1.5x or more. It is information only and never removes a setup.']
+        ['Volume badge', 'Volume on the signal candle as a multiple of the previous 20-session average, highlighted at 1.5x or more. For a hammer or hanging man it is also a rule: it needs at least 1.5 times the average volume to count at all. For the other patterns it is information only and never removes a setup.']
       ]
     },
     bearish: {
@@ -353,7 +353,7 @@
         ['Triggered', 'Within 3 sessions, price trades one cent below the low of the signal candle. The scan runs about an hour after the open, so the partial bar for today counts.'],
         ['Confirmed', 'A session after the signal candle closes below the low of the signal candle.'],
         ['Fails / lapses', 'It fails on a close above the high of the signal candle before it has confirmed. It lapses if 3 sessions pass with neither.'],
-        ['Volume badge', 'Volume on the signal candle as a multiple of the previous 20-session average, highlighted at 1.5x or more. It is information only and never removes a setup.']
+        ['Volume badge', 'Volume on the signal candle as a multiple of the previous 20-session average, highlighted at 1.5x or more. For a hammer or hanging man it is also a rule: it needs at least 1.5 times the average volume to count at all. For the other patterns it is information only and never removes a setup.']
       ]
     }
   }
