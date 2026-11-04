@@ -52,13 +52,13 @@ describe('discovery view', () => {
     const list = (rows: any[]) => V().render({ scans: [], findings: rows }, 'setup', NOW2).list
     it('shows one row per ticker with direction, status, a chart and a StockCharts link', () => {
       const html = list([setup()])
-      expect(html).toContain('AAA'); expect(html).toContain('Bullish'); expect(html).toContain('Awaiting confirmation')
-      expect(html).toContain('<svg'); expect(html).toContain('Support 99.20'); expect(html).toContain('Confirm 101.20'); expect(html).toContain('Fails 99.40')
-      expect(html).toContain('https://stockcharts.com/h-sc/ui?s=AAA'); expect(html).toContain('confirms when price trades above $101.20')
+      expect(html).toContain('AAA'); expect(html).toContain('Bullish'); expect(html).toContain('Awaiting trigger')
+      expect(html).toContain('<svg'); expect(html).toContain('Support 99.20'); expect(html).toContain('Trigger 101.20'); expect(html).toContain('Fails 99.40')
+      expect(html).toContain('https://stockcharts.com/h-sc/ui?s=AAA'); expect(html).toContain('triggers when price trades above $101.20')
     })
     it('bearish rows say resistance and below', () => {
       const html = list([setup({ ticker: 'BBB' }, { direction: 'bearish', level: 120, trigger: 118, invalidation: 120.9 })])
-      expect(html).toContain('Bearish'); expect(html).toContain('Resistance 120.00'); expect(html).toContain('confirms when price trades below $118.00')
+      expect(html).toContain('Bearish'); expect(html).toContain('Resistance 120.00'); expect(html).toContain('triggers when price trades below $118.00')
     })
     it('confirmed first, then waiting, then failed/expired (dimmed); two-week-old rows are hidden', () => {
       const rows = [setup({ ticker: 'FFF', status: 'failed' }), setup({ ticker: 'CCC', status: 'confirmed' }), setup({ ticker: 'WWW' }),
@@ -69,7 +69,7 @@ describe('discovery view', () => {
     })
     it('a waiting setup that was never resolved shows as expired after a week', () => {
       const html = list([setup({ ticker: 'STALE' }, { candle_date: '2026-10-14' })])
-      expect(html).toContain('Expired'); expect(html).not.toContain('Awaiting confirmation')
+      expect(html).toContain('Expired'); expect(html).not.toContain('Awaiting trigger')
     })
     it('escapes everything the agent wrote and tolerates bad chart data', () => {
       const evil = '<img src=x onerror=alert(1)>'
@@ -86,22 +86,52 @@ describe('discovery view', () => {
     it('shows what the level is made of: touches, basis, old resistance, and the arrival candle', () => {
       const html = list([setup()])
       expect(html).toContain('Support: 3 touches (wicks), also acted as resistance 1 time')
-      expect(html).toContain('Arrival candle: 2026-10-20')
+      expect(html).toContain('First candle: 2026-10-20')
       const bear = list([setup({ ticker: 'BBB' }, { direction: 'bearish', flip_pts: [] })])
       expect(bear).toContain('Resistance: 3 touches (wicks)'); expect(bear).not.toContain('also acted as')
     })
     it('draws the level band, a dot for every touch, hollow dots for old resistance, and both candles', () => {
       const svg = V().chartSvg(setup().data)
       expect((svg.match(/<circle/g) || []).length).toBe(4)       // 3 touches + 1 earlier swing point of the opposite kind
-      expect(svg).toContain('arrival'); expect(svg).toContain('reversal'); expect(svg).toContain('opacity="0.13"')
+      expect(svg).toContain('prior'); expect(svg).toContain('signal'); expect(svg).toContain('opacity="0.13"')
       expect(V().chartSvg(setup({}, { touch_pts: [[99, 99.2], ['x', 1]], flip_pts: null }).data)).not.toContain('<circle')   // junk points are ignored
+    })
+
+    describe('rules v3 (hammer, hanging man, engulfing; triggered and confirmed)', () => {
+      const v3 = (over: any = {}, data: any = {}) => setup(over, { pattern: 'hammer', arrival_date: null, own_touches: 2, touches: 3, volume_multiple: 2.2, high_volume: true, ...data })
+      it('names the pattern, shows the trigger price and the volume badge', () => {
+        const html = list([v3()])
+        expect(html).toContain('Signal candle: Hammer on 2026-10-21'); expect(html).not.toContain('First candle')
+        expect(html).toContain('triggers when price trades above $101.20')
+        expect(html).toMatch(/data-volume class="[^"]*bg-purple-100[^"]*"[^>]*>Volume 2\.2x/)
+        expect(html).toContain('Support: 3 touches (wicks), 1 of them where it acted as resistance')
+      })
+      it('a quiet candle gets a grey volume badge and a missing volume gets none', () => {
+        expect(list([v3({}, { volume_multiple: 0.7, high_volume: false })])).toMatch(/data-volume class="[^"]*bg-gray-100/)
+        expect(list([v3({}, { volume_multiple: null, high_volume: false })])).not.toContain('data-volume')
+      })
+      it('shows Triggered then Confirmed with their dates, and orders confirmed, triggered, waiting', () => {
+        const rows = [v3({ ticker: 'WWW' }), v3({ ticker: 'TTT', status: 'triggered' }, { trigger_date: '2026-10-22' }), v3({ ticker: 'CCC', status: 'confirmed' }, { trigger_date: '2026-10-22', confirm_date: '2026-10-23' })]
+        const html = list(rows)
+        expect(html).toContain('>Triggered<'); expect(html).toContain('triggered 2026-10-22'); expect(html).toContain('confirmed 2026-10-23 (closed above $101.20)')
+        expect(html.indexOf('CCC')).toBeLessThan(html.indexOf('TTT')); expect(html.indexOf('TTT')).toBeLessThan(html.indexOf('WWW'))
+      })
+      it('an engulfing keeps the prior candle on the chart; a single candle does not', () => {
+        expect(V().chartSvg(v3().data)).not.toContain('prior')
+        expect(V().chartSvg(v3({}, { pattern: 'bullish engulfing', arrival_date: '2026-10-20' }).data)).toContain('prior')
+      })
+      it('the rules cover the thresholds, the engulfing pattern and the volume note', () => {
+        const html = list([v3()])
+        expect(html).toContain('RSI(14) at or below 35'); expect(html).toContain('RSI(14) at or above 65')
+        expect(html).toContain('Or a bullish engulfing'); expect(html).toContain('Volume badge')
+      })
     })
     describe('next earnings', () => {
       const earn = (date: any, extra: any = {}, data: any = {}) => list([setup({}, { next_earnings: { date, estimate: false, ...extra }, ...data })])
       it('shows the date and days away right after the status badge, on stocks only', () => {
         const html = earn('2026-12-10')
         expect(html).toMatch(/Earnings Dec 10 \(in \d+ days\)/)
-        expect(html.indexOf('Awaiting confirmation')).toBeLessThan(html.indexOf('data-earnings'))
+        expect(html.indexOf('Awaiting trigger')).toBeLessThan(html.indexOf('data-earnings'))
         expect(html).toMatch(/data-earnings class="[^"]*bg-blue-100/)
         expect(html).toContain('Next earnings: Dec 10, 2026 (confirmed date)')
         const etf = list([setup({ ticker: 'SPY' }, { kind: 'etf' })])
@@ -163,8 +193,8 @@ describe('discovery view', () => {
     it('posts the rules for both directions, with a toggle that shows one at a time', () => {
       const html = list([setup()])
       expect(html).toContain('How these setups are found')
-      expect(html).toContain('at least 3 swing lows'.replace('at', 'At')); expect(html).toContain('At least 3 swing highs')
-      expect(html).toContain('Oscillators: 2 of 3'); expect(html).toContain('one cent above the high of the reversal candle'); expect(html).toContain('one cent below the low of the reversal candle')
+      expect(html).toContain('At least 3 touches'); expect(html).toContain('A hammer'); expect(html).toContain('A hanging man')
+      expect(html).toContain('Oscillators: 2 of 3'); expect(html).toContain('one cent above the high of the signal candle'); expect(html).toContain('one cent below the low of the signal candle')
       document.body.innerHTML = '<div id="c">' + html + '</div>'
       const c = document.getElementById('c') as HTMLElement
       const pane = (s: string) => c.querySelector('[data-rules-pane="' + s + '"]') as HTMLElement

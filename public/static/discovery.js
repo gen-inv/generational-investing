@@ -80,7 +80,8 @@
     added: ['Added to roster', 'bg-green-100 text-green-800'],
     declined: ['Passed on', 'bg-gray-100 text-gray-500'],
     potential_override: ['Potential override', 'bg-amber-100 text-amber-800'],
-    candidate: ['Awaiting confirmation', 'bg-amber-100 text-amber-800'],
+    candidate: ['Awaiting trigger', 'bg-amber-100 text-amber-800'],
+    triggered: ['Triggered', 'bg-blue-100 text-blue-800'],
     confirmed: ['Confirmed', 'bg-green-100 text-green-800'],
     failed: ['Failed', 'bg-red-100 text-red-700'],
     expired: ['Expired', 'bg-gray-100 text-gray-500']
@@ -133,7 +134,7 @@
 
   function activeSetups(list, now) {
     var cutoff = (now || Date.now()) - 14 * 86400000
-    var order = { confirmed: 0, candidate: 1, failed: 2, expired: 3 }
+    var order = { confirmed: 0, triggered: 1, candidate: 2, failed: 3, expired: 4 }
     return list.map(function (f) { return Object.assign({}, f, { status: effectiveStatus(f, now) }) })
       .filter(function (f) { var t = Date.parse((f.data && f.data.candle_date) || f.found_at); return isNaN(t) || t >= cutoff })
       .sort(function (a, b) {
@@ -172,10 +173,12 @@
     }
     var ci = num(d.candle_idx)
     if (ci !== null && ci >= 1 && ci < n) {
-      out.push('<rect x="' + (L + step * (ci - 1)).toFixed(1) + '" y="' + T + '" width="' + step.toFixed(1) + '" height="' + (H - T - B) + '" fill="#9ca3af" opacity="0.2"/>')
+      if (d.arrival_date) {
+        out.push('<rect x="' + (L + step * (ci - 1)).toFixed(1) + '" y="' + T + '" width="' + step.toFixed(1) + '" height="' + (H - T - B) + '" fill="#9ca3af" opacity="0.2"/>')
+        out.push('<text x="' + (L + step * ci).toFixed(1) + '" y="' + (T + 9) + '" text-anchor="end" font-size="9" fill="#6b7280">prior</text>')
+      }
       out.push('<rect x="' + (L + step * ci).toFixed(1) + '" y="' + T + '" width="' + step.toFixed(1) + '" height="' + (H - T - B) + '" fill="#f59e0b" opacity="0.2"/>')
-      out.push('<text x="' + (L + step * ci).toFixed(1) + '" y="' + (T + 9) + '" text-anchor="end" font-size="9" fill="#6b7280">arrival</text>')
-      out.push('<text x="' + (L + step * (ci + 1)).toFixed(1) + '" y="' + (T + 9) + '" text-anchor="start" font-size="9" fill="#b45309">reversal</text>')
+      out.push('<text x="' + (L + step * (ci + 1)).toFixed(1) + '" y="' + (T + 9) + '" text-anchor="start" font-size="9" fill="#b45309">signal</text>')
     }
     if (level !== null && band !== null) {
       out.push('<rect x="' + L + '" y="' + Math.min(y(level), y(band)).toFixed(1) + '" width="' + plotW + '" height="' + Math.max(2, Math.abs(y(level) - y(band))).toFixed(1) + '" fill="' + lineCol + '" opacity="0.13"/>')
@@ -194,7 +197,7 @@
       labels.push({ y: y(p), color: color, text: label + ' ' + p.toFixed(2) })
     }
     hline(level, lineCol, '', bull ? 'Support' : 'Resistance')
-    hline(trig, '#d97706', '6 4', 'Confirm')
+    hline(trig, '#d97706', '6 4', 'Trigger')
     hline(inv, '#9ca3af', '2 3', 'Fails')
     labels.sort(function (a, b) { return a.y - b.y })
     for (var q = 1; q < labels.length; q++) if (labels[q].y - labels[q - 1].y < 11) labels[q].y = labels[q - 1].y + 11  // keep close levels readable
@@ -244,15 +247,19 @@
       }
       var n3 = [c.rsi, c.stoch, c.macd].filter(function (x) { return x && x.ok }).length
       h += '<div><strong>Confirming:</strong> ' +
-        part(!!c.rsi.ok, 'RSI ' + fix(c.rsi.value, 1), bull ? 'RSI(14) at or below 30 within the 3 sessions up to the reversal candle' : 'RSI(14) at or above 70 within the 3 sessions up to the reversal candle') + ' &middot; ' +
-        part(!!c.stoch.ok, 'Stochastic %K ' + fix(c.stoch.k, 1), bull ? 'Slow %K at or below 20 within 5 sessions and turning up at the reversal candle' : 'Slow %K at or above 80 within 5 sessions and turning down at the reversal candle') + ' &middot; ' +
-        part(!!c.macd.ok, 'MACD histogram ' + fix(c.macd.hist, 3), bull ? 'MACD histogram rising at the reversal candle' : 'MACD histogram falling at the reversal candle') +
+        part(!!c.rsi.ok, 'RSI ' + fix(c.rsi.value, 1), bull ? 'RSI(14) at or below 35 within the 3 sessions up to the signal candle' : 'RSI(14) at or above 65 within the 3 sessions up to the signal candle') + ' &middot; ' +
+        part(!!c.stoch.ok, 'Stochastic %K ' + fix(c.stoch.k, 1), bull ? 'Slow %K at or below 20 within 5 sessions and turning up at the signal candle' : 'Slow %K at or above 80 within 5 sessions and turning down at the signal candle') + ' &middot; ' +
+        part(!!c.macd.ok, 'MACD histogram ' + fix(c.macd.hist, 3), bull ? 'MACD histogram rising at the signal candle' : 'MACD histogram falling at the signal candle') +
         ' <span class="text-gray-500">(' + n3 + ' of 3 confirm; 2 are needed)</span></div>'
     }
     var bits = []
     if (num(d.touches) !== null) {
       var flips = (d.flip_pts || []).length
-      bits.push((bull ? 'Support' : 'Resistance') + ': ' + num(d.touches) + ' touches' + (d.basis ? ' (' + d.basis + ')' : '') + (flips ? ', also acted as ' + (bull ? 'resistance' : 'support') + ' ' + flips + (flips === 1 ? ' time' : ' times') : ''))
+      if (num(d.own_touches) !== null) {
+        bits.push((bull ? 'Support' : 'Resistance') + ': ' + num(d.touches) + ' touches' + (d.basis ? ' (' + d.basis + ')' : '') + (flips ? ', ' + flips + ' of them where it acted as ' + (bull ? 'resistance' : 'support') : ''))
+      } else {
+        bits.push((bull ? 'Support' : 'Resistance') + ': ' + num(d.touches) + ' touches' + (d.basis ? ' (' + d.basis + ')' : '') + (flips ? ', also acted as ' + (bull ? 'resistance' : 'support') + ' ' + flips + (flips === 1 ? ' time' : ' times') : ''))
+      }
     }
     if (d.trend) bits.push(String(d.trend))
     if (num(d.avg_volume) !== null) bits.push('avg volume ' + Number(d.avg_volume).toLocaleString())
@@ -281,6 +288,18 @@
     }
   }
 
+  // "Signal candle: Hammer on 2026-11-03 | triggers when price trades above $X | triggered <date> | confirmed <date> | fails on a close below $Y"
+  function signalLine(d, bull) {
+    var name = d.pattern ? String(d.pattern) : 'Reversal candle'
+    name = name.charAt(0).toUpperCase() + name.slice(1)
+    var parts = [(d.arrival_date ? 'First candle: ' + escapeHtml(d.arrival_date) + ' &middot; ' : '') + 'Signal candle: ' + escapeHtml(name) + ' on ' + escapeHtml(d.candle_date || '')]
+    if (num(d.trigger) !== null) parts.push('triggers when price trades ' + (bull ? 'above ' : 'below ') + money(d.trigger))
+    if (typeof d.trigger_date === 'string' && d.trigger_date) parts.push('triggered ' + escapeHtml(d.trigger_date))
+    if (typeof d.confirm_date === 'string' && d.confirm_date) parts.push('confirmed ' + escapeHtml(d.confirm_date) + ' (closed ' + (bull ? 'above ' : 'below ') + money(d.trigger) + ')')
+    if (num(d.invalidation) !== null) parts.push('fails on a close ' + (bull ? 'below ' : 'above ') + money(d.invalidation))
+    return parts.join(' &middot; ')
+  }
+
   function renderSetups(list, now) {
     return list.map(function (f, i) {
       var d = f.data || {}
@@ -289,17 +308,19 @@
       var etf = d.kind === 'etf' ? '<span class="ml-2 px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs">ETF</span>' : ''
       var ei = earningsInfo(d, now)
       var earn = ei ? '<span data-earnings class="ml-2 px-2 py-0.5 rounded text-xs ' + ei.cls + '">' + escapeHtml(ei.short) + '</span>' : ''
+      var vm = num(d.volume_multiple)
+      var vol = vm !== null ? '<span data-volume class="ml-2 px-2 py-0.5 rounded text-xs ' + (d.high_volume ? 'bg-purple-100 text-purple-800 font-semibold' : 'bg-gray-100 text-gray-500') + '" title="Volume on the signal candle as a multiple of the previous 20-session average (information only)">Volume ' + vm.toFixed(1) + 'x</span>' : ''
       var dim = f.status === 'failed' || f.status === 'expired' ? ' opacity-60' : ''
       var chart = chartSvg(d)
       var detail = (chart ? '<div class="mb-2">' + chart + '</div>' : '') +
         '<div class="text-sm text-gray-700 mb-2">' + setupMetrics(d) + '</div>' +
-        '<div class="text-sm text-gray-600 mb-2">' + (d.arrival_date ? 'Arrival candle: ' + escapeHtml(d.arrival_date) + ' &middot; ' : '') + 'Reversal candle: ' + escapeHtml(d.candle_date || '') + (num(d.trigger) !== null ? ' &middot; confirms when price trades ' + (bull ? 'above ' : 'below ') + money(d.trigger) : '') + (num(d.invalidation) !== null ? ' &middot; fails on a close ' + (bull ? 'below ' : 'above ') + money(d.invalidation) : '') + '</div>' +
+        '<div class="text-sm text-gray-600 mb-2">' + signalLine(d, bull) + '</div>' +
         (ei ? '<div class="text-sm text-gray-600 mb-2">' + escapeHtml(ei.long) + '</div>' : '') +
         '<a href="' + escapeHtml(stockChartsUrl(f.ticker)) + '" target="_blank" rel="noopener" class="text-sm text-brand-teal underline"><i class="fas fa-external-link-alt mr-1"></i>Open ' + escapeHtml(f.ticker) + ' on StockCharts</a>'
       return '<div class="border-b border-gray-200' + dim + '">' +
         '<button type="button" data-discovery-row="' + i + '" class="w-full text-left py-3 hover:bg-gray-50 flex items-start gap-3">' +
         '<span class="font-bold w-20 shrink-0">' + escapeHtml(f.ticker) + '</span>' +
-        '<span class="flex-1"><span class="text-gray-800">' + escapeHtml(f.headline) + '</span>' + dir + statusBadge(f.status) + earn + etf + '</span>' +
+        '<span class="flex-1"><span class="text-gray-800">' + escapeHtml(f.headline) + '</span>' + dir + statusBadge(f.status) + vol + earn + etf + '</span>' +
         '<span class="text-sm text-gray-500 shrink-0">' + escapeHtml(fmtDate(d.candle_date ? d.candle_date + 'T12:00:00Z' : f.found_at)) + '</span></button>' +
         '<div id="discovery-detail-' + i + '" class="hidden pb-4 pl-24">' + detail + '</div></div>'
     }).join('')
@@ -310,25 +331,29 @@
     bullish: {
       name: 'Bullish (bounce off support)',
       items: [
-        ['Support level', 'At least 3 swing lows (each the lowest of the 4 sessions either side of it) that sit within 0.75 ATR of each other. Each must have been followed by a bounce of at least 0.75 ATR within 5 sessions, so it really acted as support, and all of them must come before the reversal candle. The chart covers 6 months and so does the search. Wicks or closes, whichever fits the line better. Earlier swing highs at the same price (old resistance) only add supporting evidence.'],
-        ['Arrival candle', 'A down candle (closes below its open and below the prior close) that is the lowest close of the last 5 sessions, closes in the lower half of its range (not a hammer), and closes inside the support band.'],
-        ['Run into support', 'At least 3 down closes in the last 5 sessions, and the arrival close is lower than the close 5 sessions earlier.'],
-        ['Reversal candle', 'The next session: an up candle that closes above the arrival close and in the upper half of its range, has a range of at least 0.4 ATR, whose low held inside the support band, and which closes at or above the support line.'],
-        ['Oscillators: 2 of 3', 'RSI(14) at or below 30 within the 3 sessions up to the reversal candle. Slow Stochastic (14,3,3) %K at or below 20 within 5 sessions and turning up on the reversal candle. MACD(12,26,9) histogram rising on the reversal candle. Any two are enough, and each row says which ones confirmed.'],
-        ['Confirmation', 'Within 3 sessions, price trades one cent above the high of the reversal candle. The scan runs about an hour after the open, so the partial bar for today can confirm.'],
-        ['Fails / lapses', 'It fails on a close below the low of the reversal candle before it has confirmed. It lapses if 3 sessions pass with neither. Within one session, confirming wins over the close of that session.']
+        ['Support level', 'At least 3 touches of one price zone (within 0.75 ATR of each other), all before the signal candle. The chart covers 6 months and so does the search. A touch is a swing low (the lowest of the 4 sessions either side of it) followed by a bounce of at least 0.75 ATR within 5 sessions, and it can be a wick or a candle body, whichever fits. Earlier swing highs at the same price (old resistance that became support) count as touches too, but at least 2 touches must be real swing lows. A spring is allowed: a wick may poke up to 1 ATR below the level as long as the candle closes back at or above it.'],
+        ['Run into support', 'At least 3 down closes in the 5 sessions before the signal candle, and the close just before it is lower than the close 6 sessions earlier.'],
+        ['Signal candle', 'A hammer: a small body (35% of the range or less, any colour), a lower shadow at least twice the body and at least half the range, and a very small upper shadow, after a decline. Or a bullish engulfing: a green candle whose body covers the body of the previous red candle (shadows do not matter) and is larger than it. The low of the candle (of both candles, for an engulfing) must be at the support level. Its range must be at least 0.4 ATR, and it must close at or above the support line.'],
+        ['Oscillators: 2 of 3', 'RSI(14) at or below 35 within the 3 sessions up to the signal candle. Slow Stochastic (14,3,3) %K at or below 20 within 5 sessions and turning up on the signal candle. MACD(12,26,9) histogram rising on the signal candle. Any two are enough, and each row says which ones confirmed.'],
+        ['Alert', 'The alert fires on the signal candle itself, before any follow-through.'],
+        ['Triggered', 'Within 3 sessions, price trades one cent above the high of the signal candle. The scan runs about an hour after the open, so the partial bar for today counts.'],
+        ['Confirmed', 'A session after the signal candle closes above the high of the signal candle.'],
+        ['Fails / lapses', 'It fails on a close below the low of the signal candle before it has confirmed. It lapses if 3 sessions pass with neither.'],
+        ['Volume badge', 'Volume on the signal candle as a multiple of the previous 20-session average, highlighted at 1.5x or more. It is information only and never removes a setup.']
       ]
     },
     bearish: {
       name: 'Bearish (rejection at resistance)',
       items: [
-        ['Resistance level', 'At least 3 swing highs (each the highest of the 4 sessions either side of it) that sit within 0.75 ATR of each other. Each must have been followed by a drop of at least 0.75 ATR within 5 sessions, so it really acted as resistance, and all of them must come before the reversal candle. The chart covers 6 months and so does the search. Wicks or closes, whichever fits the line better. Earlier swing lows at the same price (old support) only add supporting evidence.'],
-        ['Arrival candle', 'An up candle (closes above its open and above the prior close) that is the highest close of the last 5 sessions, closes in the upper half of its range (not a shooting star), and closes inside the resistance band.'],
-        ['Run into resistance', 'At least 3 up closes in the last 5 sessions, and the arrival close is higher than the close 5 sessions earlier.'],
-        ['Reversal candle', 'The next session: a down candle that closes below the arrival close and in the lower half of its range, has a range of at least 0.4 ATR, whose high held inside the resistance band, and which closes at or below the resistance line.'],
-        ['Oscillators: 2 of 3', 'RSI(14) at or above 70 within the 3 sessions up to the reversal candle. Slow Stochastic (14,3,3) %K at or above 80 within 5 sessions and turning down on the reversal candle. MACD(12,26,9) histogram falling on the reversal candle. Any two are enough, and each row says which ones confirmed.'],
-        ['Confirmation', 'Within 3 sessions, price trades one cent below the low of the reversal candle. The scan runs about an hour after the open, so the partial bar for today can confirm.'],
-        ['Fails / lapses', 'It fails on a close above the high of the reversal candle before it has confirmed. It lapses if 3 sessions pass with neither. Within one session, confirming wins over the close of that session.']
+        ['Resistance level', 'At least 3 touches of one price zone (within 0.75 ATR of each other), all before the signal candle. The chart covers 6 months and so does the search. A touch is a swing high (the highest of the 4 sessions either side of it) followed by a drop of at least 0.75 ATR within 5 sessions, and it can be a wick or a candle body, whichever fits. Earlier swing lows at the same price (old support that became resistance) count as touches too, but at least 2 touches must be real swing highs. A spring is allowed: a wick may poke up to 1 ATR above the level as long as the candle closes back at or below it.'],
+        ['Run into resistance', 'At least 3 up closes in the 5 sessions before the signal candle, and the close just before it is higher than the close 6 sessions earlier.'],
+        ['Signal candle', 'A hanging man: the same shape as a hammer (small body, lower shadow at least twice the body and half the range, very small upper shadow) but after a rally. Or a bearish engulfing: a red candle whose body covers the body of the previous green candle (shadows do not matter) and is larger than it. The high of the candle (of both candles, for an engulfing) must be at the resistance level. Its range must be at least 0.4 ATR, and it must close at or below the resistance line.'],
+        ['Oscillators: 2 of 3', 'RSI(14) at or above 65 within the 3 sessions up to the signal candle. Slow Stochastic (14,3,3) %K at or above 80 within 5 sessions and turning down on the signal candle. MACD(12,26,9) histogram falling on the signal candle. Any two are enough, and each row says which ones confirmed.'],
+        ['Alert', 'The alert fires on the signal candle itself, before any follow-through.'],
+        ['Triggered', 'Within 3 sessions, price trades one cent below the low of the signal candle. The scan runs about an hour after the open, so the partial bar for today counts.'],
+        ['Confirmed', 'A session after the signal candle closes below the low of the signal candle.'],
+        ['Fails / lapses', 'It fails on a close above the high of the signal candle before it has confirmed. It lapses if 3 sessions pass with neither.'],
+        ['Volume badge', 'Volume on the signal candle as a multiple of the previous 20-session average, highlighted at 1.5x or more. It is information only and never removes a setup.']
       ]
     }
   }
@@ -347,7 +372,7 @@
       '<div class="px-4 pb-4 text-sm text-gray-700">' +
       '<div class="inline-flex rounded border border-gray-300 overflow-hidden mb-3">' + btn('bullish', true) + btn('bearish', false) + '</div>' +
       pane('bullish', true) + pane('bearish', false) +
-      '<div class="mt-3 text-gray-500">ATR = average true range over 14 sessions. The scan covers the companies on the research roster plus 30 liquid ETFs (average volume of 250,000 or more), on weekdays after 8:35 a.m. Edmonton time. A reversal candle that follows within 3 sessions of an earlier one at the same level is treated as part of the same bounce. The oscillators are on the StockCharts link for every row.</div>' +
+      '<div class="mt-3 text-gray-500">ATR = average true range over 14 sessions. The scan covers the companies on the research roster plus 30 liquid ETFs (average volume of 250,000 or more), on weekdays after 8:35 a.m. Edmonton time. A signal candle within 3 sessions of an earlier one at the same level is treated as part of the same bounce. The oscillators are on the StockCharts link for every row.</div>' +
       '</div></details>'
   }
 
