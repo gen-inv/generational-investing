@@ -80,7 +80,7 @@ describe('discovery view', () => {
     it('names which oscillators confirmed and says how many are needed', () => {
       const html = list([setup()])
       expect(html).toContain('RSI 28.4'); expect(html).toContain('Stochastic %K 14.1'); expect(html).toContain('MACD histogram -0.120')
-      expect(html).toContain('2 of 3 confirm'); expect(html).toContain('2 are needed')
+      expect(html).toContain('2 of 3 confirm'); expect(html).toContain('at least 1 is needed')
       expect(html.match(/&#10003;/g)).toHaveLength(2); expect(html.match(/&#10007;/g)).toHaveLength(1)
     })
     it('shows what the level is made of: touches, basis, old resistance, and the arrival candle', () => {
@@ -194,7 +194,7 @@ describe('discovery view', () => {
       const html = list([setup()])
       expect(html).toContain('How these setups are found')
       expect(html).toContain('At least 3 touches'); expect(html).toContain('A hammer'); expect(html).toContain('A hanging man')
-      expect(html).toContain('Oscillators: 2 of 3'); expect(html).toContain('one cent above the high of the signal candle'); expect(html).toContain('one cent below the low of the signal candle')
+      expect(html).toContain('Oscillators: at least 1 of 3'); expect(html).toContain('one cent above the high of the signal candle'); expect(html).toContain('one cent below the low of the signal candle')
       document.body.innerHTML = '<div id="c">' + html + '</div>'
       const c = document.getElementById('c') as HTMLElement
       const pane = (s: string) => c.querySelector('[data-rules-pane="' + s + '"]') as HTMLElement
