@@ -9784,7 +9784,7 @@ function renderOverviewTab(data) {
                         <div class="text-2xl font-bold text-blue-700">$${valuation.blended_sticker.toFixed(2)}</div>
                     </div>
                     <div class="bg-purple-50 p-4 rounded-lg">
-                        <div class="text-xs text-gray-600 mb-1">ROP Wheel Ceiling</div>
+                        <div class="text-xs text-gray-600 mb-1">Wheel Ceiling</div>
                         <div class="text-2xl font-bold text-purple-700">$${valuation.rop_wheel_ceiling.toFixed(2)}</div>
                     </div>
                     <div class="bg-gray-50 p-4 rounded-lg">
