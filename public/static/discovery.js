@@ -4,7 +4,7 @@
   var TABS = {
     guru: { label: 'Guru purchases', emptyText: 'No guru purchases have been reported yet. The scan runs weekly and only reports companies that pass the Quick-5.', every: 7 },
     maturing: { label: "Gov't contracts", emptyText: "No government-contract candidates have been reported yet.", every: 7 },
-    setup: { label: 'Trade setups', emptyText: 'No trade setups right now. The screen runs each weekday morning and shows reversal candles from the last two weeks.', every: 2, unit: 'setups' }
+    setup: { label: 'Trade setups', emptyText: 'No trade setups right now. The screen runs each weekday morning; a confirmed setup stays listed for two more sessions.', every: 2, unit: 'setups' }
   }
 
   function escapeHtml(v) {
@@ -60,7 +60,7 @@
   function statusLine(scan, tab, now, findings) {
     if (!scan) return '<span class="text-gray-500">This scan has not reported in yet.</span>'
     var ago = daysAgo(scan.last_run_at, now)
-    var when = fmtDate(scan.last_run_at) + (fmtTime(scan.last_run_at) ? ', ' + fmtTime(scan.last_run_at) : '') + (ago === null ? '' : ago <= 0 ? ' (today)' : ' (' + ago + (ago === 1 ? ' day' : ' days') + ' ago)')
+    var when = fmtDate(scan.last_run_at) + (fmtTime(scan.last_run_at) ? ', ' + fmtTime(scan.last_run_at) : '')
     var stale = ago !== null && ago > TABS[tab].every * 2
     var bits = ['<strong>Last ran:</strong> ' + escapeHtml(when)]
     if (tab === 'setup') {
@@ -124,11 +124,29 @@
   function money(v) { var n = num(v); return n === null ? '' : '$' + n.toFixed(2) }
   function fix(v, d) { var n = num(v); return n === null ? '-' : n.toFixed(d) }
 
-  // A reversal candle that never resolved (the scan missed days) is shown as expired once it is a week old.
+  var MAX_CONFIRMED_AGE = 2
+
+  // Trading sessions since a date (YYYY-MM-DD): the weekdays after it up to and including today (UTC date of now), less today's own, which has not closed.
+  function sessionsSince(ymd, now) {
+    if (typeof ymd !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null
+    var start = Date.parse(ymd + 'T00:00:00Z')
+    var end = Date.parse(new Date(now || Date.now()).toISOString().slice(0, 10) + 'T00:00:00Z')
+    if (isNaN(start)) return null
+    var n = 0
+    for (var t = start + 86400000; t <= end; t += 86400000) { var w = new Date(t).getUTCDay(); if (w !== 0 && w !== 6) n++ }
+    return Math.max(0, n - 1)
+  }
+
+  // A reversal candle that never resolved (the scan missed days) is shown as expired once it is a week old, and so is a confirmed setup
+  // whose confirming close is more than 2 sessions old (too late to act on).
   function effectiveStatus(f, now) {
     var d = f.data || {}
     var t = Date.parse(d.candle_date || f.found_at)
     if (f.status === 'candidate' && !isNaN(t) && ((now || Date.now()) - t) / 86400000 > 6) return 'expired'
+    if (f.status === 'confirmed') {
+      var age = sessionsSince(d.confirm_date, now)
+      if (age !== null && age > MAX_CONFIRMED_AGE) return 'expired'
+    }
     return f.status
   }
 
@@ -224,7 +242,7 @@
       var oy = H + 6
       function ry(v) { return oy + (100 - v) / 100 * RH }
       out.push('<rect x="' + L + '" y="' + oy + '" width="' + plotW + '" height="' + RH + '" fill="#f9fafb" stroke="#e5e7eb"/>')
-      ;[30, 70].forEach(function (g2) {
+      ;[35, 65].forEach(function (g2) {
         out.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + ry(g2).toFixed(1) + '" y2="' + ry(g2).toFixed(1) + '" stroke="#d1d5db" stroke-dasharray="3 3"/>')
         out.push('<text x="' + (L - 6) + '" y="' + (ry(g2) + 3).toFixed(1) + '" text-anchor="end" font-size="9" fill="#9ca3af">' + g2 + '</text>')
       })
@@ -372,7 +390,7 @@
       '<div class="px-4 pb-4 text-sm text-gray-700">' +
       '<div class="inline-flex rounded border border-gray-300 overflow-hidden mb-3">' + btn('bullish', true) + btn('bearish', false) + '</div>' +
       pane('bullish', true) + pane('bearish', false) +
-      '<div class="mt-3 text-gray-500">ATR = average true range over 14 sessions. The scan covers the companies on the research roster plus 30 liquid ETFs (average volume of 250,000 or more), on weekdays after 8:35 a.m. Edmonton time. A signal candle within 3 sessions of an earlier one at the same level is treated as part of the same bounce. The oscillators are on the StockCharts link for every row.</div>' +
+      '<div class="mt-3 text-gray-500">ATR = average true range over 14 sessions. The scan covers the companies on the research roster plus 30 liquid ETFs (average volume of 250,000 or more), on weekdays after 8:35 a.m. Edmonton time. A signal candle within 3 sessions of an earlier one at the same level is treated as part of the same bounce. A confirmed setup stays listed for 2 more sessions after its confirming close, since it is too late to act on after that; failed and expired setups are hidden unless you choose to show them. The oscillators are on the StockCharts link for every row.</div>' +
       '</div></details>'
   }
 
@@ -387,27 +405,37 @@
     })
   }
 
-  function render(state, tab, now) {
+  function render(state, tab, now, opts) {
     var scan = (state.scans || []).filter(function (s) { return s.scan_type === tab })[0]
     var list = (state.findings || []).filter(function (f) { return f.scan_type === tab })
     var reported = list
-    if (tab === 'setup') list = activeSetups(list, now)
+    var toggle = ''
+    if (tab === 'setup') {
+      var showPast = !!(opts && opts.showPast)
+      list = activeSetups(list, now)
+      var past = list.filter(function (f) { return f.status === 'failed' || f.status === 'expired' }).length
+      if (!showPast) list = list.filter(function (f) { return f.status !== 'failed' && f.status !== 'expired' })
+      if (past > 0) toggle = '<div class="mb-3 text-sm"><button type="button" data-show-past class="text-brand-teal underline">' + (showPast ? 'Hide failed and expired' : 'Show failed and expired (' + past + ')') + '</button></div>'
+    }
     return {
       status: statusLine(scan, tab, now, reported),
-      list: (tab === 'setup' ? rulesPanel() : '') + (list.length ? (tab === 'setup' ? renderSetups(list, now) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>')
+      list: (tab === 'setup' ? rulesPanel() + toggle : '') + (list.length ? (tab === 'setup' ? renderSetups(list, now) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>')
     }
   }
 
-  var current = { tab: 'guru', data: { scans: [], findings: [] } }
+  var current = { tab: 'guru', showPast: false, data: { scans: [], findings: [] } }
 
   function paint() {
     var doc = root.document
-    var out = render(current.data, current.tab)
+    var out = render(current.data, current.tab, undefined, { showPast: current.showPast })
     doc.getElementById('discovery-status').innerHTML = out.status
     var list = doc.getElementById('discovery-list')
     list.innerHTML = out.list
     list.querySelectorAll('[data-rules-side]').forEach(function (b) {
       b.addEventListener('click', function (e) { e.preventDefault(); rulesSwitch(list, b.getAttribute('data-rules-side')) })
+    })
+    list.querySelectorAll('[data-show-past]').forEach(function (b) {
+      b.addEventListener('click', function () { current.showPast = !current.showPast; paint() })
     })
     list.querySelectorAll('[data-discovery-row]').forEach(function (btn) {
       btn.addEventListener('click', function () {

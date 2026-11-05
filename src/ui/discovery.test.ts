@@ -25,12 +25,12 @@ describe('discovery view', () => {
   })
   it('shows last run and flags an overdue scan', () => {
     const fresh = V().statusLine({ scan_type: 'guru', last_run_at: '2026-10-18T12:00:00Z', gurus_scanned: 70, candidates_found: 4 }, 'guru', NOW)
-    expect(fresh).toContain('2 days ago'); expect(fresh).toContain('70 gurus'); expect(fresh).not.toContain('overdue')
+    expect(fresh).toContain('Last ran:'); expect(fresh).not.toContain('days ago'); expect(fresh).toContain('70 gurus'); expect(fresh).not.toContain('overdue')
     expect(V().statusLine({ scan_type: 'guru', last_run_at: '2026-09-20T12:00:00Z' }, 'guru', NOW)).toContain('overdue')
   })
   it('shows the time of day a scan ran, when the timestamp carries a time zone', () => {
     const t = V().statusLine({ scan_type: 'setup', last_run_at: '2026-10-20T15:02:46.000Z' }, 'setup', NOW)
-    expect(t).toMatch(/\d{1,2}:\d{2}/); expect(t).toContain('(today)')
+    expect(t).toMatch(/\d{1,2}:\d{2}/); expect(t).not.toContain('(today)'); expect(t).not.toContain('ago')
     const bare = V().statusLine({ scan_type: 'guru', last_run_at: '2026-10-18 12:00:00' }, 'guru', NOW)
     expect(bare).not.toMatch(/\d{1,2}:\d{2}/)
   })
@@ -63,12 +63,27 @@ describe('discovery view', () => {
     it('confirmed first, then waiting, then failed/expired (dimmed); two-week-old rows are hidden', () => {
       const rows = [setup({ ticker: 'FFF', status: 'failed' }), setup({ ticker: 'CCC', status: 'confirmed' }), setup({ ticker: 'WWW' }),
         setup({ ticker: 'OLD' }, { candle_date: '2026-09-20' })]
-      const html = list(rows)
-      expect(html.indexOf('CCC')).toBeLessThan(html.indexOf('WWW')); expect(html.indexOf('WWW')).toBeLessThan(html.indexOf('FFF'))
+      const hidden = list(rows)
+      expect(hidden).not.toContain('FFF'); expect(hidden).toContain('Show failed and expired (1)')
+      const html = V().render({ scans: [], findings: rows }, 'setup', NOW2, { showPast: true }).list
+      expect(html).toContain('Hide failed and expired'); expect(html.indexOf('CCC')).toBeLessThan(html.indexOf('WWW')); expect(html.indexOf('WWW')).toBeLessThan(html.indexOf('FFF'))
       expect(html).not.toContain('OLD'); expect(html).toContain('opacity-60')
     })
+    it('a confirmed setup is listed for 2 sessions after its confirming close, then goes to the hidden group', () => {
+      const conf = (date: string) => list([setup({ ticker: 'CONF', status: 'confirmed' }, { candle_date: '2026-10-19', confirm_date: date })])
+      expect(conf('2026-10-22')).toContain('CONF')            // confirmed yesterday
+      expect(conf('2026-10-20')).toContain('CONF')            // Tuesday confirm, Thursday: 2 sessions
+      const late = conf('2026-10-19')                          // Monday confirm, Thursday: 3 sessions
+      expect(late).not.toContain('CONF'); expect(late).toContain('Show failed and expired (1)')
+      expect(V().render({ scans: [], findings: [setup({ ticker: 'CONF', status: 'confirmed' }, { candle_date: '2026-10-19', confirm_date: '2026-10-19' })] }, 'setup', NOW2, { showPast: true }).list).toContain('CONF')
+      expect(list([setup({ ticker: 'NODATE', status: 'confirmed' })])).toContain('NODATE')   // no confirm date recorded: left alone
+    })
+    it('the RSI guide lines sit at 35 and 65', () => {
+      const html = list([setup()])
+      expect(html).toContain('>35</text>'); expect(html).toContain('>65</text>'); expect(html).not.toContain('>70</text>')
+    })
     it('a waiting setup that was never resolved shows as expired after a week', () => {
-      const html = list([setup({ ticker: 'STALE' }, { candle_date: '2026-10-14' })])
+      const html = V().render({ scans: [], findings: [setup({ ticker: 'STALE' }, { candle_date: '2026-10-14' })] }, 'setup', NOW2, { showPast: true }).list
       expect(html).toContain('Expired'); expect(html).not.toContain('Awaiting trigger')
     })
     it('escapes everything the agent wrote and tolerates bad chart data', () => {
