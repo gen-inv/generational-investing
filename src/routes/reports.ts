@@ -9,6 +9,10 @@ import type { Bindings } from '../types'
 
 export const routes = new Hono<{ Bindings: Bindings }>()
 
+// Menu Settings hide screens and entry forms. They must never change a P/L total:
+// every closed trade is included in the reports.
+const ALL_TRADING = { stocks: true, options: true, daily: true }
+
 // ============================================================================
 // REPORTS DASHBOARD - NEW TAB-BASED REPORTS
 // ============================================================================
@@ -69,7 +73,7 @@ routes.get('/api/reports/portfolio-overview', authMiddleware, async (c) => {
     
     // Get YTD P/L from all closed trades
     // Stock P/L = realized P/L of every SELL (partial sells included), not the legacy stock_trades table
-    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const F = ALL_TRADING // closed P/L always counts, whatever Menu Settings hides
     const allStockSells = F.stocks ? await loadRealizedSells(DB, userId) : []
     const stockPL = {
       total_pl: sumRealized(allStockSells.filter(s => s.sell_date.startsWith(`${currentYear}`)))
@@ -265,7 +269,7 @@ routes.get('/api/reports/pl', authMiddleware, async (c) => {
   const month = c.req.query('month')
   
   // Stock P/L = realized P/L of each SELL (partial and full), grouped by month and account type
-  const F = await getFeatures(c.env.DB, userId) // Menu Settings
+  const F = ALL_TRADING // closed P/L always counts, whatever Menu Settings hides
   const stockSells = F.stocks ? await loadRealizedSells(c.env.DB, userId) : []
   const stockGroups = new Map<string, { year: string, month: string, account_type: string | null, total: number }>()
   for (const s of stockSells) {
@@ -366,7 +370,7 @@ routes.get('/api/reports/pl-summary', authMiddleware, async (c) => {
     
     // Realized stock P/L: one row per SELL (partial and full), each with its own P/L
     console.log('Fetching realized stock sells...')
-    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const F = ALL_TRADING // closed P/L always counts, whatever Menu Settings hides
     const realizedSells = F.stocks ? await loadRealizedSells(DB, userId, { from: startDate }) : []
     const stockTrades = realizedSells.map(s => ({
       profit_loss: s.realized_pl,
@@ -589,7 +593,7 @@ routes.get('/api/reports/strategy-analysis', authMiddleware, async (c) => {
     }
     
     // Get all closed trades with strategy information
-    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const F = ALL_TRADING // closed P/L always counts, whatever Menu Settings hides
     const optionTrades = !F.options ? { results: [] as any[] } : await DB.prepare(`
       SELECT 
         ot.profit_loss,
@@ -805,7 +809,7 @@ routes.get('/api/reports/performance', authMiddleware, async (c) => {
     
     // Get all closed trades for P/L calculations
     // Realized stock P/L per SELL (partial sells included) instead of the legacy stock_trades table
-    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const F = ALL_TRADING // closed P/L always counts, whatever Menu Settings hides
     const stockSells = F.stocks ? await loadRealizedSells(DB, userId, { from: startDate }) : []
     const stockTrades = {
       results: stockSells.map(s => ({
@@ -1389,11 +1393,6 @@ routes.get('/api/reports/dividends', authMiddleware, async (c) => {
     
     console.log(`Date range: startDate=${startDate}`)
     
-    // Dividends come from stock holdings: with Stock Trades switched off there is nothing to report
-    if (!(await getFeatures(DB, userId)).stocks) {
-      return c.json({ groupBy: groupBy === 'account' ? 'account' : 'stock', period, data: [], total: 0 })
-    }
-
     if (groupBy === 'account') {
       // Group dividends by account
       const dividends = await DB.prepare(`
@@ -1475,7 +1474,7 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
     const nextYear = parseInt(month) === 12 ? parseInt(year) + 1 : parseInt(year)
     const endDate = `${nextYear}-${nextMonth.toString().padStart(2, '0')}-01`
     
-    const F = await getFeatures(DB, userId) // Menu Settings: which kinds of trading the reports include
+    const F = ALL_TRADING // closed P/L always counts, whatever Menu Settings hides
     const none = { results: [] as any[] }
 
     // Stock Investments Income
