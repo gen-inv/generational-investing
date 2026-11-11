@@ -4,7 +4,8 @@
   var TABS = {
     guru: { label: 'Guru purchases', emptyText: 'No guru purchases have been reported yet. The scan runs weekly and only reports companies that pass the Quick-5.', every: 7 },
     maturing: { label: "Gov't contracts", emptyText: "No government-contract candidates have been reported yet.", every: 7 },
-    setup: { label: 'Trade setups', emptyText: 'No trade setups right now. The screen runs each weekday morning; a confirmed setup stays listed for two more sessions.', every: 2, unit: 'setups' }
+    setup: { label: 'Trade setups', emptyText: 'No trade setups right now. The screen runs each weekday morning; a confirmed setup stays listed for two more sessions.', every: 2, unit: 'setups' },
+    fx: { label: 'Forex setups', emptyText: 'No forex setups right now. The screen runs each weekday morning on daily bars; a confirmed setup stays listed for two more sessions.', every: 2, unit: 'setups' }
   }
 
   function escapeHtml(v) {
@@ -43,6 +44,9 @@
     return d.toISOString().slice(0, 10)
   }
 
+  // The Trade setups and Forex setups tabs share one layout
+  function isSetupTab(t) { return t === 'setup' || t === 'fx' }
+
   // Trade setups: say only whether the latest run found anything new, never what is still active. New = its reversal candle is from the latest
   // session (found_at is not used: the scanner re-stamps it when a setup changes status, e.g. waiting -> confirmed).
   function newSetupsText(scan, findings) {
@@ -63,14 +67,14 @@
     var when = fmtDate(scan.last_run_at) + (fmtTime(scan.last_run_at) ? ', ' + fmtTime(scan.last_run_at) : '')
     var stale = ago !== null && ago > TABS[tab].every * 2
     var bits = ['<strong>Last ran:</strong> ' + escapeHtml(when)]
-    if (tab === 'setup') {
+    if (isSetupTab(tab)) {
       bits.push(newSetupsText(scan, findings))
     } else {
       if (scan.gurus_scanned != null) bits.push(escapeHtml(scan.gurus_scanned) + ' gurus scanned')
       if (scan.candidates_found != null) bits.push(escapeHtml(scan.candidates_found) + ' ' + (TABS[tab].unit || 'candidates examined'))
     }
     var out = bits.join(' &middot; ')
-    if (scan.note && tab !== 'setup') out += '<div class="text-gray-500">' + escapeHtml(scan.note) + '</div>'
+    if (scan.note && !isSetupTab(tab)) out += '<div class="text-gray-500">' + escapeHtml(scan.note) + '</div>'
     if (stale) out += '<div class="text-red-600 font-semibold">This scan is overdue &mdash; it should run about every ' + TABS[tab].every + ' days.</div>'
     return out
   }
@@ -162,6 +166,15 @@
       })
   }
 
+  // Forex prices carry their own decimals (5, or 3 for yen pairs) and no dollar sign
+  function priceFmt(d) {
+    if (d && d.kind === 'fx' && num(d.decimals) !== null) {
+      var dp = num(d.decimals)
+      return function (v) { var n = num(v); return n === null ? '' : n.toFixed(dp) }
+    }
+    return money
+  }
+
   function stockChartsUrl(ticker) { return 'https://stockcharts.com/h-sc/ui?s=' + encodeURIComponent(String(ticker)) }
 
   // The setup drawn: candles, the support/resistance level as a band with every touch marked, the arrival and reversal candles, the price that
@@ -171,8 +184,9 @@
     if (cs.length < 5) return ''
     var ok = cs.every(function (c) { return c && c.length === 4 && c.every(function (x) { return num(x) !== null }) })
     if (!ok) return ''
-    var W = 640, H = 230, RH = 56, L = 54, R = 76, T = 8, B = 18
+    var W = 640, H = 230, RH = 56, L = 54, R = (d && d.kind === 'fx' ? 104 : 76), T = 8, B = 18
     var n = cs.length, plotW = W - L - R, step = plotW / n, bw = Math.max(2, step * 0.62)
+    var dp = d && d.kind === 'fx' && num(d.decimals) !== null ? num(d.decimals) : 2
     var level = num(d.level), band = num(d.band), trig = num(d.trigger), inv = num(d.invalidation)
     var lo = Infinity, hi = -Infinity
     cs.forEach(function (c) { lo = Math.min(lo, Number(c[2])); hi = Math.max(hi, Number(c[1])) })
@@ -187,7 +201,7 @@
     for (var g = 0; g <= 4; g++) {
       var gp = lo + (hi - lo) * g / 4
       out.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(gp).toFixed(1) + '" y2="' + y(gp).toFixed(1) + '" stroke="#e5e7eb" stroke-width="1"/>')
-      out.push('<text x="' + (L - 6) + '" y="' + (y(gp) + 3).toFixed(1) + '" text-anchor="end" font-size="10" fill="#6b7280">' + gp.toFixed(2) + '</text>')
+      out.push('<text x="' + (L - 6) + '" y="' + (y(gp) + 3).toFixed(1) + '" text-anchor="end" font-size="10" fill="#6b7280">' + gp.toFixed(dp) + '</text>')
     }
     var ci = num(d.candle_idx)
     if (ci !== null && ci >= 1 && ci < n) {
@@ -212,7 +226,7 @@
     function hline(p, color, dash, label) {
       if (p === null) return
       out.push('<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(p).toFixed(1) + '" y2="' + y(p).toFixed(1) + '" stroke="' + color + '" stroke-width="1.5"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>')
-      labels.push({ y: y(p), color: color, text: label + ' ' + p.toFixed(2) })
+      labels.push({ y: y(p), color: color, text: label + ' ' + p.toFixed(dp) })
     }
     hline(level, lineCol, '', bull ? 'Support' : 'Resistance')
     hline(trig, '#d97706', '6 4', 'Trigger')
@@ -267,7 +281,7 @@
       h += '<div><strong>Confirming:</strong> ' +
         part(!!c.rsi.ok, 'RSI ' + fix(c.rsi.value, 1), bull ? 'RSI(14) at or below 35 within the 3 sessions up to the signal candle' : 'RSI(14) at or above 65 within the 3 sessions up to the signal candle') + ' &middot; ' +
         part(!!c.stoch.ok, 'Stochastic %K ' + fix(c.stoch.k, 1), bull ? 'Slow %K at or below 20 within 5 sessions and turning up at the signal candle' : 'Slow %K at or above 80 within 5 sessions and turning down at the signal candle') + ' &middot; ' +
-        part(!!c.macd.ok, 'MACD histogram ' + fix(c.macd.hist, 3), bull ? 'MACD histogram rising at the signal candle' : 'MACD histogram falling at the signal candle') +
+        part(!!c.macd.ok, 'MACD histogram ' + fix(c.macd.hist, d.kind === 'fx' ? 5 : 3), bull ? 'MACD histogram rising at the signal candle' : 'MACD histogram falling at the signal candle') +
         ' <span class="text-gray-500">(' + n3 + ' of 3 confirm; at least 1 is needed)</span></div>'
     }
     var bits = []
@@ -286,7 +300,7 @@
 
   // Next earnings (stocks only; an ETF has none and already carries its own badge). Days are counted from the viewer's today.
   function earningsInfo(d, now) {
-    if (!d || d.kind === 'etf') return null
+    if (!d || d.kind === 'etf' || d.kind === 'fx') return null
     var unknown = { short: 'Earnings unknown', long: 'Next earnings date unavailable', cls: 'bg-gray-100 text-gray-500', days: null }
     var e = d.next_earnings
     if (!e || typeof e.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) return unknown
@@ -308,6 +322,7 @@
 
   // "Signal candle: Hammer on 2026-11-03 | triggers when price trades above $X | triggered <date> | confirmed <date> | fails on a close below $Y"
   function signalLine(d, bull) {
+    var money = priceFmt(d)
     var name = d.pattern ? String(d.pattern) : 'Reversal candle'
     name = name.charAt(0).toUpperCase() + name.slice(1)
     var parts = [(d.arrival_date ? 'First candle: ' + escapeHtml(d.arrival_date) + ' &middot; ' : '') + 'Signal candle: ' + escapeHtml(name) + ' on ' + escapeHtml(d.candle_date || '')]
@@ -334,7 +349,7 @@
         '<div class="text-sm text-gray-700 mb-2">' + setupMetrics(d) + '</div>' +
         '<div class="text-sm text-gray-600 mb-2">' + signalLine(d, bull) + '</div>' +
         (ei ? '<div class="text-sm text-gray-600 mb-2">' + escapeHtml(ei.long) + '</div>' : '') +
-        '<a href="' + escapeHtml(stockChartsUrl(f.ticker)) + '" target="_blank" rel="noopener" class="text-sm text-brand-teal underline"><i class="fas fa-external-link-alt mr-1"></i>Open ' + escapeHtml(f.ticker) + ' on StockCharts</a>'
+        '<a href="' + escapeHtml(stockChartsUrl(d.kind === 'fx' ? '$' + f.ticker : f.ticker)) + '" target="_blank" rel="noopener" class="text-sm text-brand-teal underline"><i class="fas fa-external-link-alt mr-1"></i>Open ' + escapeHtml(f.ticker) + ' on StockCharts</a>'
       return '<div class="border-b border-gray-200' + dim + '">' +
         '<button type="button" data-discovery-row="' + i + '" class="w-full text-left py-3 hover:bg-gray-50 flex items-start gap-3">' +
         '<span class="font-bold w-20 shrink-0">' + escapeHtml(f.ticker) + '</span>' +
@@ -523,12 +538,29 @@
     })
   }
 
+  // Forex setups: how they are found (the Trade setups engine, run on a fixed list of currency pairs)
+  function fxRulesPanel() {
+    var items = [
+      ['Pairs', 'A fixed list of 11 major and cross pairs (EUR/USD, GBP/USD, USD/JPY, USD/CHF, AUD/USD, USD/CAD, NZD/USD, EUR/JPY, GBP/JPY, EUR/GBP, AUD/JPY), checked on daily bars once each weekday morning. The list is kept on the research machine for now.'],
+      ['A level with 3 touches', 'Support or resistance is a line through at least 3 swing points that price then moved away from, each at least 3 sessions apart. Every touch sits within 0.4 ATR of the line, and at least 2 of them are the level\'s own kind (a level that flipped from support to resistance, or the reverse, counts for the rest).'],
+      ['A signal candle at the level', 'A bullish or bearish engulfing candle, or an arrival candle followed by a reversal candle, after price has run into the level. Hammer and hanging-man candles are not used: forex has no volume to vet them.'],
+      ['Oscillator confirmation', 'At least 1 of 3 must confirm: RSI(14) at or below 35 (at or above 65 for resistance), slow stochastic at or below 20 (80) and turning, or the MACD histogram moving the right way.'],
+      ['Trigger and confirmation', 'It triggers when price trades one pip beyond the candle (0.0001, or 0.01 on yen pairs), is confirmed by a daily close beyond it within 3 sessions, and fails on a close back through the other end of the candle. A confirmed setup stays listed for 2 more sessions.']
+    ]
+    return '<details class="mb-4 border border-gray-200 rounded bg-gray-50" data-rules-panel>' +
+      '<summary class="cursor-pointer px-4 py-2 font-semibold text-gray-700">How these setups are found</summary>' +
+      '<div class="px-4 pb-4 text-sm text-gray-700"><ol class="list-decimal pl-5 space-y-2">' +
+      items.map(function (it) { return '<li><span class="font-semibold">' + escapeHtml(it[0]) + '.</span> ' + escapeHtml(it[1]) + '</li>' }).join('') + '</ol>' +
+      '<div class="mt-3 text-gray-500">ATR = average true range over 14 sessions. Prices have 5 decimals (3 for yen pairs). Failed and expired setups are hidden unless you choose to show them. The oscillators are on the StockCharts link for every row.</div>' +
+      '</div></details>'
+  }
+
   function render(state, tab, now, opts) {
     var scan = (state.scans || []).filter(function (s) { return s.scan_type === tab })[0]
     var list = (state.findings || []).filter(function (f) { return f.scan_type === tab })
     var reported = list
     var toggle = ''
-    if (tab === 'setup') {
+    if (isSetupTab(tab)) {
       var showPast = !!(opts && opts.showPast)
       list = activeSetups(list, now)
       var past = list.filter(function (f) { return f.status === 'failed' || f.status === 'expired' }).length
@@ -537,7 +569,7 @@
     }
     return {
       status: statusLine(scan, tab, now, reported),
-      list: (tab === 'setup' ? rulesPanel(opts && opts.etfs) + toggle : '') + (list.length ? (tab === 'setup' ? renderSetups(list, now) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>')
+      list: (tab === 'setup' ? rulesPanel(opts && opts.etfs) + toggle : tab === 'fx' ? fxRulesPanel() + toggle : '') + (list.length ? (isSetupTab(tab) ? renderSetups(list, now) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>')
     }
   }
 

@@ -6,7 +6,7 @@ import { researchAccessMiddleware, researchMachineMiddleware, isValidTicker } fr
 // Reading needs a site login or the ingest token; writing is for the research machine only (ingest token).
 export const routes = new Hono<{ Bindings: Bindings }>()
 
-export const SCAN_TYPES = ['guru', 'maturing', 'event', 'setup']
+export const SCAN_TYPES = ['guru', 'maturing', 'event', 'setup', 'fx']
 const STATUS_RE = /^[a-z][a-z_ ]{0,29}$/
 const MAX = { headline: 300, details: 8000, company: 200, tier: 40, note: 500, source_key: 120, data: 8000, setupData: 16000 }
 
@@ -39,8 +39,8 @@ routes.post('/scans', researchMachineMiddleware, async (c) => {
       candidates_found = excluded.candidates_found, status = excluded.status, note = excluded.note, updated_at = CURRENT_TIMESTAMP
   `).bind(body.scan_type, lastRun, optInt(body.gurus_scanned), optInt(body.candidates_found), status ?? 'ok', note).run()
   // trade setups pile up daily and go stale: keep 45 days
-  if (body.scan_type === 'setup') {
-    await c.env.RESEARCH_DB.prepare("DELETE FROM discovery_findings WHERE scan_type = 'setup' AND found_at < ?").bind(new Date(Date.now() - 45 * 86400000).toISOString()).run()
+  if (body.scan_type === 'setup' || body.scan_type === 'fx') {
+    await c.env.RESEARCH_DB.prepare("DELETE FROM discovery_findings WHERE scan_type = ? AND found_at < ?").bind(body.scan_type, new Date(Date.now() - 45 * 86400000).toISOString()).run()
   }
   return c.json({ success: true, scan_type: body.scan_type, last_run_at: lastRun })
 })
@@ -67,7 +67,7 @@ routes.post('/findings', researchMachineMiddleware, async (c) => {
   if (body.data !== undefined && body.data !== null) {
     if (typeof body.data !== 'object' || Array.isArray(body.data)) return c.json({ error: 'data must be an object' }, 400)
     dataJson = JSON.stringify(body.data)
-    if (dataJson.length > (body.scan_type === 'setup' ? MAX.setupData : MAX.data)) return c.json({ error: 'data is too large' }, 400)
+    if (dataJson.length > (body.scan_type === 'setup' || body.scan_type === 'fx' ? MAX.setupData : MAX.data)) return c.json({ error: 'data is too large' }, 400)
   }
 
   const db = c.env.RESEARCH_DB
