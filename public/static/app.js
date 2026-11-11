@@ -10977,6 +10977,12 @@ function renderOptionTradesSection(optionTrades) {
     // Short Puts - Long Term
     if (!menuAreaOff('options')) html += renderOptionStrategySubsection('Short Puts (Long Term)', '📅', optionTrades.shortPutsLongTerm)
     
+    // Fixed-risk trades: Iron Condors, Credit Spreads, Debit Spreads
+    if (!menuAreaOff('options')) html += renderFixedRiskSection(optionTrades.fixedRisk)
+    
+    // Closed trades that match none of the sections (shown only when there are some)
+    if (!menuAreaOff('options')) html += renderOtherOptionsSection(optionTrades.otherOptions)
+    
     // 0DTE SPX Trades (no ticker breakdown)
     const dtePL = parseFloat(optionTrades.dteTrades?.profitLoss || 0)
     const dteCount = parseInt(optionTrades.dteTrades?.tradeCount || 0)
@@ -11026,6 +11032,51 @@ function renderOptionTradesSection(optionTrades) {
     `
     
     return html
+}
+
+// Fixed-risk trades (Iron Condors, Credit Spreads, Debit Spreads): one block with a total, a table per kind that has trades
+function renderFixedRiskSection(fixed) {
+    const kinds = [
+        ['Iron Condors', '🦅', fixed && fixed.ironCondors],
+        ['Credit Spreads', '🛡️', fixed && fixed.creditSpreads],
+        ['Debit Spreads', '🎟️', fixed && fixed.debitSpreads]
+    ]
+    const plOf = t => (t && t.results ? t.results.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) : 0)
+    const used = kinds.filter(k => k[2] && k[2].results && k[2].results.length > 0)
+    if (used.length === 0) {
+        return `
+            <div class="mb-6">
+                <h5 class="text-lg font-semibold text-gray-700 mb-2">
+                    <span class="text-2xl mr-2">⚖️</span>Fixed-Risk Trades
+                </h5>
+                <p class="text-sm text-gray-500 ml-10">No closed trades this month</p>
+            </div>
+        `
+    }
+    const total = kinds.reduce((sum, k) => sum + plOf(k[2]), 0)
+    return `
+        <div class="mb-6">
+            <div class="flex justify-between items-center mb-3">
+                <h5 class="text-lg font-semibold text-gray-700">
+                    <span class="text-2xl mr-2">⚖️</span>Fixed-Risk Trades
+                </h5>
+                <div class="text-lg font-bold ${total >= 0 ? 'text-green-600' : 'text-red-600'}">
+                    ${formatCurrency(total)}
+                </div>
+            </div>
+            <div class="ml-6 pl-4 border-l-2 border-gray-200">
+                ${used.map(k => renderOptionStrategySubsection(k[0], k[1], k[2])).join('')}
+            </div>
+        </div>
+    `
+}
+
+// Closed option trades no other section shows (a strategy without its own section, or a covered call with no matching stock strategy).
+// Left out entirely when there are none; the amounts are in the Option Trades Total.
+function renderOtherOptionsSection(other) {
+    if (!other || !other.results || other.results.length === 0) return ''
+    return renderOptionStrategySubsection('Other Option Trades', '❔', other) +
+        '<p class="text-xs text-gray-500 ml-10 -mt-4 mb-6">Closed this month and not part of any section above; included in the Option Trades Total.</p>'
 }
 
 // Render a single option strategy subsection
@@ -11122,6 +11173,9 @@ function calculateOptionTradesTotal(optionTrades) {
     
     total += optionTrades.shortPutsWheel.results?.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) || 0
     total += optionTrades.shortPutsStockpiling.results?.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) || 0
+    const plOf = t => (t && t.results ? t.results.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) : 0)
+    const fixed = optionTrades.fixedRisk || {}
+    total += plOf(fixed.ironCondors) + plOf(fixed.creditSpreads) + plOf(fixed.debitSpreads) + plOf(optionTrades.otherOptions)
     total += optionTrades.shortPutsLongTerm.results?.reduce((sum, item) => sum + parseFloat(item.profit_loss || 0), 0) || 0
     total += parseFloat(optionTrades.dteTrades?.profitLoss || 0)
     

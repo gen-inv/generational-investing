@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 
-// Menu Settings -> reports: a switched-off area (Stock Trades, Options Trades, 0DTE SPX) must not be read into any report.
+// Menu Settings -> reports: the switches hide screens and entry forms, but must never change a closed P/L figure.
+// So every report keeps reading every area, whatever is switched off. Only the open-positions screen follows the switches.
 // The sign-in check and the helper libraries are not what is tested here.
 const sells = vi.hoisted(() => vi.fn())
 vi.mock('../lib/auth', () => ({ authMiddleware: async (c: any, next: any) => { c.set('userId', 7); await next() } }))
@@ -52,7 +53,7 @@ const REPORTS: { path: string; reads: { stocks: boolean; options: boolean; daily
 ]
 const AREAS = [{ off: 'stocks', key: 'stocks' }, { off: 'options', key: 'options' }, { off: 'daily-trade', key: 'daily' }] as const
 
-describe('reports follow the Menu Settings switches', () => {
+describe('reports ignore the Menu Settings switches for totals', () => {
   for (const r of REPORTS) {
     it(`${r.path}: reads everything it owns when all areas are on`, async () => {
       const { res, log } = await run(r.path, [])
@@ -60,41 +61,43 @@ describe('reports follow the Menu Settings switches', () => {
       expect(used(log)).toEqual(r.reads)
     })
     for (const a of AREAS) {
-      it(`${r.path}: reads nothing from ${a.key} when ${a.off} is switched off`, async () => {
+      // The open-positions screen is the only one that follows the switches.
+      const follows = r.path === '/api/reports/positions'
+      it(`${r.path}: ${follows ? 'reads nothing from' : 'still reads'} ${a.key} when ${a.off} is switched off`, async () => {
         const { res, log } = await run(r.path, [a.off])
         expect(res.status).toBe(200)
-        expect(used(log)).toEqual({ ...r.reads, [a.key]: false })
+        expect(used(log)).toEqual(follows ? { ...r.reads, [a.key]: false } : r.reads)
       })
     }
   }
 
-  it('the overview win-rate statistics leave out a switched-off area', async () => {
+  it('the overview win-rate statistics keep every area, whatever is switched off', async () => {
     const union = async (hidden: string[]) => (await run('/api/reports/portfolio-overview', hidden)).log.find((q) => q.sql.includes('UNION ALL'))!.args
-    expect(await union([])).toEqual([7, 1, 7, 1])
-    expect(await union(['options'])).toEqual([7, 0, 7, 1])
-    expect(await union(['daily-trade'])).toEqual([7, 1, 7, 0])
-    expect(await union(['options', 'daily-trade'])).toEqual([7, 0, 7, 0])
-  })
-
-  it('the dividends report is empty, in the usual shape, when Stock Trades is off', async () => {
-    for (const groupBy of ['account', 'stock']) {
-      const { res, log } = await run(`/api/reports/dividends?groupBy=${groupBy}`, ['stocks'])
-      expect(await res.json()).toEqual({ groupBy, period: 'ytd', data: [], total: 0 })
-      expect(log).toHaveLength(0)
+    for (const hidden of [[], ['options'], ['daily-trade'], ['options', 'daily-trade']]) {
+      expect(await union(hidden)).toEqual([7, 1, 7, 1])
     }
   })
 
-  it('monthly income keeps covered calls (an option trade) when only Stock Trades is off, and drops stock sales and dividends', async () => {
-    const { log } = await run('/api/reports/monthly-income', ['stocks'])
-    expect(log.some((q) => /COVERED_CALL/.test(q.sql))).toBe(true)
-    expect(log.some((q) => /stock_transactions/.test(q.sql))).toBe(false)
-    expect(log.some((q) => /cost_basis_adjustments/.test(q.sql))).toBe(false)
+  it('the dividends report still reads dividends when Stock Trades is off', async () => {
+    for (const groupBy of ['account', 'stock']) {
+      const { res, log } = await run(`/api/reports/dividends?groupBy=${groupBy}`, ['stocks'])
+      expect(res.status).toBe(200)
+      expect(log.length).toBeGreaterThan(0)
+    }
   })
 
-  it('switching areas back on restores the reports', async () => {
+  it('monthly income still includes stock sales, dividends and covered calls when every area is switched off', async () => {
+    const { log } = await run('/api/reports/monthly-income', ['stocks', 'options', 'daily-trade'])
+    expect(log.some((q) => /COVERED_CALL/.test(q.sql))).toBe(true)
+    expect(log.some((q) => /stock_transactions/.test(q.sql))).toBe(true)
+    expect(log.some((q) => /cost_basis_adjustments/.test(q.sql))).toBe(true)
+    expect(log.some((q) => /daily_trades/.test(q.sql))).toBe(true)
+  })
+
+  it('switching areas off and back on changes nothing in the reports', async () => {
     const off = await run('/api/reports/strategy-analysis', ['options', 'daily-trade'])
-    expect(used(off.log)).toEqual({ stocks: false, options: false, daily: false })
     const on = await run('/api/reports/strategy-analysis', [])
-    expect(used(on.log)).toEqual({ stocks: false, options: true, daily: true })
+    expect(used(off.log)).toEqual({ stocks: false, options: true, daily: true })
+    expect(used(on.log)).toEqual(used(off.log))
   })
 })

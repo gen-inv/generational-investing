@@ -1611,6 +1611,45 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
       GROUP BY ticker
     `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
     
+    // Fixed-risk trades: Iron Condors, Credit Spreads, Debit Spreads (defined risk, so no stock behind them)
+    const fixedRisk = async (strategy: string) => !F.options ? none : await DB.prepare(`
+      SELECT ticker, SUM(profit_loss) as profit_loss
+      FROM option_trades
+      WHERE user_id = ? AND strategy_type = ?
+        ${accountId ? 'AND account_id = ?' : ''}
+        AND is_open = 0 AND close_date >= ? AND close_date < ?
+      GROUP BY ticker
+      ORDER BY ticker ASC
+    `).bind(userId, strategy, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
+    const ironCondors = await fixedRisk('IRON_CONDOR')
+    const creditSpreads = await fixedRisk('CREDIT_SPREAD')
+    const debitSpreads = await fixedRisk('DEBIT_SPREAD')
+
+    // Anything closed this month that none of the sections above would show, so the report never drops a trade silently:
+    // a strategy this report has no section for, and covered calls with no matching stock strategy.
+    const otherStrategies = !F.options ? none : await DB.prepare(`
+      SELECT ticker || ' (' || COALESCE(strategy_type, 'no strategy') || ')' as ticker, SUM(profit_loss) as profit_loss
+      FROM option_trades
+      WHERE user_id = ?
+        AND COALESCE(strategy_type, '') NOT IN ('SELLING_PUT_WHEEL', 'SELLING_PUT', 'SELLING_PUT_LONG_TERM', 'IRON_CONDOR', 'CREDIT_SPREAD', 'DEBIT_SPREAD', 'COVERED_CALL')
+        ${accountId ? 'AND account_id = ?' : ''}
+        AND is_open = 0 AND close_date >= ? AND close_date < ?
+      GROUP BY ticker, strategy_type
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
+    const unlinkedCalls = !F.options ? none : await DB.prepare(`
+      SELECT ot.ticker || ' (covered call, no stock strategy)' as ticker, SUM(ot.profit_loss) as profit_loss
+      FROM option_trades ot
+      WHERE ot.user_id = ? AND ot.strategy_type = 'COVERED_CALL'
+        AND NOT EXISTS (
+          SELECT 1 FROM stock_holdings sh
+          WHERE sh.ticker = ot.ticker AND sh.account_id = ot.account_id
+            AND sh.strategy_type IN ('DIVIDEND_ETFS', 'STOCKPILING', 'WHEEL')
+        )
+        ${accountId ? 'AND ot.account_id = ?' : ''}
+        AND ot.is_open = 0 AND ot.close_date >= ? AND ot.close_date < ?
+      GROUP BY ot.ticker
+    `).bind(userId, ...(accountId ? [parseInt(accountId)] : []), startDate, endDate).all()
+
     // 0 DTE SPX Trades
     const dteTrades = !F.daily ? null : await DB.prepare(`
       SELECT SUM(profit_loss) as profit_loss, COUNT(*) as trade_count
@@ -1646,6 +1685,12 @@ routes.get('/api/reports/monthly-income', authMiddleware, async (c) => {
         shortPutsWheel: { results: shortPutsWheel.results || [] },
         shortPutsStockpiling: { results: shortPutsStockpiling.results || [] },
         shortPutsLongTerm: { results: shortPutsLongTerm.results || [] },
+        fixedRisk: {
+          ironCondors: { results: ironCondors.results || [] },
+          creditSpreads: { results: creditSpreads.results || [] },
+          debitSpreads: { results: debitSpreads.results || [] }
+        },
+        otherOptions: { results: [...(otherStrategies.results || []), ...(unlinkedCalls.results || [])] },
         dteTrades: {
           profitLoss: dteTrades?.profit_loss || 0,
           tradeCount: dteTrades?.trade_count || 0
