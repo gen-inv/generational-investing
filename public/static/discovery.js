@@ -376,7 +376,124 @@
     }
   }
 
-  function rulesPanel() {
+  // ---- The ETFs the trade-setup scan covers besides the roster. They live on the site; the research machine reads them before every scan. ----
+  var ETF_RE = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/
+  var MAX_ETFS = 200
+
+  function etfUrl() { return base() + '/api/research/discovery/etfs' }
+
+  // The saved list, or null when it cannot be read (never throws).
+  async function fetchEtfs() {
+    try {
+      var res = await root.axios.get(etfUrl())
+      var t = res && res.data && res.data.tickers
+      return Array.isArray(t) ? t.map(String) : null
+    } catch (e) { return null }
+  }
+
+  // "spy, qqq  xle" -> { ok: ['SPY', 'QQQ', 'XLE'], bad: [] }
+  function parseTickers(text) {
+    var ok = [], bad = []
+    String(text == null ? '' : text).toUpperCase().split(/[\s,;]+/).forEach(function (t) {
+      if (!t) return
+      if (ETF_RE.test(t)) { if (ok.indexOf(t) < 0) ok.push(t) } else if (bad.indexOf(t) < 0) bad.push(t)
+    })
+    return { ok: ok, bad: bad }
+  }
+
+  function universeHtml(etfs) {
+    var n = Array.isArray(etfs) ? etfs.length : null
+    return 'The scan covers every company on your Company Roster plus your list of liquid ETFs' + (n === null ? '' : ' (' + n + (n === 1 ? ' ETF' : ' ETFs') + ')') +
+      '. An ETF is skipped when its average daily volume is under 250,000 shares. The scan runs on weekdays after 8:35 a.m. Edmonton time, and a change to the ETF list takes effect at the next run. ' +
+      '<button type="button" data-etf-edit class="text-brand-teal underline font-semibold">Edit ETF list</button>'
+  }
+
+  function etfModalHtml(draft, msg) {
+    var chips = draft.length ? draft.map(function (t) {
+      return '<span class="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-50 text-blue-800 text-sm border border-blue-200">' + escapeHtml(t) +
+        '<button type="button" data-etf-remove="' + escapeHtml(t) + '" class="text-blue-500 hover:text-red-600 font-bold" aria-label="Remove ' + escapeHtml(t) + '">&times;</button></span>'
+    }).join('') : '<span class="text-gray-500 text-sm">No ETFs on the list: the scan will cover only your Company Roster.</span>'
+    return '<div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" role="dialog" aria-modal="true" aria-label="ETF list for trade setups">' +
+      '<div class="px-5 py-3 bg-brand-teal text-white rounded-t-lg flex justify-between items-center"><span class="font-semibold">ETF list for trade setups</span>' +
+      '<button type="button" data-etf-cancel class="text-xl leading-none" aria-label="Close">&times;</button></div>' +
+      '<div class="p-5 overflow-y-auto text-sm text-gray-700">' +
+      '<p class="mb-3">These ETFs are scanned along with your Company Roster. Add tickers separated by spaces or commas. An ETF with an average daily volume under 250,000 shares is skipped even when it is listed. Changes take effect at the next scan.</p>' +
+      '<div class="flex gap-2 mb-2"><input type="text" data-etf-input class="flex-1 border border-gray-300 rounded px-3 py-2" placeholder="e.g. XME, KWEB" autocomplete="off" maxlength="200">' +
+      '<button type="button" data-etf-add class="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 font-semibold">Add</button></div>' +
+      '<div data-etf-msg class="mb-2 min-h-[1.25rem] ' + (msg && msg.error ? 'text-red-600' : 'text-gray-500') + '">' + escapeHtml(msg ? msg.text : '') + '</div>' +
+      '<div class="flex flex-wrap gap-2">' + chips + '</div>' +
+      '<div class="mt-3 text-gray-500" data-etf-count>' + draft.length + (draft.length === 1 ? ' ETF' : ' ETFs') + ' on the list</div></div>' +
+      '<div class="px-5 py-3 border-t flex justify-end gap-2"><button type="button" data-etf-cancel class="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 font-semibold">Cancel</button>' +
+      '<button type="button" data-etf-save class="px-4 py-2 rounded bg-brand-teal text-white font-semibold">Save list</button></div></div>'
+  }
+
+  async function openEtfModal() {
+    var doc = root.document
+    var old = doc.getElementById('etf-modal')
+    if (old) old.remove()
+    var overlay = doc.createElement('div')
+    overlay.id = 'etf-modal'
+    overlay.className = 'fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-40'
+    overlay.innerHTML = '<div class="bg-white rounded-lg p-6 text-gray-600">Loading...</div>'
+    doc.body.appendChild(overlay)
+    function onKey(e) { if (e.key === 'Escape') close() }
+    function close() { doc.removeEventListener('keydown', onKey); overlay.remove() }
+    doc.addEventListener('keydown', onKey)
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close() })
+    var draft = await fetchEtfs()
+    if (draft === null) {
+      overlay.innerHTML = '<div class="bg-white rounded-lg p-6 text-red-600">Could not load the ETF list. <button type="button" data-etf-cancel class="underline ml-2">Close</button></div>'
+      overlay.querySelectorAll('[data-etf-cancel]').forEach(function (b) { b.addEventListener('click', close) })
+      return
+    }
+    function draw(msg, keepText) {
+      draft.sort()
+      overlay.innerHTML = etfModalHtml(draft, msg)
+      var input = overlay.querySelector('[data-etf-input]')
+      if (input && keepText) input.value = keepText
+      overlay.querySelectorAll('[data-etf-cancel]').forEach(function (b) { b.addEventListener('click', close) })
+      overlay.querySelectorAll('[data-etf-remove]').forEach(function (b) {
+        b.addEventListener('click', function () { var t = b.getAttribute('data-etf-remove'); draft = draft.filter(function (x) { return x !== t }); draw() })
+      })
+      function add() {
+        var p = parseTickers(input.value)
+        var fresh = p.ok.filter(function (t) { return draft.indexOf(t) < 0 })
+        if (draft.length + fresh.length > MAX_ETFS) { draw({ error: true, text: 'The list can hold up to ' + MAX_ETFS + ' ETFs.' }, input.value); return }
+        fresh.sort()
+        draft = draft.concat(fresh)
+        var text = (fresh.length ? 'Added ' + fresh.join(', ') + '. ' : (p.ok.length ? 'Already on the list. ' : '')) + (p.bad.length ? 'Not a ticker: ' + p.bad.join(', ') : '')
+        draw(text ? { error: p.bad.length > 0, text: text.trim() } : null, p.bad.length ? p.bad.join(' ') : '')
+        var again = overlay.querySelector('[data-etf-input]')
+        if (again) again.focus()
+      }
+      overlay.querySelector('[data-etf-add]').addEventListener('click', add)
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add() } })
+      overlay.querySelector('[data-etf-save]').addEventListener('click', async function (e) {
+        var btn = e.currentTarget
+        btn.disabled = true
+        try {
+          var res = await root.axios.put(etfUrl(), { tickers: draft })
+          current.etfs = (res && res.data && Array.isArray(res.data.tickers)) ? res.data.tickers.map(String) : draft.slice()
+          close()
+          var el = doc.querySelector('[data-universe]')
+          if (el) { el.innerHTML = universeHtml(current.etfs); bindUniverse(el) }
+        } catch (err) {
+          btn.disabled = false
+          var why = err && err.response && err.response.data && err.response.data.error
+          draw({ error: true, text: 'Could not save the list' + (why ? ': ' + why : '.') })
+        }
+      })
+    }
+    draw()
+  }
+
+  function bindUniverse(scope) {
+    scope.querySelectorAll('[data-etf-edit]').forEach(function (b) {
+      b.addEventListener('click', function (e) { e.preventDefault(); openEtfModal() })
+    })
+  }
+
+  function rulesPanel(etfs) {
     var btn = function (side, on) {
       return '<button type="button" data-rules-side="' + side + '" class="px-3 py-1 text-sm font-semibold ' + (on ? RULES_ON : RULES_OFF) + '">' + (side === 'bullish' ? '&#9650; Bullish' : '&#9660; Bearish') + '</button>'
     }
@@ -388,9 +505,10 @@
     return '<details class="mb-4 border border-gray-200 rounded bg-gray-50" data-rules-panel>' +
       '<summary class="cursor-pointer px-4 py-2 font-semibold text-gray-700">How these setups are found</summary>' +
       '<div class="px-4 pb-4 text-sm text-gray-700">' +
+      '<div data-universe class="mb-3 text-gray-700">' + universeHtml(etfs) + '</div>' +
       '<div class="inline-flex rounded border border-gray-300 overflow-hidden mb-3">' + btn('bullish', true) + btn('bearish', false) + '</div>' +
       pane('bullish', true) + pane('bearish', false) +
-      '<div class="mt-3 text-gray-500">ATR = average true range over 14 sessions. The scan covers the companies on the research roster plus 30 liquid ETFs (average volume of 250,000 or more), on weekdays after 8:35 a.m. Edmonton time. A signal candle within 3 sessions of an earlier one at the same level is treated as part of the same bounce. A confirmed setup stays listed for 2 more sessions after its confirming close, since it is too late to act on after that; failed and expired setups are hidden unless you choose to show them. The oscillators are on the StockCharts link for every row.</div>' +
+      '<div class="mt-3 text-gray-500">ATR = average true range over 14 sessions. A signal candle within 3 sessions of an earlier one at the same level is treated as part of the same bounce. A confirmed setup stays listed for 2 more sessions after its confirming close, since it is too late to act on after that; failed and expired setups are hidden unless you choose to show them. The oscillators are on the StockCharts link for every row.</div>' +
       '</div></details>'
   }
 
@@ -419,21 +537,22 @@
     }
     return {
       status: statusLine(scan, tab, now, reported),
-      list: (tab === 'setup' ? rulesPanel() + toggle : '') + (list.length ? (tab === 'setup' ? renderSetups(list, now) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>')
+      list: (tab === 'setup' ? rulesPanel(opts && opts.etfs) + toggle : '') + (list.length ? (tab === 'setup' ? renderSetups(list, now) : renderFindings(list)) : '<div class="text-gray-500 py-6 text-center">' + escapeHtml(TABS[tab].emptyText) + '</div>')
     }
   }
 
-  var current = { tab: 'guru', showPast: false, data: { scans: [], findings: [] } }
+  var current = { tab: 'guru', showPast: false, etfs: null, data: { scans: [], findings: [] } }
 
   function paint() {
     var doc = root.document
-    var out = render(current.data, current.tab, undefined, { showPast: current.showPast })
+    var out = render(current.data, current.tab, undefined, { showPast: current.showPast, etfs: current.etfs })
     doc.getElementById('discovery-status').innerHTML = out.status
     var list = doc.getElementById('discovery-list')
     list.innerHTML = out.list
     list.querySelectorAll('[data-rules-side]').forEach(function (b) {
       b.addEventListener('click', function (e) { e.preventDefault(); rulesSwitch(list, b.getAttribute('data-rules-side')) })
     })
+    bindUniverse(list)
     list.querySelectorAll('[data-show-past]').forEach(function (b) {
       b.addEventListener('click', function () { current.showPast = !current.showPast; paint() })
     })
@@ -465,13 +584,15 @@
     try {
       var res = await root.axios.get(base() + '/api/research/discovery')
       current.data = res.data || { scans: [], findings: [] }
+      current.etfs = await fetchEtfs()
       paint()
     } catch (e) {
       list.innerHTML = '<div class="text-red-600 py-6 text-center">Could not load discovery results.</div>'
     }
   }
 
-  var api = { escapeHtml: escapeHtml, render: render, statusLine: statusLine, loadDiscovery: loadDiscovery, setDiscoveryTab: setDiscoveryTab, TABS: TABS, chartSvg: chartSvg, activeSetups: activeSetups, rulesSwitch: rulesSwitch }
+  var api = { escapeHtml: escapeHtml, render: render, statusLine: statusLine, loadDiscovery: loadDiscovery, setDiscoveryTab: setDiscoveryTab, TABS: TABS, chartSvg: chartSvg, activeSetups: activeSetups, rulesSwitch: rulesSwitch,
+    parseTickers: parseTickers, universeHtml: universeHtml, bindUniverse: bindUniverse, openEtfModal: openEtfModal, etfModalHtml: etfModalHtml }
   root.escapeHtmlDiscovery = escapeHtml
   root.loadDiscovery = loadDiscovery
   root.setDiscoveryTab = setDiscoveryTab

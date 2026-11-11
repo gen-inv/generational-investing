@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 
@@ -218,12 +218,76 @@ describe('discovery view', () => {
       expect(pane('bullish').classList.contains('hidden')).toBe(true); expect(pane('bearish').classList.contains('hidden')).toBe(false)
       expect((c.querySelector('[data-rules-side="bearish"]') as HTMLElement).className).toContain('bg-brand-teal')
     })
+    it('explains what the scan covers under the title, above the bullish/bearish toggle, with an edit link and no fixed ETF count', () => {
+      const html = list([])
+      expect(html).toContain('Company Roster plus your list of liquid ETFs'); expect(html).toContain('under 250,000 shares'); expect(html).toContain('Edit ETF list')
+      expect(html).not.toContain('30 liquid ETFs'); expect(html).not.toContain('(30 ETFs)')
+      expect(html.indexOf('How these setups are found')).toBeLessThan(html.indexOf('data-universe'))
+      expect(html.indexOf('data-universe')).toBeLessThan(html.indexOf('data-rules-side'))
+      expect(html).toContain('ATR = average true range'); expect(html).not.toContain('8:35 a.m. Edmonton time. A signal')
+      const counted = V().render({ scans: [], findings: [] }, 'setup', NOW2, { etfs: ['SPY', 'QQQ'] }).list
+      expect(counted).toContain('(2 ETFs)'); expect(V().universeHtml(['SPY'])).toContain('(1 ETF)')
+    })
     it('shows the rules even when there are no setups', () => {
       expect(list([])).toContain('How these setups are found'); expect(list([])).toContain('No trade setups')
     })
     it('the page has the tab button', () => {
       const html = fs.readFileSync(path.resolve(__dirname, '../routes/frontend.ts'), 'utf8')
       expect(html).toContain("setDiscoveryTab('setup')")
+    })
+  })
+  describe('ETF list editor', () => {
+    const modal = () => document.getElementById('etf-modal') as HTMLElement
+    const click = (sel: string) => (modal().querySelector(sel) as HTMLElement).click()
+    const type = (v: string) => { (modal().querySelector('[data-etf-input]') as HTMLInputElement).value = v }
+    const chips = () => Array.from(modal().querySelectorAll('[data-etf-remove]')).map(b => b.getAttribute('data-etf-remove'))
+    const setup = (put: any, get: any = async () => ({ data: { tickers: ['SPY', 'QQQ'] } })) => { document.body.innerHTML = ''; w().axios = { get, put } }
+    it('turns pasted text into valid, upper-case, unique tickers and names the bad ones', () => {
+      expect(V().parseTickers('spy, qqq  xle;SPY')).toEqual({ ok: ['SPY', 'QQQ', 'XLE'], bad: [] })
+      expect(V().parseTickers('xme bad! <b>')).toEqual({ ok: ['XME'], bad: ['BAD!', '<B>'] })
+      expect(V().parseTickers('')).toEqual({ ok: [], bad: [] })
+    })
+    it('opens with the saved list, adds and removes tickers, then saves the whole list and updates the page text', async () => {
+      const put = vi.fn(async (_u: string, b: any) => ({ data: { tickers: b.tickers } }))
+      setup(put)
+      document.body.innerHTML = '<div id="u" data-universe>' + V().universeHtml(null) + '</div>'
+      V().bindUniverse(document.body)
+      ;(document.querySelector('[data-etf-edit]') as HTMLElement).click()
+      await new Promise(r => setTimeout(r, 0))
+      expect(chips()).toEqual(['QQQ', 'SPY'])
+      type('xme, kweb bad!'); click('[data-etf-add]')
+      expect(chips()).toEqual(['KWEB', 'QQQ', 'SPY', 'XME']); expect(modal().textContent).toContain('Added KWEB, XME'); expect(modal().textContent).toContain('Not a ticker: BAD!')
+      click('[data-etf-remove="QQQ"]'); expect(chips()).toEqual(['KWEB', 'SPY', 'XME'])
+      click('[data-etf-save]')
+      await new Promise(r => setTimeout(r, 0))
+      expect(put).toHaveBeenCalledTimes(1)
+      expect(put.mock.calls[0][0]).toContain('/api/research/discovery/etfs'); expect(put.mock.calls[0][1]).toEqual({ tickers: ['KWEB', 'SPY', 'XME'] })
+      expect(modal()).toBeNull()
+      expect(document.getElementById('u')!.textContent).toContain('(3 ETFs)')
+    })
+    it('cancel, the close button and Escape leave the saved list alone', async () => {
+      const put = vi.fn()
+      setup(put)
+      await V().openEtfModal(); await new Promise(r => setTimeout(r, 0))
+      type('xme'); click('[data-etf-add]'); click('[data-etf-cancel]')
+      expect(modal()).toBeNull()
+      await V().openEtfModal(); await new Promise(r => setTimeout(r, 0))
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      expect(modal()).toBeNull(); expect(put).not.toHaveBeenCalled()
+    })
+    it('keeps the editor open with the reason when saving fails, and says so when the list cannot be loaded', async () => {
+      const put = vi.fn(async () => { throw { response: { data: { error: 'Not a valid ticker: ??' } } } })
+      setup(put)
+      await V().openEtfModal(); await new Promise(r => setTimeout(r, 0))
+      click('[data-etf-save]'); await new Promise(r => setTimeout(r, 0))
+      expect(modal().textContent).toContain('Could not save the list: Not a valid ticker: ??'); expect(chips()).toEqual(['QQQ', 'SPY'])
+      setup(put, async () => { throw new Error('offline') })
+      await V().openEtfModal(); await new Promise(r => setTimeout(r, 0))
+      expect(modal().textContent).toContain('Could not load the ETF list')
+    })
+    it('an empty list is allowed and says the scan covers only the roster; ticker text is escaped', () => {
+      expect(V().etfModalHtml([], null)).toContain('cover only your Company Roster')
+      expect(V().etfModalHtml(['<img src=x onerror=alert(1)>'], { error: true, text: '<img src=x>' })).not.toContain('<img')
     })
   })
   it('page wires the Discovery tab and script', () => {

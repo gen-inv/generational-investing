@@ -109,6 +109,38 @@ routes.get('/roster', researchMachineMiddleware, async (c) => {
   return c.json({ tickers })
 })
 
+// The ETFs the trade-setup scan covers besides the roster. Rob edits them on the Discovery page; the research machine reads them before every scan.
+// Reading: a site login or the ingest token. Changing: Rob's own site login only (the ingest token is not enough).
+const MAX_ETFS = 200
+async function readEtfs(db: any): Promise<string[]> {
+  const r = await db.prepare('SELECT ticker FROM setup_etfs ORDER BY ticker ASC').all()
+  return ((r.results || []) as any[]).map((x) => String(x.ticker))
+}
+
+routes.get('/etfs', researchAccessMiddleware, async (c) => {
+  return c.json({ tickers: await readEtfs(c.env.RESEARCH_DB) })
+})
+
+routes.put('/etfs', researchAccessMiddleware, async (c) => {
+  if ((c as any).get('userId') !== 1) return c.json({ error: 'Only the account owner can change the ETF list' }, 403)
+  const body: any = await c.req.json().catch(() => null)
+  if (!body || !Array.isArray(body.tickers)) return c.json({ error: 'tickers must be a list' }, 400)
+  const bad: string[] = []
+  const tickers: string[] = []
+  for (const raw of body.tickers) {
+    const t = typeof raw === 'string' ? raw.trim().toUpperCase() : ''
+    if (!isValidTicker(t)) { bad.push(String(raw).slice(0, 20)); continue }
+    if (!tickers.includes(t)) tickers.push(t)
+  }
+  if (bad.length) return c.json({ error: 'Not a valid ticker: ' + bad.slice(0, 5).join(', ') }, 400)
+  if (tickers.length > MAX_ETFS) return c.json({ error: 'The list can hold up to ' + MAX_ETFS + ' ETFs' }, 400)
+  tickers.sort()
+  const db = c.env.RESEARCH_DB
+  // one batch = one transaction: the list is replaced whole or not at all
+  await db.batch([db.prepare('DELETE FROM setup_etfs'), ...tickers.map((t) => db.prepare('INSERT INTO setup_etfs (ticker) VALUES (?)').bind(t))])
+  return c.json({ tickers })
+})
+
 // Called when a company is added to the roster (by the website or by Kendry): marks any open discovery finding for that ticker "added".
 // Never throws -- a Discovery hiccup must not break adding a company.
 export async function markDiscoveryAdded(env: any, ticker: string): Promise<void> {

@@ -1,0 +1,36 @@
+-- The ETFs the trade-setup scan covers besides the Company Roster. Edited on Utilities > Discovery > Trade setups; read by the research machine.
+CREATE TABLE IF NOT EXISTS setup_etfs (
+  ticker TEXT PRIMARY KEY,
+  added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+INSERT OR IGNORE INTO setup_etfs (ticker) VALUES
+  ('SPY'),
+  ('QQQ'),
+  ('IWM'),
+  ('DIA'),
+  ('XLE'),
+  ('XLF'),
+  ('XLK'),
+  ('XLV'),
+  ('XLY'),
+  ('XLP'),
+  ('XLU'),
+  ('XLI'),
+  ('XLB'),
+  ('XLRE'),
+  ('XLC'),
+  ('SMH'),
+  ('XBI'),
+  ('KRE'),
+  ('XOP'),
+  ('OIH'),
+  ('GLD'),
+  ('SLV'),
+  ('GDX'),
+  ('TLT'),
+  ('HYG'),
+  ('LQD'),
+  ('EEM'),
+  ('EFA'),
+  ('VNQ'),
+  ('USO');
