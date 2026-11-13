@@ -54,6 +54,13 @@ function wonderfulBadgeHtml(company) {
     return '<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300" title="Research score 80% or higher"><i class="fas fa-star mr-1 text-brand-gold"></i>Wonderful</span>'
 }
 
+// A small gold star put in front of the company name of a Wonderful company (research score 80% or higher).
+// It goes in front, not after, so a long name wraps and the star stays beside the first word. The roster legend explains it.
+function wonderfulStarHtml(company) {
+    if (!company || !company.is_wonderful) return ''
+    return '<i class="fas fa-star text-brand-gold mr-1" title="Wonderful company: research score of 80% or higher"></i>'
+}
+
 // Where a "YYYY-MM-DD" earnings date sits relative to today, counted in local calendar days.
 // passed = before today; red = today up to 10 days; orange = 11 to 30 days; later = further out.
 function earningsStatus(dateText, now) {

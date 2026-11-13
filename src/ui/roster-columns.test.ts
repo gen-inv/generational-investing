@@ -69,8 +69,8 @@ describe('Wonderful badge', () => {
     expect(lib.wonderfulBadgeHtml(at(80))).toContain('Wonderful')
     expect(lib.wonderfulBadgeHtml(at(79.9))).toBe('')
   })
-  it('the roster puts it beside the company name and the popup uses the same badge', () => {
-    expect(appSrc).toContain('company.company_name + wonderfulBadgeHtml(company)')
+  it('the roster puts a star in front of the company name and the popup uses the badge', () => {
+    expect(appSrc).toContain('wonderfulStarHtml(company) + company.company_name')
     expect(appSrc).toContain('wonderfulBadgeHtml(company) : \'No\'')
   })
 })
@@ -102,5 +102,24 @@ describe('roster columns', () => {
   })
   it('the company popup still shows the Exchange', () => {
     expect(appSrc).toContain('<p class="text-sm text-gray-500 mb-1">Exchange</p>')
+  })
+})
+
+describe('Wonderful star and roster legend', () => {
+  const starLib = new Function(mergeSrc + '\nreturn { wonderfulStarHtml }')()
+  it('a Wonderful company gets a gold star, others get nothing', () => {
+    expect(starLib.wonderfulStarHtml({ is_wonderful: true })).toContain('fa-star')
+    expect(starLib.wonderfulStarHtml({ is_wonderful: true })).toContain('text-brand-gold')
+    expect(starLib.wonderfulStarHtml({ is_wonderful: false })).toBe('')
+    expect(starLib.wonderfulStarHtml({ is_wonderful: 0 })).toBe('')
+    expect(starLib.wonderfulStarHtml(null)).toBe('')
+  })
+  it('a company at 75% with an old manual star is not Wonderful once it has research at 75%', () => {
+    const merged = lib.mergeResearchIntoCompanies([{ ticker: 'AAA', research_score: 60, is_wonderful: 1 }], { AAA: { scoresheet_pct: 75 } })[0]
+    expect(starLib.wonderfulStarHtml(merged)).toBe('')
+  })
+  it('the legend explains the star and the earnings colours', () => {
+    expect(frontSrc).toContain('considered worthy of long-term investment')
+    expect(frontSrc).toContain('the date has passed and needs a refresh')
   })
 })

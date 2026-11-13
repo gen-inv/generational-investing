@@ -1566,7 +1566,7 @@ async function loadCompanies() {
                         </button>
                     </td>
                     <td class="px-4 py-3">
-                        ${isLoading ? '<i class="fas fa-spinner fa-spin mr-2 text-gray-400"></i><span class="text-gray-400">Fetching data...</span>' : company.company_name + wonderfulBadgeHtml(company)}
+                        ${isLoading ? '<i class="fas fa-spinner fa-spin mr-2 text-gray-400"></i><span class="text-gray-400">Fetching data...</span>' : wonderfulStarHtml(company) + company.company_name}
                     </td>
                     <td class="px-4 py-3">${company.industry || '-'}</td>
                     <td class="px-4 py-3 text-center text-sm">${earningsCellHtml(company)}</td>
