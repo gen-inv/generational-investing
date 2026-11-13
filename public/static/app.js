@@ -1576,9 +1576,6 @@ async function loadCompanies() {
                     <td class="px-4 py-3 text-right">${stickerPriceDisplay}</td>
                     <td class="px-4 py-3 text-center text-sm text-gray-600">${lastResearchedDisplay}</td>
                     <td class="px-4 py-3 text-center">
-                        <button onclick="editCompany(${company.id})" class="text-brand-teal hover:text-brand-gold mr-2">
-                            <i class="fas fa-edit"></i>
-                        </button>
                         <button onclick="deleteCompany(${company.id})" class="text-red-600 hover:text-red-800">
                             <i class="fas fa-trash"></i>
                         </button>
@@ -1598,56 +1595,7 @@ function showCompanyForm(companyId = null) {
     
     // Simplified form for adding (ticker + scores only)
     // Full form for editing
-    const formFields = isEdit ? `
-        <div class="grid grid-cols-2 gap-4">
-            <div>
-                <label class="block text-gray-700 mb-2">Ticker *</label>
-                <input type="text" name="ticker" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-            </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Company Name *</label>
-                <input type="text" name="company_name" class="w-full px-4 py-2 border border-gray-300 rounded-lg" required>
-            </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Market Cap</label>
-                <input type="number" name="market_cap" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Exchange</label>
-                <input type="text" name="exchange" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Target Buy Price</label>
-                <input type="number" step="0.01" name="buy_price" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Next Earnings Date</label>
-                <input type="date" name="next_earnings_date" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Sector</label>
-                <input type="text" name="sector" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Industry</label>
-                <input type="text" name="industry" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Research Score (0-100)</label>
-                <input type="number" name="research_score" min="0" max="100" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div>
-                <label class="block text-gray-700 mb-2">Anti-Fragile Score (0-100)</label>
-                <input type="number" name="anti_fragile_score" min="0" max="100" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-            </div>
-            <div class="col-span-2">
-                <label class="flex items-center">
-                    <input type="checkbox" name="is_wonderful" class="mr-2">
-                    <span class="text-gray-700">Wonderful Company</span>
-                </label>
-            </div>
-        </div>
-    ` : `
+    const formFields = `
         <div class="space-y-4">
             <div>
                 <label class="block text-gray-700 mb-2">Ticker Symbol *</label>
@@ -1694,10 +1642,7 @@ function showCompanyForm(companyId = null) {
         
         const data = {
             ticker: formData.get('ticker')?.toUpperCase(),
-            buy_price: formData.get('buy_price') || null,
-            research_score: formData.get('research_score') || null,
-            anti_fragile_score: formData.get('anti_fragile_score') || null,
-            is_wonderful: formData.get('is_wonderful') === 'on'
+            buy_price: formData.get('buy_price') || null
         }
         
         // For editing, include all fields
@@ -1765,27 +1710,6 @@ function showCompanyForm(companyId = null) {
         }
     })
     
-    // Load existing data if editing
-    if (isEdit) {
-        api.get(`/api/companies/${companyId}`).then(response => {
-            const company = response.data.company
-            const form = document.getElementById('companyForm')
-            form.ticker.value = company.ticker
-            form.company_name.value = company.company_name
-            form.market_cap.value = company.market_cap || ''
-            form.exchange.value = company.exchange || ''
-            form.sector.value = company.sector || ''
-            form.industry.value = company.industry || ''
-            form.next_earnings_date.value = company.next_earnings_date || ''
-            form.research_score.value = company.research_score || ''
-            form.anti_fragile_score.value = company.anti_fragile_score || ''
-            form.is_wonderful.checked = company.is_wonderful === 1
-        })
-    }
-}
-
-async function editCompany(id) {
-    showCompanyForm(id)
 }
 
 async function deleteCompany(id) {

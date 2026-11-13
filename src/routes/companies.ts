@@ -89,18 +89,6 @@ routes.put('/api/companies/:id', authMiddleware, async (c) => {
     updates.push('buy_price = ?')
     values.push(data.buy_price)
   }
-  if (data.is_wonderful !== undefined) {
-    updates.push('is_wonderful = ?')
-    values.push(data.is_wonderful ? 1 : 0)
-  }
-  if (data.research_score !== undefined) {
-    updates.push('research_score = ?')
-    values.push(data.research_score)
-  }
-  if (data.anti_fragile_score !== undefined) {
-    updates.push('anti_fragile_score = ?')
-    values.push(data.anti_fragile_score)
-  }
   if (data.next_earnings_date !== undefined) {
     updates.push('next_earnings_date = ?')
     values.push(data.next_earnings_date)
