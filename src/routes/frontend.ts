@@ -419,9 +419,8 @@ routes.get('/', (c) => {
                                                     </span>
                                                 </div>
                                             </th>
-                                            <th class="px-4 py-3 text-left">Exchange</th>
                                             <th class="px-4 py-3 text-left">Industry</th>
-                                            <th class="px-4 py-3 text-center">Wonderful</th>
+                                            <th class="px-4 py-3 text-center">Next Earnings</th>
                                             <th class="px-4 py-3 text-center cursor-pointer hover:bg-gray-200 select-none" onclick="sortCompanies('research_score')">
                                                 <div class="flex items-center justify-center gap-2">
                                                     Research Score

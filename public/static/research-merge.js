@@ -34,3 +34,53 @@ async function fetchCompaniesWithResearch() {
     const companies = response.data.companies || response.data
     return mergeResearchIntoCompanies(companies, await fetchResearchFindings())
 }
+
+
+// ---- Shared by the Company Roster and the company popup, so the two can never disagree ----
+
+function formatResearchScore(company) {
+    var v = company ? Number(company.research_score) : 0
+    return v ? v.toFixed(1) + '%' : '-'
+}
+
+function formatAntiFragile(company) {
+    var v = company ? company.anti_fragile_score : null
+    return v !== null && v !== undefined && v !== '' ? v + '/32' : '-'
+}
+
+// The gold "Wonderful" badge (research score 80% or higher). Empty text for a company that is not wonderful.
+function wonderfulBadgeHtml(company) {
+    if (!company || !company.is_wonderful) return ''
+    return '<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 border border-yellow-300" title="Research score 80% or higher"><i class="fas fa-star mr-1 text-brand-gold"></i>Wonderful</span>'
+}
+
+// Where a "YYYY-MM-DD" earnings date sits relative to today, counted in local calendar days.
+// passed = before today; red = today up to 10 days; orange = 11 to 30 days; later = further out.
+function earningsStatus(dateText, now) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateText || ''))
+    if (!m) return { state: 'none', days: null }
+    var t = now || new Date()
+    var today = Date.UTC(t.getFullYear(), t.getMonth(), t.getDate())
+    var due = Date.UTC(+m[1], +m[2] - 1, +m[3])
+    var days = Math.round((due - today) / 86400000)
+    var state = days < 0 ? 'passed' : days <= 10 ? 'red' : days <= 30 ? 'orange' : 'later'
+    return { state: state, days: days, year: +m[1], month: +m[2], day: +m[3] }
+}
+
+// The scoresheet grade, worked out from the percentage so it never depends on what was stored when the research last ran.
+// 80% and above = A+ (investable, same line as Wonderful); 75% to just under 80% = A (tradeable via options).
+function scoresheetGrade(scoresheet) {
+    var pct = scoresheet ? Number(scoresheet.total_pct !== undefined && scoresheet.total_pct !== null ? scoresheet.total_pct : scoresheet.scoresheet_pct) : NaN
+    if (isNaN(pct)) return scoresheet && scoresheet.grade ? scoresheet.grade : '-'
+    return pct >= 80 ? 'A+ (investable)' : pct >= 75 ? 'A (tradeable via options)' : 'Below threshold'
+}
+
+function earningsCellHtml(company, now) {
+    var s = earningsStatus(company && company.next_earnings_date, now)
+    if (s.state === 'none') return '-'
+    var text = new Date(s.year, s.month - 1, s.day).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    if (s.state === 'passed') return '<span class="text-gray-400" title="This date has passed. Open the company and use Fetch Earnings Date to refresh it.">' + text + '</span>'
+    var when = s.days === 0 ? 'Earnings today' : 'Earnings in ' + s.days + (s.days === 1 ? ' day' : ' days')
+    var cls = s.state === 'red' ? 'text-red-600 font-semibold' : s.state === 'orange' ? 'text-orange-600 font-semibold' : 'text-gray-700'
+    return '<span class="' + cls + '" title="' + when + '">' + text + '</span>'
+}

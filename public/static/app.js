@@ -1469,7 +1469,7 @@ async function loadCompanies() {
         table.innerHTML = ''
         
         if (!companies || companies.length === 0) {
-            table.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-gray-500">No companies found. Click "Add Company" to get started.</td></tr>'
+            table.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-gray-500">No companies found. Click "Add Company" to get started.</td></tr>'
             return
         }
         
@@ -1482,7 +1482,7 @@ async function loadCompanies() {
         if (filterCount) filterCount.textContent = companies.length === totalCompanies ? `${totalCompanies} companies` : `${companies.length} of ${totalCompanies}`
         if (companies.length === 0) {
             updateSortIndicators()
-            table.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-gray-500">No companies match this filter.</td></tr>'
+            table.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-gray-500">No companies match this filter.</td></tr>'
             return
         }
 
@@ -1553,14 +1553,10 @@ async function loadCompanies() {
                 : '-'
             
             // Format research score
-            const researchScoreDisplay = company.research_score
-                ? `${company.research_score.toFixed(1)}%`
-                : '-'
+            const researchScoreDisplay = formatResearchScore(company)
             
             // Format anti-fragile score (out of 32)
-            const antiFragileDisplay = company.anti_fragile_score !== null && company.anti_fragile_score !== undefined
-                ? `${company.anti_fragile_score}/32`
-                : '-'
+            const antiFragileDisplay = formatAntiFragile(company)
             
             table.innerHTML += `
                 <tr class="border-b border-gray-200 hover:bg-gray-50 ${isLoading ? 'animate-pulse' : ''}">
@@ -1570,13 +1566,10 @@ async function loadCompanies() {
                         </button>
                     </td>
                     <td class="px-4 py-3">
-                        ${isLoading ? '<i class="fas fa-spinner fa-spin mr-2 text-gray-400"></i><span class="text-gray-400">Fetching data...</span>' : company.company_name}
+                        ${isLoading ? '<i class="fas fa-spinner fa-spin mr-2 text-gray-400"></i><span class="text-gray-400">Fetching data...</span>' : company.company_name + wonderfulBadgeHtml(company)}
                     </td>
-                    <td class="px-4 py-3">${company.exchange || '-'}</td>
                     <td class="px-4 py-3">${company.industry || '-'}</td>
-                    <td class="px-4 py-3 text-center">
-                        ${company.is_wonderful ? '<i class="fas fa-star text-brand-gold"></i>' : '-'}
-                    </td>
+                    <td class="px-4 py-3 text-center text-sm">${earningsCellHtml(company)}</td>
                     <td class="px-4 py-3 text-center">${researchScoreDisplay}</td>
                     <td class="px-4 py-3 text-center">${antiFragileDisplay}</td>
                     <td class="px-4 py-3 text-right">${buyPriceDisplay}</td>
@@ -1810,7 +1803,13 @@ async function deleteCompany(id) {
 async function showCompanyView(companyId) {
     try {
         const response = await api.get(`/api/companies/${companyId}`)
-        const company = response.data.company
+        let company = response.data.company
+        try {
+            // Same merge the Company Roster uses, so the popup shows the same scores as the list
+            company = mergeResearchIntoCompanies([company], await fetchResearchFindings())[0]
+        } catch (mergeError) {
+            console.warn('Could not merge research data into the company popup:', mergeError.message)
+        }
         
         // Check if company exists on research site
         let hasResearchData = false
@@ -1863,15 +1862,15 @@ async function showCompanyView(companyId) {
                     </div>
                     <div>
                         <p class="text-sm text-gray-500 mb-1">Research Score</p>
-                        <p class="font-semibold">${company.research_score || '-'}</p>
+                        <p class="font-semibold">${formatResearchScore(company)}</p>
                     </div>
                     <div>
                         <p class="text-sm text-gray-500 mb-1">Anti-Fragile Score</p>
-                        <p class="font-semibold">${company.anti_fragile_score || '-'}</p>
+                        <p class="font-semibold">${formatAntiFragile(company)}</p>
                     </div>
                     <div>
                         <p class="text-sm text-gray-500 mb-1">Wonderful Company</p>
-                        <p class="font-semibold">${company.is_wonderful ? '⭐ Yes' : 'No'}</p>
+                        <p class="font-semibold">${company.is_wonderful ? wonderfulBadgeHtml(company) : 'No'}</p>
                     </div>
                     <div>
                         <p class="text-sm text-gray-500 mb-1">Next Earnings Date</p>
@@ -9819,7 +9818,7 @@ function renderOverviewTab(data) {
                         <div class="text-sm text-gray-600 mt-1">Overall Score</div>
                     </div>
                     <div class="flex-1">
-                        <div class="text-lg font-semibold text-gray-700 mb-2">Grade: ${scoresheet.grade}</div>
+                        <div class="text-lg font-semibold text-gray-700 mb-2">Grade: ${scoresheetGrade(scoresheet)}</div>
                         <div class="w-full bg-gray-200 rounded-full h-4">
                             <div class="bg-teal-600 h-4 rounded-full" style="width: ${scoresheet.total_pct}%"></div>
                         </div>
