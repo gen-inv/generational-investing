@@ -117,3 +117,28 @@ describe('the shared secret check', () => {
     expect(safeEqual('abc', 'abc123')).toBe(false)
   })
 })
+
+describe('funds and the ETF list are never refreshed', () => {
+  const now = new Date('2026-11-13T09:17:00Z')
+  const yahooOk = jsonResp({ chart: { result: [{ meta: { marketCap: 2e12 } }] } })
+  it('FNNCF and FTN.TO are skipped even though they look like companies', () => {
+    const rows = [row({ ticker: 'FNNCF', sector: 'Financial Services', industry: 'Asset Management', exchange: 'PNK', refreshed_at: null }), row({ ticker: 'FTN.TO', sector: 'Financial Services', exchange: 'TOR', refreshed_at: null }), row({ ticker: 'AAA' })]
+    expect(pickBatch(rows, TODAY).map((r) => r.ticker)).toEqual(['AAA'])
+  })
+  it('anything on the ETF list is skipped, in any letter case', async () => {
+    const db = fakeDb([row({ ticker: 'SLV', sector: 'Basic Materials' }), row({ ticker: 'AAA' })])
+    const out = await refreshCompanyData({ db, now, rapidApiKey: 'k', etfTickers: ['slv'], fetchFn: async () => yahooOk })
+    expect(out.checked).toBe(1)
+    expect(out.refreshed).toEqual(['AAA'])
+  })
+  it('an error left on a skipped fund is cleared so it stops showing on the roster', async () => {
+    const db = fakeDb([row({ ticker: 'FNNCF', data_refresh_error: 'no market cap found' }), row({ ticker: 'AAA' })])
+    await refreshCompanyData({ db, now, rapidApiKey: 'k', fetchFn: async () => yahooOk })
+    expect(db.updates).toContainEqual(['FNNCF'])
+  })
+  it('a company that is not excluded still refreshes (SPCX is SpaceX, a real company)', async () => {
+    const db = fakeDb([row({ ticker: 'SPCX', sector: 'Industrials', industry: 'Aerospace & Defense', market_cap: null, next_earnings_date: null })])
+    const out = await refreshCompanyData({ db, now, rapidApiKey: 'k', fetchFn: async (u: string) => u.includes('financebird') ? jsonResp({}, false, 404) : yahooOk })
+    expect(out.checked).toBe(1)
+  })
+})

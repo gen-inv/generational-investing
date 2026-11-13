@@ -13,6 +13,7 @@ export interface RosterTicker {
   next_earnings_date: string | null
   earnings_estimated: number | null
   refreshed_at: string | null
+  data_refresh_error?: string | null
 }
 
 export interface RefreshSummary {
@@ -29,6 +30,14 @@ export function isFundOrIndex(r: RosterTicker): boolean {
   return !r.sector && !r.industry && (r.exchange === 'PCX' || r.exchange === 'WCB')
 }
 
+// Companies that are really funds, which the sector/exchange check cannot spot
+export const ALWAYS_SKIP = ['FNNCF', 'FTN.TO']
+
+// Never refreshed: funds, indices, anything on the Discovery ETF list
+export function isExcluded(r: RosterTicker, etfs: Set<string>): boolean {
+  return isFundOrIndex(r) || ALWAYS_SKIP.includes(r.ticker) || etfs.has(r.ticker)
+}
+
 export function earningsPassedOrMissing(r: RosterTicker, today: string): boolean {
   return !r.next_earnings_date || r.next_earnings_date < today
 }
@@ -39,9 +48,9 @@ export function needsEarnings(r: RosterTicker, today: string): boolean {
 }
 
 // Up to size companies: missing or passed earnings dates first, then whoever was refreshed longest ago
-export function pickBatch(rows: RosterTicker[], today: string, size: number = BATCH_SIZE): RosterTicker[] {
+export function pickBatch(rows: RosterTicker[], today: string, size: number = BATCH_SIZE, etfs: Set<string> = new Set()): RosterTicker[] {
   return rows
-    .filter((r) => !isFundOrIndex(r))
+    .filter((r) => !isExcluded(r, etfs))
     .sort((a, b) => {
       const pa = earningsPassedOrMissing(a, today) ? 0 : 1
       const pb = earningsPassedOrMissing(b, today) ? 0 : 1
@@ -85,7 +94,7 @@ export function parseSummary(json: any, today: string): { marketCap: number | nu
 async function yahooMarketCap(fetchFn: any, ticker: string): Promise<number | null> {
   try {
     const url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(ticker) + '?interval=1d&range=1d'
-    const resp = await fetchFn(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } })
+    const resp = await fetchFn(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, signal: AbortSignal.timeout(10000) })
     if (!resp.ok) return null
     const data: any = await resp.json()
     const cap = data && data.chart && data.chart.result && data.chart.result[0] && data.chart.result[0].meta && data.chart.result[0].meta.marketCap
@@ -95,7 +104,7 @@ async function yahooMarketCap(fetchFn: any, ticker: string): Promise<number | nu
   }
 }
 
-export async function refreshCompanyData(deps: { db: any; fetchFn: any; rapidApiKey?: string | null; now?: Date; batchSize?: number; maxFinanceBirdCalls?: number }): Promise<RefreshSummary> {
+export async function refreshCompanyData(deps: { db: any; fetchFn: any; rapidApiKey?: string | null; now?: Date; batchSize?: number; maxFinanceBirdCalls?: number; etfTickers?: string[] }): Promise<RefreshSummary> {
   const { db, fetchFn } = deps
   const today = (deps.now || new Date()).toISOString().slice(0, 10)
   let budget = deps.maxFinanceBirdCalls === undefined ? MAX_FINANCEBIRD_CALLS : deps.maxFinanceBirdCalls
@@ -104,9 +113,18 @@ export async function refreshCompanyData(deps: { db: any; fetchFn: any; rapidApi
   const result = await db.prepare(
     'SELECT ticker, MAX(exchange) AS exchange, MAX(sector) AS sector, MAX(industry) AS industry, MAX(market_cap) AS market_cap, ' +
     'MAX(next_earnings_date) AS next_earnings_date, MAX(earnings_estimated) AS earnings_estimated, ' +
+    'MAX(data_refresh_error) AS data_refresh_error, ' +
     "MIN(COALESCE(data_refreshed_at, '1970-01-01')) AS refreshed_at FROM companies GROUP BY ticker"
   ).all()
-  const batch = pickBatch((result.results || []) as RosterTicker[], today, deps.batchSize || BATCH_SIZE)
+  const all = (result.results || []) as RosterTicker[]
+  const etfs = new Set((deps.etfTickers || []).map((t) => String(t).toUpperCase()))
+  // a fund never gets a refresh, and an error left on one earlier is cleared so it stops showing on the roster
+  for (const r of all) {
+    if (isExcluded(r, etfs) && r.data_refresh_error) {
+      await db.prepare('UPDATE companies SET data_refresh_error = NULL WHERE ticker = ?').bind(r.ticker).run()
+    }
+  }
+  const batch = pickBatch(all, today, deps.batchSize || BATCH_SIZE, etfs)
 
   for (const r of batch) {
     summary.checked++
@@ -129,6 +147,7 @@ export async function refreshCompanyData(deps: { db: any; fetchFn: any; rapidApi
           try {
             const resp = await fetchFn('https://financebird.p.rapidapi.com/quote/' + encodeURIComponent(r.ticker) + '/summary', {
               headers: { 'X-RapidAPI-Key': deps.rapidApiKey, 'X-RapidAPI-Host': 'financebird.p.rapidapi.com' },
+              signal: AbortSignal.timeout(10000),
             })
             if (resp.ok) {
               const parsed = parseSummary(await resp.json(), today)

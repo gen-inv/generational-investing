@@ -111,7 +111,14 @@ routes.post('/api/cron/refresh-company-data', async (c) => {
   if (!env.COMPANY_REFRESH_SECRET || !safeEqual(given, env.COMPANY_REFRESH_SECRET)) {
     return c.json({ error: 'Unauthorized' }, 401)
   }
-  const summary = await refreshCompanyData({ db: env.DB, fetchFn: fetch, rapidApiKey: env.RAPIDAPI_KEY || null })
+  let etfTickers: string[] = []
+  try {
+    const etfs = await env.RESEARCH_DB.prepare('SELECT ticker FROM setup_etfs').all()
+    etfTickers = (etfs.results || []).map((r: any) => r.ticker)
+  } catch (e) {
+    // the ETF list is a convenience: if it cannot be read the refresh still runs
+  }
+  const summary = await refreshCompanyData({ db: env.DB, fetchFn: fetch, rapidApiKey: env.RAPIDAPI_KEY || null, etfTickers })
   return c.json(summary)
 })
 
