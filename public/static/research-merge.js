@@ -85,9 +85,34 @@ function scoresheetGrade(scoresheet) {
 function earningsCellHtml(company, now) {
     var s = earningsStatus(company && company.next_earnings_date, now)
     if (s.state === 'none') return '-'
+    var est = !!company && Number(company.earnings_estimated) === 1
     var text = new Date(s.year, s.month - 1, s.day).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    if (est) text = '~' + text
     if (s.state === 'passed') return '<span class="text-gray-400" title="This date has passed. Open the company and use Fetch Earnings Date to refresh it.">' + text + '</span>'
     var when = s.days === 0 ? 'Earnings today' : 'Earnings in ' + s.days + (s.days === 1 ? ' day' : ' days')
+    if (est) when += ' (estimated until the company announces its date)'
     var cls = s.state === 'red' ? 'text-red-600 font-semibold' : s.state === 'orange' ? 'text-orange-600 font-semibold' : 'text-gray-700'
     return '<span class="' + cls + '" title="' + when + '">' + text + '</span>'
+}
+
+
+// ---- Note above the roster when the nightly update could not refresh some companies ----
+
+function refreshNoteHtml(companies) {
+    var failed = (companies || []).filter(function (c) { return c && c.data_refresh_error })
+    if (!failed.length) return ''
+    var esc = function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
+    var names = failed.map(function (c) { return esc(c.ticker) }).join(', ')
+    var detail = failed.map(function (c) { return esc(c.ticker) + ': ' + esc(c.data_refresh_error) }).join('; ')
+    return '<div id="companies-refresh-note" class="mb-3 px-4 py-3 rounded border border-amber-300 bg-amber-50 text-amber-800 text-sm" title="' + detail + '"><i class="fas fa-exclamation-triangle mr-2"></i>The nightly update could not refresh Market Cap or Next Earnings for ' + names + '. It will try again; hover for details.</div>'
+}
+
+function showRefreshNote(companies) {
+    var old = document.getElementById('companies-refresh-note')
+    if (old) old.remove()
+    var html = refreshNoteHtml(companies)
+    if (!html) return
+    var body = document.getElementById('companies-table')
+    var table = body && body.closest('table')
+    if (table && table.parentElement) table.parentElement.insertAdjacentHTML('beforebegin', html)
 }

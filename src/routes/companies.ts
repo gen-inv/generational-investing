@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { addCompanyToRoster } from '../lib/add-company'
+import { refreshCompanyData, safeEqual } from '../lib/refresh-company-data'
 import { markDiscoveryAdded } from './discovery'
 import { authMiddleware } from '../lib/auth'
 import { scheduled } from '../scheduled'
@@ -101,6 +102,17 @@ routes.put('/api/companies/:id', authMiddleware, async (c) => {
   await c.env.DB.prepare(query).bind(...values).run()
   
   return c.json({ success: true })
+})
+
+// Nightly refresh of Market Cap and Next Earnings Date (called by the GitHub Action "Refresh company data")
+routes.post('/api/cron/refresh-company-data', async (c) => {
+  const env: any = c.env
+  const given = (c.req.header('Authorization') || '').replace(/^Bearer\s+/i, '')
+  if (!env.COMPANY_REFRESH_SECRET || !safeEqual(given, env.COMPANY_REFRESH_SECRET)) {
+    return c.json({ error: 'Unauthorized' }, 401)
+  }
+  const summary = await refreshCompanyData({ db: env.DB, fetchFn: fetch, rapidApiKey: env.RAPIDAPI_KEY || null })
+  return c.json(summary)
 })
 
 // Fetch earnings date for a company

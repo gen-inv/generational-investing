@@ -1464,6 +1464,7 @@ function sortCompanies(column) {
 async function loadCompanies() {
     try {
         let companies = await fetchCompaniesWithResearch()
+        showRefreshNote(companies)
         
         const table = document.getElementById('companies-table')
         table.innerHTML = ''

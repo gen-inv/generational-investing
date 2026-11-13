@@ -471,7 +471,7 @@ routes.get('/', (c) => {
                             </div>
                             <div class="px-4 py-3 text-sm text-gray-600 border-t border-gray-200 space-y-1">
                                 <p><i class="fas fa-star text-brand-gold mr-1"></i> Wonderful company: research score of 80% or higher, considered worthy of long-term investment.</p>
-                                <p>Next Earnings: <span class="text-red-600 font-semibold">red</span> = within 10 days, <span class="text-orange-600 font-semibold">orange</span> = within 30 days, <span class="text-gray-400">grey</span> = the date has passed and needs a refresh.</p>
+                                <p>Next Earnings: <span class="text-red-600 font-semibold">red</span> = within 10 days, <span class="text-orange-600 font-semibold">orange</span> = within 30 days, <span class="text-gray-400">grey</span> = the date has passed and needs a refresh. A ~ in front of a date means it is an estimate until the company announces it.</p>
                             </div>
                         </div>
                     </div>
