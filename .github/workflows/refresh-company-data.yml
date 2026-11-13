@@ -9,6 +9,7 @@ on:
 
 jobs:
   refresh:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - name: Refresh market cap and earnings dates
