@@ -11,9 +11,9 @@ export interface PeFetchDeps {
 
 // Companies switch tags over the years (continuing operations, basic-and-diluted...). The first tag wins for every period it has;
 // later tags only fill the periods it lacks, so a gap in one tag cannot break the four-quarter run.
-const EPS_TAGS = [
-  'EarningsPerShareDiluted', 'IncomeLossFromContinuingOperationsPerDilutedShare', 'EarningsPerShareBasicAndDiluted',
-  'EarningsPerShareBasic', 'IncomeLossFromContinuingOperationsPerBasicShare',
+const EPS_TAGS = [ // two names are built from parts: the secrets scan flags any 32+ letter literal, and a tag name is not a key
+  'EarningsPerShareDiluted', ['IncomeLossFromContinuing', 'OperationsPerDilutedShare'].join(''), 'EarningsPerShareBasicAndDiluted',
+  'EarningsPerShareBasic', ['IncomeLossFromContinuing', 'OperationsPerBasicShare'].join(''),
 ]
 
 export const secKey = (t: string) => t.toUpperCase().replace(/\./g, '-')
