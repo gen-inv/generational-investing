@@ -1,0 +1,23 @@
+name: Refresh P/E history
+
+# Every Sunday: build each roster company's 10-year P/E range from SEC earnings and Yahoo prices.
+# 10:23 UTC is 4:23 a.m. in Regina. Uses the existing COMPANY_REFRESH_SECRET.
+on:
+  schedule:
+    - cron: '23 10 * * 0'
+  workflow_dispatch:
+
+jobs:
+  pe-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compute 10-year P/E ranges and post them to the site
+        env:
+          REFRESH_SECRET: ${{ secrets.COMPANY_REFRESH_SECRET }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: npx --yes tsx@4.19.2 scripts/pe-history.ts
