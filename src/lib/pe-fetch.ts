@@ -21,42 +21,55 @@ const monthEnd = (sec: number, today: string) => {
   return end > today ? today : end
 }
 
-export async function computeCompanyPe(ticker: string, deps: PeFetchDeps): Promise<PeResult> {
-  const fail = (error: string, clear: boolean): PeResult => ({ ticker, error, clear })
-  const cik = deps.ciks.get(secKey(ticker))
-  if (!cik) return fail('not found at the SEC (non-US company, or ticker not matched)', true)
+export type FetchResp = { ok: boolean; status: number; json: () => Promise<any> }
+export type Loaded<T> = { ok: true; value: T; tag?: string } | { ok: false; error: string; clear: boolean }
 
-  let facts: EpsFact[] = []
+/** SEC earnings-per-share rows for a company (10-K and 10-Q periods with a start and end date). */
+export async function loadEpsFacts(cik: number, fetchSec: (url: string) => Promise<FetchResp>): Promise<Loaded<EpsFact[]>> {
   try {
     for (const tag of EPS_TAGS) {
-      const resp = await deps.fetchSec(`https://data.sec.gov/api/xbrl/companyconcept/CIK${String(cik).padStart(10, '0')}/us-gaap/${tag}.json`)
+      const resp = await fetchSec(`https://data.sec.gov/api/xbrl/companyconcept/CIK${String(cik).padStart(10, '0')}/us-gaap/${tag}.json`)
       if (resp.status === 404) continue
-      if (!resp.ok) return fail('SEC answered HTTP ' + resp.status, false)
+      if (!resp.ok) return { ok: false, error: 'SEC answered HTTP ' + resp.status, clear: false }
       const body = await resp.json()
       const rows = ((body && body.units && body.units['USD/shares']) || []) as any[]
       const usable = rows.filter(r => typeof r.form === 'string' && r.form.startsWith('10-') && r.start && r.end && Number.isFinite(r.val))
         .map(r => ({ start: r.start, end: r.end, val: Number(r.val), filed: r.filed }) as EpsFact)
-      if (usable.length >= 8) { facts = usable; break }
+      if (usable.length >= 8) return { ok: true, value: usable, tag }
     }
-  } catch (e) { return fail('SEC request failed', false) }
-  if (!facts.length) return fail('no earnings-per-share history at the SEC', true)
+  } catch (e) { return { ok: false, error: 'SEC request failed', clear: false } }
+  return { ok: false, error: 'no earnings-per-share history at the SEC', clear: true }
+}
 
-  let prices: PricePoint[] = [], splits: Split[] = []
+/** Ten years of month-end closes (split-adjusted) and the splits, from Yahoo. */
+export async function loadPrices(ticker: string, fetchYahoo: (url: string) => Promise<FetchResp>, today: string): Promise<Loaded<{ prices: PricePoint[]; splits: Split[] }>> {
   try {
-    const resp = await deps.fetchYahoo(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol(ticker))}?range=10y&interval=1mo&events=split`)
-    if (!resp.ok) return fail('Yahoo answered HTTP ' + resp.status, resp.status === 404)
+    const resp = await fetchYahoo(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol(ticker))}?range=10y&interval=1mo&events=split`)
+    if (!resp.ok) return { ok: false, error: 'Yahoo answered HTTP ' + resp.status, clear: resp.status === 404 }
     const result = ((await resp.json()) as any)?.chart?.result?.[0]
     const ts: number[] = result?.timestamp || [], close: (number | null)[] = result?.indicators?.quote?.[0]?.close || []
-    ts.forEach((t, i) => { if (typeof close[i] === 'number') prices.push({ date: monthEnd(t, deps.today), close: close[i] as number }) })
-    splits = Object.values(result?.events?.splits || {}).map((s: any) => ({ date: isoDay(s.date), ratio: Number(s.numerator) / Number(s.denominator) }))
+    const prices: PricePoint[] = []
+    ts.forEach((t, i) => { if (typeof close[i] === 'number') prices.push({ date: monthEnd(t, today), close: close[i] as number }) })
+    const splits: Split[] = Object.values(result?.events?.splits || {}).map((s: any) => ({ date: isoDay(s.date), ratio: Number(s.numerator) / Number(s.denominator) }))
       .filter(s => Number.isFinite(s.ratio) && s.ratio > 0)
-  } catch (e) { return fail('Yahoo request failed', false) }
-  if (!prices.length) return fail('no price history at Yahoo', true)
+    if (!prices.length) return { ok: false, error: 'no price history at Yahoo', clear: true }
+    return { ok: true, value: { prices, splits } }
+  } catch (e) { return { ok: false, error: 'Yahoo request failed', clear: false } }
+}
 
-  const ttm = ttmSeries(buildQuarters(facts, splits))
-  const now = currentPe(prices, ttm)
+export async function computeCompanyPe(ticker: string, deps: PeFetchDeps): Promise<PeResult> {
+  const fail = (error: string, clear: boolean): PeResult => ({ ticker, error, clear })
+  const cik = deps.ciks.get(secKey(ticker))
+  if (!cik) return fail('not found at the SEC (non-US company, or ticker not matched)', true)
+  const eps = await loadEpsFacts(cik, deps.fetchSec)
+  if (!eps.ok) return fail(eps.error, eps.clear)
+  const px = await loadPrices(ticker, deps.fetchYahoo, deps.today)
+  if (!px.ok) return fail(px.error, px.clear)
+
+  const ttm = ttmSeries(buildQuarters(eps.value, px.value.splits))
+  const now = currentPe(px.value.prices, ttm)
   if (!now) return fail('no positive trailing earnings right now (loss-making, or the latest filing is too old)', true)
-  const summary = summarizePe(peSeries(prices, ttm), now.pe)
+  const summary = summarizePe(peSeries(px.value.prices, ttm), now.pe)
   if (!summary) return fail('less than 3 years of usable P/E history', true)
   return { ticker, eps: now.eps, summary }
 }

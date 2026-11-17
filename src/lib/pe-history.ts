@@ -35,14 +35,15 @@ export function buildQuarters(facts: EpsFact[], splits: Split[]): Quarter[] {
     periods.push({ start: first.start, end: first.end, val: last.val / splitFactor(splits, last.filed), available: first.filed })
   }
   const len = (p: Quarter) => days(p.start, p.end)
-  const quarters = periods.filter(p => len(p) >= 80 && len(p) <= 100)
+  // 12 or 13 weeks normally; retailers such as Kroger (16-week first quarter) and Costco (16-week fourth) run longer
+  const quarters = periods.filter(p => len(p) >= 80 && len(p) <= 125)
   const years = periods.filter(p => len(p) >= 350 && len(p) <= 380)
   const out = [...quarters]
   for (const y of years) {
     const inside = quarters.filter(q => q.start >= y.start && q.end <= y.end).sort((a, b) => (a.end < b.end ? -1 : 1))
     if (inside.length !== 3) continue
     const gap = days(inside[2].end, y.end)
-    if (gap < 80 || gap > 100) continue
+    if (gap < 70 || gap > 125) continue
     out.push({ start: addDays(inside[2].end, 1), end: y.end, val: y.val - inside.reduce((s, q) => s + q.val, 0), available: y.available })
   }
   return out.sort((a, b) => (a.end < b.end ? -1 : a.end > b.end ? 1 : 0))
@@ -53,7 +54,7 @@ export function ttmSeries(quarters: Quarter[]): Ttm[] {
   const out: Ttm[] = []
   for (let i = 3; i < quarters.length; i++) {
     const w = quarters.slice(i - 3, i + 1)
-    const consecutive = w.every((q, j) => j === 0 || (days(w[j - 1].end, q.end) >= 75 && days(w[j - 1].end, q.end) <= 105))
+    const consecutive = w.every((q, j) => j === 0 || (days(w[j - 1].end, q.end) >= 70 && days(w[j - 1].end, q.end) <= 130))
     if (!consecutive) continue
     out.push({ end: w[3].end, available: w.map(q => q.available).reduce(maxStr), eps: w.reduce((s, q) => s + q.val, 0) })
   }

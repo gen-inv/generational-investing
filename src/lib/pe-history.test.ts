@@ -35,6 +35,35 @@ describe('quarters and TTM', () => {
   })
 })
 
+describe('retail calendars with a 16-week quarter', () => {
+  // Costco-style year: Q1-Q3 are 12 weeks (84 days), Q4 is 16 weeks (112 days); EPS 1.00 a quarter, the year reports 4.00
+  const addD = (d: string, n: number) => new Date(Date.parse(d) + n * 86400000).toISOString().slice(0, 10)
+  const retail = (() => {
+    const f: EpsFact[] = []
+    let start = '2019-09-01'
+    for (let y = 0; y < 4; y++) {
+      const yStart = start, lens = [84, 84, 84, 112]
+      lens.slice(0, 3).forEach((n, i) => {
+        const end = addD(start, n - 1)
+        f.push({ start, end, val: 1, filed: addD(end, 35) })
+        start = addD(end, 1)
+      })
+      const yEnd = addD(start, 111)
+      f.push({ start: yStart, end: yEnd, val: 4, filed: addD(yEnd, 25) })
+      start = addD(yEnd, 1)
+    }
+    return f
+  })()
+  it('derives the 16-week Q4 and still builds a TTM', () => {
+    const q = buildQuarters(retail, [])
+    expect(q).toHaveLength(16)
+    expect(q.filter(x => Math.abs(x.val - 1) < 1e-9)).toHaveLength(16)
+    const t = ttmSeries(q)
+    expect(t.length).toBeGreaterThanOrEqual(10)
+    expect(t.every(x => Math.abs(x.eps - 4) < 1e-9)).toBe(true)
+  })
+})
+
 describe('splits', () => {
   it('values from before a later split are divided by it; values filed after it are left alone', () => {
     const splits = [{ date: '2022-06-01', ratio: 2 }]
