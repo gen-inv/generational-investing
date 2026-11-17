@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { addCompanyToRoster } from '../lib/add-company'
 import { refreshCompanyData, safeEqual } from '../lib/refresh-company-data'
+import { listPeTickers, storePeResults } from '../lib/pe-store'
 import { markDiscoveryAdded } from './discovery'
 import { authMiddleware } from '../lib/auth'
 import { scheduled } from '../scheduled'
@@ -120,6 +121,31 @@ routes.post('/api/cron/refresh-company-data', async (c) => {
   }
   const summary = await refreshCompanyData({ db: env.DB, fetchFn: fetch, rapidApiKey: env.RAPIDAPI_KEY || null, etfTickers })
   return c.json(summary)
+})
+
+// 10-year P/E ranges (a "how the market sees it" view): the weekly GitHub Action "Refresh P/E history" gets the roster list here
+// and posts its results back. Both routes use the same Bearer secret as the nightly refresh.
+const peCronAuth = (c: any): boolean => {
+  const given = (c.req.header('Authorization') || '').replace(/^Bearer\s+/i, '')
+  return !!(c.env as any).COMPANY_REFRESH_SECRET && safeEqual(given, (c.env as any).COMPANY_REFRESH_SECRET)
+}
+routes.get('/api/cron/pe-history/companies', async (c) => {
+  if (!peCronAuth(c)) return c.json({ error: 'Unauthorized' }, 401)
+  const env: any = c.env
+  let etfTickers: string[] = []
+  try {
+    const etfs = await env.RESEARCH_DB.prepare('SELECT ticker FROM setup_etfs').all()
+    etfTickers = (etfs.results || []).map((r: any) => r.ticker)
+  } catch (e) {
+    // the ETF list is a convenience: without it funds are still filtered by sector, exchange and the skip list
+  }
+  return c.json({ tickers: await listPeTickers(env.DB, etfTickers) })
+})
+routes.post('/api/cron/pe-history', async (c) => {
+  if (!peCronAuth(c)) return c.json({ error: 'Unauthorized' }, 401)
+  let body: any
+  try { body = await c.req.json() } catch (e) { return c.json({ error: 'Invalid JSON' }, 400) }
+  return c.json(await storePeResults((c.env as any).DB, Array.isArray(body && body.results) ? body.results : []))
 })
 
 // Fetch earnings date for a company

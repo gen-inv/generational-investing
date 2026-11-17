@@ -28,6 +28,8 @@ const EXPECTED = [
   "PUT /api/companies/:id",
   "PUT /api/companies/:id",
   "POST /api/cron/refresh-company-data",
+  "GET /api/cron/pe-history/companies",
+  "POST /api/cron/pe-history",
   "POST /api/companies/:id/fetch-earnings",
   "POST /api/companies/:id/fetch-earnings",
   "DELETE /api/companies/:id",
