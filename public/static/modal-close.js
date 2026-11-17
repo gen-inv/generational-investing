@@ -66,8 +66,8 @@ async function closeCoveredCall(ccId, stockId) {
   function update() {
     const b = breakdown()
     K.renderAnalysis(panel, [
-      { label: 'Premium received', value: K.fmt.money(b.openingCredit, { plus: true }), tone: 'good' },
-      { label: 'Close cost', value: K.fmt.money(-b.closingCost, { plus: true }), tone: b.closingCost > 0 ? 'bad' : 'neutral' },
+      { label: 'Opening proceeds', value: K.fmt.money(b.openingCredit, { plus: true }), tone: 'good' },
+      { label: 'Closing cost', value: K.fmt.money(-b.closingCost, { plus: true }), tone: b.closingCost > 0 ? 'bad' : 'neutral' },
       { label: 'Opening commission', value: K.fmt.money(-b.openCommission), tone: 'bad' },
       { label: 'Closing commission', value: K.fmt.money(-b.closeCommission), tone: 'bad' },
       { label: 'Net profit / loss', value: K.fmt.money(b.netPL, { plus: true }), tone: b.netPL >= 0 ? 'good' : 'bad', total: true }
@@ -163,9 +163,10 @@ async function closeOption(optionId) {
 
   function update() {
     const b = breakdown()
+    const w = K.cashFlow(b.openingCredit)   // proceeds when money came in, cost when it went out
     K.renderAnalysis(panel, [
-      { label: 'Opening premium', value: K.fmt.money(b.openingCredit, { plus: true }), tone: b.openingCredit >= 0 ? 'good' : 'bad' },
-      { label: 'Closing cost', value: K.fmt.money(-b.closingCost, { plus: true }), tone: b.closingCost <= 0 ? 'good' : 'bad' },
+      { label: w.opening, value: K.fmt.money(b.openingCredit, { plus: true }), tone: b.openingCredit >= 0 ? 'good' : 'bad' },
+      { label: w.closing, value: K.fmt.money(-b.closingCost, { plus: true }), tone: b.closingCost <= 0 ? 'good' : 'bad' },
       { label: 'Opening commission', value: K.fmt.money(-b.openCommission), tone: 'bad' },
       { label: 'Closing commission', value: K.fmt.money(-b.closeCommission), tone: 'bad' },
       { label: 'Net profit / loss', value: K.fmt.money(b.netPL, { plus: true }), tone: b.netPL >= 0 ? 'good' : 'bad', total: true }

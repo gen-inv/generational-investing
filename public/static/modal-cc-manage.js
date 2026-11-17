@@ -157,8 +157,8 @@ async function editCoveredCall(ccId) {
         openCommission: val('commission'), closeCommission: val('close_commission')
       })
       K.renderAnalysis(panel, [
-        { label: 'Premium received', value: K.fmt.money(b.openingCredit, { plus: true }), tone: 'good' },
-        { label: 'Close cost', value: K.fmt.money(-b.closingCost, { plus: true }), tone: b.closingCost > 0 ? 'bad' : 'neutral' },
+        { label: 'Opening proceeds', value: K.fmt.money(b.openingCredit, { plus: true }), tone: 'good' },
+        { label: 'Closing cost', value: K.fmt.money(-b.closingCost, { plus: true }), tone: b.closingCost > 0 ? 'bad' : 'neutral' },
         { label: 'Opening commission', value: K.fmt.money(-b.openCommission), tone: 'bad' },
         { label: 'Closing commission', value: K.fmt.money(-b.closeCommission), tone: 'bad' },
         { label: 'Net profit / loss', value: K.fmt.money(b.netPL, { plus: true }), tone: b.netPL >= 0 ? 'good' : 'bad', total: true }
@@ -170,7 +170,7 @@ async function editCoveredCall(ccId) {
         tradeDate: form.elements.trade_date.value, expirationDate: form.elements.expiration_date.value
       })
       const rows = [
-        { label: 'Premium received', value: K.fmt.money(Calc.grossPremium(val('premium'), Math.trunc(val('quantity'))), { plus: true }), tone: 'good' },
+        { label: 'Opening proceeds', value: K.fmt.money(Calc.grossPremium(val('premium'), Math.trunc(val('quantity'))), { plus: true }), tone: 'good' },
         { label: 'Max profit (after commission)', value: K.fmt.money(a.maxProfit), tone: 'good' },
         { label: 'Shares covered', value: String(Math.trunc(val('quantity')) * 100) }
       ]

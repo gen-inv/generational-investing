@@ -189,3 +189,13 @@
 
   global.ModalKit = { STRATEGIES, COLOURS, theme, esc, fmt, accountLabel, open, field, grid, stat, summary, analysisPanel, renderAnalysis, buttons }
 })(typeof window !== 'undefined' ? window : globalThis)
+
+/* Cash-flow wording shared by every option modal: money received is "proceeds", money paid is "cost".
+ * Pass the opening amount (positive = you received money, negative = you paid). Amounts themselves stay signed. */
+if (typeof ModalKit !== 'undefined') {
+  ModalKit.cashFlow = function (openingAmount) {
+    return Number(openingAmount) >= 0
+      ? { opening: 'Opening proceeds', closing: 'Closing cost', total: 'Total proceeds' }
+      : { opening: 'Opening cost', closing: 'Closing proceeds', total: 'Total cost' }
+  }
+}

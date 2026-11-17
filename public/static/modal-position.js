@@ -347,10 +347,11 @@ async function reduceFromOptionPosition(optionId) {
       close: { close_price: cp[0], close_price_2: cp[1], close_price_3: cp[2], close_price_4: cp[3] },
       openCommission: split.closedCommission, closeCommission: parseFloat(form.elements.close_commission.value) || 0
     })
+    const w = K.cashFlow(b.openingCredit)   // proceeds when money came in, cost when it went out
     const warnings = n >= option.quantity ? ['Cannot close every contract here. Use "Close Position" instead'] : []
     K.renderAnalysis(panel, [
-      { label: 'Premium on closed contracts', value: K.fmt.money(b.openingCredit, { plus: true }), tone: b.openingCredit >= 0 ? 'good' : 'bad' },
-      { label: 'Cost to close', value: K.fmt.money(-b.closingCost, { plus: true }), tone: b.closingCost > 0 ? 'bad' : 'neutral' },
+      { label: w.opening + ' (closed contracts)', value: K.fmt.money(b.openingCredit, { plus: true }), tone: b.openingCredit >= 0 ? 'good' : 'bad' },
+      { label: w.closing + ' (closed contracts)', value: K.fmt.money(-b.closingCost, { plus: true }), tone: b.closingCost > 0 ? 'bad' : 'neutral' },
       { label: 'Opening commission (share)', value: K.fmt.money(-b.openCommission), tone: 'bad' },
       { label: 'Closing commission', value: K.fmt.money(-b.closeCommission), tone: 'bad' },
       { label: 'Net profit / loss', value: K.fmt.money(b.netPL, { plus: true }), tone: b.netPL >= 0 ? 'good' : 'bad', total: true },

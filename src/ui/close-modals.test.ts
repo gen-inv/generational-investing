@@ -12,7 +12,9 @@ const put = { id: 1, ticker: 'XYZ', strategy_type: 'SELLING_PUT', strike_price: 
 const spread = { id: 2, ticker: 'XYZ', strategy_type: 'CREDIT_SPREAD', strike_price: 50, strike_price_2: 45, premium: 2.5, premium_2: 1, quantity: 2, commission: 1.3, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
 const condor = { id: 3, ticker: 'XYZ', strategy_type: 'IRON_CONDOR', strike_price: 60, strike_price_2: 65, strike_price_3: 45, strike_price_4: 40, premium: 1.0, premium_2: 0.3, premium_3: 0.9, premium_4: 0.2, quantity: 1, commission: 2.6, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
 const longCall = { id: 4, ticker: 'XYZ', strategy_type: 'LONG_CALL', strike_price: 60, premium: 1.5, quantity: 1, commission: 1, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
-const options = [put, spread, condor, longCall]
+// Debit spread: sold leg 10.20 -> 6.85 and bought leg 15.20 -> 10.68, 2 contracts (opening -$1,000, closing +$766)
+const debitSpread = { id: 5, ticker: 'NVDA', strategy_type: 'DEBIT_SPREAD', strike_price: 168, strike_price_2: 158, premium: 10.2, premium_2: 15.2, quantity: 2, commission: 1.81, trade_date: '2026-10-01', expiration_date: '2026-12-18' }
+const options = [put, spread, condor, longCall, debitSpread]
 
 let api: any
 const type = (formId: string, name: string, value: string) => {
@@ -154,7 +156,7 @@ describe('close option modal', () => {
     await open(1)
     type('closeOptionForm', 'close_price', '0.3'); type('closeOptionForm', 'close_commission', '4')
     const t = analysis()
-    expect(t).toContain('Opening premium +$360.00')
+    expect(t).toContain('Opening proceeds +$360.00')
     expect(t).toContain('Closing cost -$90.00')
     expect(t).toContain('Net profit / loss +$262.00')
     expect(t).toContain('Profitable trade')
@@ -164,8 +166,8 @@ describe('close option modal', () => {
     await open(4)
     type('closeOptionForm', 'close_price', '3'); type('closeOptionForm', 'close_commission', '1')
     const t = analysis()
-    expect(t).toContain('Opening premium -$150.00')
-    expect(t).toContain('Closing cost +$300.00')
+    expect(t).toContain('Opening cost -$150.00')
+    expect(t).toContain('Closing proceeds +$300.00')
     expect(t).toContain('Net profit / loss +$148.00')
   })
 
@@ -188,6 +190,35 @@ describe('close option modal', () => {
       await open(2)   // this row carries no account
       expect(document.querySelector('#close-option-modal [data-mk="account"]')).toBeNull()
     } finally { vi.useRealTimers() }
+  })
+
+  it('names the money by direction: proceeds when received, cost when paid', async () => {
+    for (const id of [1, 2, 3]) {   // credit trades: you receive money to open and pay to close
+      await open(id)
+      const t = analysis()
+      expect(t).toContain('Opening proceeds'); expect(t).toContain('Closing cost')
+      expect(t).not.toContain('Opening premium'); expect(t).not.toContain('Closing proceeds')
+    }
+    for (const id of [4, 5]) {      // debit trades: you pay to open and receive money to close
+      await open(id)
+      const t = analysis()
+      expect(t).toContain('Opening cost'); expect(t).toContain('Closing proceeds')
+      expect(t).not.toContain('Opening premium'); expect(t).not.toContain('Closing cost')
+    }
+  })
+
+  it('debit spread: opening cost and closing proceeds with the right amounts', async () => {
+    await open(5)
+    type('closeOptionForm', 'close_price', '6.85'); type('closeOptionForm', 'close_price_2', '10.68'); type('closeOptionForm', 'close_commission', '0')
+    const t = analysis()
+    expect(t).toContain('Opening cost -$1,000.00')
+    expect(t).toContain('Closing proceeds +$766.00')
+  })
+
+  it('ModalKit.cashFlow picks the wording from the direction of the money', () => {
+    const f = w().ModalKit.cashFlow
+    expect(f(360)).toEqual({ opening: 'Opening proceeds', closing: 'Closing cost', total: 'Total proceeds' })
+    expect(f(-150)).toEqual({ opening: 'Opening cost', closing: 'Closing proceeds', total: 'Total cost' })
   })
 
   it('shows a loss clearly', async () => {
