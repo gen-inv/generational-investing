@@ -1,7 +1,7 @@
 // 10-year P/E range from SEC EPS facts + monthly prices. Pure functions (no network, no database).
 // "Market view" metric only: it never feeds the scoresheet or any valuation.
 
-export interface EpsFact { start: string; end: string; val: number; filed: string }   // SEC companyconcept row (dates are YYYY-MM-DD)
+export interface EpsFact { start: string; end: string; val: number; filed: string; tag?: string }   // SEC companyconcept row (dates are YYYY-MM-DD)
 export interface Split { date: string; ratio: number }                                  // ratio = numerator / denominator (4-for-1 -> 4)
 export interface PricePoint { date: string; close: number }                             // month, split-adjusted close (as Yahoo returns it)
 export interface Quarter { start: string; end: string; val: number; available: string }

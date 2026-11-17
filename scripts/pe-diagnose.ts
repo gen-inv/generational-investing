@@ -17,10 +17,13 @@ async function main() {
   const eps = await loadEpsFacts(Number(row.cik_str), (u) => get(u, SEC_UA))
   if (!eps.ok) { console.log('EPS:', eps.error); return }
   const facts = eps.value
-  console.log('EPS tag used:', eps.tag, '| rows:', facts.length)
+  console.log('EPS tags merged:', eps.tag, '| rows:', facts.length)
   const periods = new Map<string, number>()
   for (const f of facts) periods.set(days(f.start, f.end) + ' days', (periods.get(days(f.start, f.end) + ' days') || 0) + 1)
   console.log('period lengths in the rows:', [...periods.entries()].sort().map(([k, v]) => k + ' x' + v).join(', '))
+  const annual = facts.filter(f => days(f.start, f.end) >= 350 && days(f.start, f.end) <= 380).sort((a, b) => (a.end < b.end ? -1 : a.end > b.end ? 1 : a.filed < b.filed ? -1 : 1))
+  console.log('annual rows (newest 8):')
+  for (const f of annual.slice(-8)) console.log('  ', f.start, '->', f.end, 'EPS', f.val, 'filed', f.filed, f.tag)
   const px = await loadPrices(ticker, (u) => get(u, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'), new Date().toISOString().slice(0, 10))
   if (!px.ok) { console.log('Prices:', px.error); return }
   const { prices, splits } = px.value

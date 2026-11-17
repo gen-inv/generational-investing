@@ -9,7 +9,12 @@ export interface PeFetchDeps {
   today: string                             // YYYY-MM-DD
 }
 
-const EPS_TAGS = ['EarningsPerShareDiluted', 'EarningsPerShareBasicAndDiluted', 'EarningsPerShareBasic']
+// Companies switch tags over the years (continuing operations, basic-and-diluted...). The first tag wins for every period it has;
+// later tags only fill the periods it lacks, so a gap in one tag cannot break the four-quarter run.
+const EPS_TAGS = [
+  'EarningsPerShareDiluted', 'IncomeLossFromContinuingOperationsPerDilutedShare', 'EarningsPerShareBasicAndDiluted',
+  'EarningsPerShareBasic', 'IncomeLossFromContinuingOperationsPerBasicShare',
+]
 
 export const secKey = (t: string) => t.toUpperCase().replace(/\./g, '-')
 /** Yahoo writes share classes with a dash (BRK-B); an exchange suffix like .TO stays. */
@@ -24,21 +29,34 @@ const monthEnd = (sec: number, today: string) => {
 export type FetchResp = { ok: boolean; status: number; json: () => Promise<any> }
 export type Loaded<T> = { ok: true; value: T; tag?: string } | { ok: false; error: string; clear: boolean }
 
-/** SEC earnings-per-share rows for a company (10-K and 10-Q periods with a start and end date). */
+/** SEC earnings-per-share rows for a company (10-K and 10-Q periods with a start and end date), merged across tags. */
 export async function loadEpsFacts(cik: number, fetchSec: (url: string) => Promise<FetchResp>): Promise<Loaded<EpsFact[]>> {
+  const have = new Set<string>()          // periods already covered by a higher-priority tag
+  const facts: EpsFact[] = []
+  const used: string[] = []
   try {
     for (const tag of EPS_TAGS) {
       const resp = await fetchSec(`https://data.sec.gov/api/xbrl/companyconcept/CIK${String(cik).padStart(10, '0')}/us-gaap/${tag}.json`)
       if (resp.status === 404) continue
-      if (!resp.ok) return { ok: false, error: 'SEC answered HTTP ' + resp.status, clear: false }
+      if (!resp.ok) {
+        if (facts.length) break           // keep what the earlier tags gave
+        return { ok: false, error: 'SEC answered HTTP ' + resp.status, clear: false }
+      }
       const body = await resp.json()
       const rows = ((body && body.units && body.units['USD/shares']) || []) as any[]
       const usable = rows.filter(r => typeof r.form === 'string' && r.form.startsWith('10-') && r.start && r.end && Number.isFinite(r.val))
-        .map(r => ({ start: r.start, end: r.end, val: Number(r.val), filed: r.filed }) as EpsFact)
-      if (usable.length >= 8) return { ok: true, value: usable, tag }
+        .map(r => ({ start: r.start, end: r.end, val: Number(r.val), filed: r.filed, tag }) as EpsFact)
+      const fresh = usable.filter(f => !have.has(f.start + '|' + f.end))
+      if (!fresh.length) continue
+      fresh.forEach(f => facts.push(f))
+      new Set(fresh.map(f => f.start + '|' + f.end)).forEach(k => have.add(k))
+      used.push(tag)
     }
-  } catch (e) { return { ok: false, error: 'SEC request failed', clear: false } }
-  return { ok: false, error: 'no earnings-per-share history at the SEC', clear: true }
+  } catch (e) {
+    if (!facts.length) return { ok: false, error: 'SEC request failed', clear: false }
+  }
+  if (facts.length < 8) return { ok: false, error: 'no earnings-per-share history at the SEC', clear: true }
+  return { ok: true, value: facts, tag: used.join(' + ') }
 }
 
 /** Ten years of month-end closes (split-adjusted) and the splits, from Yahoo. */

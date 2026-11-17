@@ -44,7 +44,25 @@ describe('computeCompanyPe', () => {
     const urls: string[] = []
     const fetchSec = async (u: string) => { urls.push(u); return u.includes('EarningsPerShareDiluted') ? bad(404) : ok({ units: { 'USD/shares': secRows() } }) }
     const r = await computeCompanyPe('ABC', deps({ fetchSec }))
-    expect(r.summary).toBeTruthy(); expect(urls).toHaveLength(2); expect(urls[1]).toContain('EarningsPerShareBasicAndDiluted')
+    expect(r.summary).toBeTruthy(); expect(urls[1]).toContain('IncomeLossFromContinuingOperationsPerDilutedShare')
+  })
+  it('fills a gap in the main tag from a fallback tag (a company that changed tags)', async () => {
+    const without2023 = secRows().filter(r => !r.end.startsWith('2023'))
+    const fetchSec = async (u: string) => u.includes('/EarningsPerShareDiluted.json') ? ok({ units: { 'USD/shares': without2023 } })
+      : u.includes('/IncomeLossFromContinuingOperationsPerDilutedShare.json') ? ok({ units: { 'USD/shares': secRows() } }) : bad(404)
+    const r = await computeCompanyPe('ABC', deps({ fetchSec }))
+    expect(r.error).toBeUndefined()
+    expect(r.eps).toBeCloseTo(6.75, 10)        // 2023 came from the fallback tag
+  })
+  it('a fallback tag never overrides a period the main tag already has', async () => {
+    const wrong = secRows().map(r => ({ ...r, val: r.val * 100 }))
+    const fetchSec = async (u: string) => u.includes('/EarningsPerShareDiluted.json') ? ok({ units: { 'USD/shares': secRows() } })
+      : u.includes('/EarningsPerShareBasic.json') ? ok({ units: { 'USD/shares': wrong } }) : bad(404)
+    expect((await computeCompanyPe('ABC', deps({ fetchSec }))).eps).toBeCloseTo(6.75, 10)
+  })
+  it('a server error on a later tag keeps what the earlier tag gave; on the first tag it is a temporary failure', async () => {
+    const fetchSec = async (u: string) => u.includes('/EarningsPerShareDiluted.json') ? ok({ units: { 'USD/shares': secRows() } }) : bad(503)
+    expect((await computeCompanyPe('ABC', deps({ fetchSec }))).summary).toBeTruthy()
   })
   it('a company the SEC does not know is a permanent "n/a"', async () => {
     expect(await computeCompanyPe('NOPE', deps())).toMatchObject({ ticker: 'NOPE', clear: true, error: expect.stringContaining('not found at the SEC') })
