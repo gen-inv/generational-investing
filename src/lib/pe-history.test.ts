@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { splitFactor, buildQuarters, ttmSeries, ttmOn, peSeries, currentPe, summarizePe, barPosition, peBand, peIfAssigned, EpsFact } from './pe-history'
+import { splitFactor, buildQuarters, ttmSeries, ttmOn, peSeries, currentPe, summarizePe, EpsFact } from './pe-history'
 
 // Four fiscal years of quarters, EPS 1.00 per quarter in year 1 rising by 0.25 a year; quarter ends Mar/Jun/Sep/Dec.
 const mk = (y: number) => {
@@ -109,27 +109,5 @@ describe('P/E series and summary', () => {
     const c = currentPe(prices, t)!
     expect(c.eps).toBeCloseTo(6.75, 10)          // Dec-2023 quarter not filed yet: Q4-2022 (1.5) + three quarters of 1.75
     expect(c.pe).toBeCloseTo(100 / 6.75, 10)
-  })
-})
-
-describe('bar position, band and put P/E', () => {
-  const sum = { min: 5, p5: 10, median: 20, p95: 30, max: 90, current: 20, percentile: 50, months: 100 }
-  it('draws between the 5th and 95th percentile and flags a dot outside it', () => {
-    expect(barPosition(sum, 20)).toEqual({ pos: 0.5, outside: null })
-    expect(barPosition(sum, 5)).toEqual({ pos: 0, outside: 'below' })
-    expect(barPosition(sum, 60)).toEqual({ pos: 1, outside: 'above' })
-    expect(barPosition({ ...sum, p5: 20, p95: 20 }, 20).pos).toBe(0.5)
-  })
-  it('names the band', () => {
-    expect(peBand(10)).toEqual({ label: 'Low end', tone: 'cheap' })
-    expect(peBand(50)).toEqual({ label: 'Near median', tone: 'neutral' })
-    expect(peBand(68)).toEqual({ label: 'Above median', tone: 'rich' })
-    expect(peBand(95)).toEqual({ label: 'High end', tone: 'rich' })
-  })
-  it('P/E if a short put is assigned: strike less the premium collected, over trailing EPS', () => {
-    expect(peIfAssigned(168, 3.4, 4)).toBeCloseTo(41.15, 10)
-    expect(peIfAssigned(168, 0, 4)).toBeCloseTo(42, 10)
-    expect(peIfAssigned(168, 3.4, -1)).toBeNull(); expect(peIfAssigned(168, 3.4, null)).toBeNull(); expect(peIfAssigned(0, 1, 4)).toBeNull()
-    expect(peIfAssigned(2, 5, 4)).toBeNull()       // premium bigger than the strike: no meaningful net price
   })
 })

@@ -1,5 +1,6 @@
 // 10-year P/E range from SEC EPS facts + monthly prices. Pure functions (no network, no database).
 // "Market view" metric only: it never feeds the scoresheet or any valuation.
+// Display helpers (bar position, colours, the put's P/E) live in public/static/research-merge.js so the browser and the tests share one copy.
 
 export interface EpsFact { start: string; end: string; val: number; filed: string; tag?: string }   // SEC companyconcept row (dates are YYYY-MM-DD)
 export interface Split { date: string; ratio: number }                                  // ratio = numerator / denominator (4-for-1 -> 4)
@@ -97,28 +98,4 @@ export function summarizePe(series: number[], current: number | null, minMonths 
     min: s[0], p5: quantile(s, 0.05), median: quantile(s, 0.5), p95: quantile(s, 0.95), max: s[s.length - 1],
     current, months: s.length, percentile: Math.round((s.filter(v => v <= current).length / s.length) * 100),
   }
-}
-
-/** Dot position on a bar drawn from the 5th to the 95th percentile (so one freak year cannot flatten the bar). */
-export function barPosition(sum: PeSummary, pe: number): { pos: number; outside: 'below' | 'above' | null } {
-  const span = sum.p95 - sum.p5
-  if (!(span > 0)) return { pos: 0.5, outside: null }
-  const raw = (pe - sum.p5) / span
-  return { pos: Math.min(1, Math.max(0, raw)), outside: raw < 0 ? 'below' : raw > 1 ? 'above' : null }
-}
-
-/** Words for the compact view and the dot colour: cheap / neutral / rich compared with the company's own history. */
-export function peBand(percentile: number): { label: string; tone: 'cheap' | 'neutral' | 'rich' } {
-  if (percentile <= 20) return { label: 'Low end', tone: 'cheap' }
-  if (percentile <= 45) return { label: 'Below median', tone: 'cheap' }
-  if (percentile < 55) return { label: 'Near median', tone: 'neutral' }
-  if (percentile < 80) return { label: 'Above median', tone: 'rich' }
-  return { label: 'High end', tone: 'rich' }
-}
-
-/** P/E you would effectively pay if a short put is assigned: (strike - premium collected) / trailing EPS. */
-export function peIfAssigned(strike: number, premium: number, ttmEps: number | null): number | null {
-  const net = (Number(strike) || 0) - (Number(premium) || 0)
-  if (!(net > 0) || ttmEps == null || !(ttmEps > 0)) return null
-  return net / ttmEps
 }

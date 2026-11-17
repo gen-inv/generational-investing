@@ -1573,6 +1573,7 @@ async function loadCompanies() {
                     <td class="px-4 py-3 text-center text-sm">${earningsCellHtml(company)}</td>
                     <td class="px-4 py-3 text-center">${researchScoreDisplay}</td>
                     <td class="px-4 py-3 text-center">${antiFragileDisplay}</td>
+                    <td class="px-4 py-3 text-center">${peRangeCellHtml(company)}</td>
                     <td class="px-4 py-3 text-right">${buyPriceDisplay}</td>
                     <td class="px-4 py-3 text-right">${stickerPriceDisplay}</td>
                     <td class="px-4 py-3 text-center text-sm text-gray-600">${lastResearchedDisplay}</td>

@@ -116,3 +116,89 @@ function showRefreshNote(companies) {
     var table = body && body.closest('table')
     if (table && table.parentElement) table.parentElement.insertAdjacentHTML('beforebegin', html)
 }
+
+/* ---- 10-year P/E range: "how the market has valued this company" (roster column and short-put modals).
+ * Numbers come from the weekly job (pe_* columns). Display only: never used in the scoresheet or any valuation. ---- */
+
+function peEsc(text) {
+    return String(text == null ? '' : text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+function peHasRange(company) {
+    return !!company && company.pe_current != null && company.pe_p5 != null && company.pe_p95 != null &&
+        Number(company.pe_p5) > 0 && Number(company.pe_p95) > 0 && company.pe_percentile != null
+}
+
+// Rounded like the figures people quote: 36, 110, but 9.6 for single digits
+function peFmt(value) {
+    var n = Number(value)
+    return n >= 10 ? String(Math.round(n)) : n.toFixed(1)
+}
+
+function peOrdinal(n) {
+    var v = Math.round(Number(n)), tens = v % 100, last = v % 10
+    var suffix = (tens >= 11 && tens <= 13) ? 'th' : (last === 1 ? 'st' : (last === 2 ? 'nd' : (last === 3 ? 'rd' : 'th')))
+    return v + suffix
+}
+
+// Dot position (0 to 1) on a bar that runs from the 5th to the 95th percentile on a log scale: P/E moves by multiples
+// (a 20 to 40 move matters as much as 50 to 100), and one freak year cannot flatten the bar.
+function peBarPosition(company, value) {
+    var lo = Math.log(Number(company.pe_p5)), hi = Math.log(Number(company.pe_p95))
+    if (!(hi > lo)) return { pos: 0.5, outside: null }
+    var raw = (Math.log(Math.max(Number(value), 0.0001)) - lo) / (hi - lo)
+    return { pos: Math.min(1, Math.max(0, raw)), outside: raw < 0 ? 'below' : (raw > 1 ? 'above' : null) }
+}
+
+// Cheap / fair / rich compared with the company's own history (percentile = share of months at or below today's P/E)
+function peTone(percentile) {
+    var p = Number(percentile)
+    return p <= 30 ? 'cheap' : (p <= 70 ? 'fair' : 'rich')
+}
+
+function peBandLabel(percentile) {
+    var p = Number(percentile)
+    if (p <= 20) return 'Low end'
+    if (p <= 45) return 'Below median'
+    if (p < 55) return 'Near median'
+    if (p < 80) return 'Above median'
+    return 'High end'
+}
+
+// What the P/E would be if a short put is assigned: the strike less the premium collected, over trailing EPS
+function peIfAssigned(strike, premium, eps) {
+    var net = (Number(strike) || 0) - (Number(premium) || 0), e = Number(eps)
+    if (!(net > 0) || !(e > 0)) return null
+    return net / e
+}
+
+function peTooltip(company) {
+    var name = company.company_name || company.ticker || 'This company'
+    var text = name + ': P/E now ' + peFmt(company.pe_current) + ' (trailing earnings).' +
+        '&#10;Last ' + (company.pe_months || '?') + ' months: low ' + peFmt(company.pe_min) + ', median ' + peFmt(company.pe_median) + ', high ' + peFmt(company.pe_max) + '.' +
+        '&#10;Today is higher than ' + company.pe_percentile + '% of those months (' + peBandLabel(company.pe_percentile).toLowerCase() + ').' +
+        '&#10;The bar shows the 5th to 95th percentile (' + peFmt(company.pe_p5) + ' to ' + peFmt(company.pe_p95) + ') on a log scale; the tick is the median.'
+    if (company.pe_updated_at) text += '&#10;Updated ' + String(company.pe_updated_at).slice(0, 10) + '.'
+    return peEsc(text).replace(/&amp;#10;/g, '&#10;')
+}
+
+function peRangeCellHtml(company) {
+    if (!peHasRange(company)) {
+        var why = company && company.pe_error ? 'No 10-year P/E range: ' + company.pe_error : 'No 10-year P/E range yet (it is built weekly from SEC earnings and Yahoo prices)'
+        return '<span class="text-gray-400" title="' + peEsc(why) + '">-</span>'
+    }
+    var dot = peBarPosition(company, company.pe_current).pos * 100
+    var tick = peBarPosition(company, company.pe_median).pos * 100
+    var colour = { cheap: '#16a34a', fair: '#f59e0b', rich: '#dc2626' }[peTone(company.pe_percentile)]
+    return '<div class="inline-block text-left" title="' + peTooltip(company) + '">' +
+        '<div class="flex items-center gap-1 text-xs text-gray-500">' +
+        '<span>' + peFmt(company.pe_p5) + '</span>' +
+        '<span class="relative inline-block rounded" style="width:96px;height:8px;margin:0 6px;background:linear-gradient(90deg,#bbf7d0,#fde68a,#fecaca)">' +
+        '<i class="absolute" style="left:' + tick.toFixed(1) + '%;top:-2px;width:2px;height:12px;background:#6b7280"></i>' +
+        '<i class="absolute rounded-full" data-pe-dot style="left:' + dot.toFixed(1) + '%;top:-4px;width:16px;height:16px;transform:translateX(-50%);background:' + colour + ';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)"></i>' +
+        '</span>' +
+        '<span>' + peFmt(company.pe_p95) + '</span>' +
+        '</div>' +
+        '<div class="text-xs text-gray-600" style="margin-top:2px"><b>P/E ' + peFmt(company.pe_current) + '</b> &middot; ' + peOrdinal(company.pe_percentile) + ' pct</div>' +
+        '</div>'
+}
