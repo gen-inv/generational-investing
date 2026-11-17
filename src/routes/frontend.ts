@@ -1218,7 +1218,7 @@ routes.get('/', (c) => {
                                 <div class="mt-4 p-4 bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg border border-orange-200">
                                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
                                         <div>
-                                            <div class="text-sm text-gray-600">Total Premium Credit</div>
+                                            <div class="text-sm text-gray-600">Total Proceeds</div>
                                             <div class="text-xl font-bold text-green-600" id="dt-total-credit">$1.50</div>
                                             <div class="text-xs text-gray-500">per contract</div>
                                         </div>

@@ -49,7 +49,7 @@ async function viewCoveredCallDetails(ccId) {
       ${K.summary('Position Summary', [
         K.stat('Status', isOpen ? 'OPEN' : 'CLOSED', isOpen ? 'text-blue-700' : 'text-gray-700'),
         K.stat('Strike', K.fmt.money(num(cc.strike_price))),
-        K.stat('Premium received', K.fmt.money(Calc.grossPremium(num(cc.premium), num(cc.quantity))), 'text-green-600'),
+        K.stat('Total proceeds', K.fmt.money(Calc.grossPremium(num(cc.premium), num(cc.quantity))), 'text-green-600'),
         K.stat('Contracts', `${cc.quantity} (${cc.quantity * 100} shares)`)
       ])}
       <p class="text-xs text-gray-500 -mt-2 mb-4">$${num(cc.premium).toFixed(3)}/share x ${cc.quantity} contract${cc.quantity === 1 ? '' : 's'} x 100 shares</p>

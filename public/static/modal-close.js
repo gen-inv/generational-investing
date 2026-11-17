@@ -40,7 +40,7 @@ async function closeCoveredCall(ccId, stockId) {
     body: `
       ${K.summary('Position Summary', [
         K.stat('Strike', K.fmt.money(Number(cc.strike_price))),
-        K.stat('Premium received', K.fmt.money(Calc.grossPremium(cc.premium, cc.quantity)), 'text-green-600'),
+        K.stat('Total proceeds', K.fmt.money(Calc.grossPremium(cc.premium, cc.quantity)), 'text-green-600'),
         K.stat('Contracts', String(cc.quantity)),
         K.stat('Expires', cc.expiration_date)
       ])}

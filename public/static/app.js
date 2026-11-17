@@ -3601,7 +3601,7 @@ async function loadOptions() {
         const hdrCells = tableHeader.querySelectorAll('th')
         if (hdrCells.length > 4) {
             hdrCells[3].textContent = isSpreadTab ? 'Short Strike' : (isCondorTab ? 'Short Strikes (Put / Call)' : 'Strike')
-            hdrCells[4].textContent = (isSpreadTab || isCondorTab) ? 'Net Premium' : 'Premium'
+            hdrCells[4].textContent = (isSpreadTab || isCondorTab) ? (currentStrategyFilter === 'DEBIT_SPREAD' ? 'Net Cost' : 'Net Proceeds') : 'Premium'
         }
         
         if (filteredOptions.length === 0) {
@@ -3895,7 +3895,7 @@ function renderLegDetails(option, strategyConfig) {
                         </div>
                     </div>
                     <div>
-                        <span class="text-sm text-gray-600">Total Premium</span>
+                        <span class="text-sm text-gray-600">${strategyConfig.isPremiumCredit ? 'Total proceeds' : 'Total cost'}</span>
                         <div class="text-lg font-semibold ${strategyConfig.isPremiumCredit ? 'text-green-600' : 'text-red-600'}">
                             ${strategyConfig.isPremiumCredit ? '+' : '-'}$${(parseFloat(option.premium) * option.quantity * 100).toFixed(2)}
                         </div>
