@@ -202,3 +202,56 @@ function peRangeCellHtml(company) {
         '<div class="text-xs text-gray-600" style="margin-top:2px"><b>P/E ' + peFmt(company.pe_current) + '</b> &middot; ' + peOrdinal(company.pe_percentile) + ' pct</div>' +
         '</div>'
 }
+
+/* ---- P/E if a short put is assigned (Short Put: Stockpiling, Wheel and Long Term). Display only: it never changes the saved
+ * trade or any calculation. ---- */
+
+// Roughly where a P/E sits in the company's own history, interpolated (log scale) between the stored 5th percentile, median and 95th percentile
+function peApproxPercentile(company, value) {
+    var p5 = Number(company.pe_p5), med = Number(company.pe_median), p95 = Number(company.pe_p95), v = Number(value)
+    if (!(p5 > 0 && med > p5 && p95 > med && v > 0)) return { pct: Math.round(peBarPosition(company, value).pos * 100), beyond: null }
+    if (v < p5) return { pct: 5, beyond: 'below' }
+    if (v > p95) return { pct: 95, beyond: 'above' }
+    var pct = v <= med
+        ? 5 + 45 * (Math.log(v) - Math.log(p5)) / (Math.log(med) - Math.log(p5))
+        : 50 + 45 * (Math.log(v) - Math.log(med)) / (Math.log(p95) - Math.log(med))
+    return { pct: Math.round(pct), beyond: null }
+}
+
+var PE_NOT_AVAILABLE = 'n/a - this happens on loss-making companies (which have no P/E), and non-US companies.'
+
+// Block for the bottom of the Trade Analysis panel. '' until a company, a strike and a premium are entered.
+function peAssignedHtml(company, strike, premium) {
+    var s = Number(strike), p = Number(premium)
+    if (!company || !(s > 0) || !(p > 0) || !(s - p > 0)) return ''
+    var net = s - p, eps = Number(company.pe_eps_ttm)
+    var head = '<div class="mt-3 pt-3 border-t border-gray-300" data-pe-assigned>'
+    var label = '<span class="text-gray-700">P/E if assigned <span class="text-xs text-gray-500">(strike less premium)</span></span>'
+    if (!(eps > 0)) {
+        var why = company.pe_error ? ' title="' + peEsc(company.pe_error) + '"' : ''
+        return head + '<div class="flex items-center justify-between">' + label + '</div>' +
+            '<p class="text-xs text-gray-600 mt-1"' + why + '>' + peEsc(PE_NOT_AVAILABLE) + '</p></div>'
+    }
+    var assigned = net / eps
+    var textClass = { cheap: 'text-green-700', fair: 'text-amber-600', rich: 'text-red-700' }
+    var dotColour = { cheap: '#16a34a', fair: '#f59e0b', rich: '#dc2626' }
+    var out = head + '<div class="flex items-center justify-between">' + label
+    if (!peHasRange(company)) {
+        return out + '<span class="font-semibold">' + peFmt(assigned) + '</span></div>' +
+            '<p class="text-xs text-gray-600 mt-1">$' + net.toFixed(2) + ' &divide; trailing EPS $' + eps.toFixed(2) + '. No 10-year range yet to compare it with.</p></div>'
+    }
+    var approx = peApproxPercentile(company, assigned), tone = peTone(approx.pct)
+    var where = approx.beyond === 'below' ? 'below its usual 10-year range' : (approx.beyond === 'above' ? 'above its usual 10-year range' : '&asymp; ' + peOrdinal(approx.pct) + ' percentile of its 10-year range')
+    var dot = peBarPosition(company, assigned).pos * 100
+    var today = peBarPosition(company, company.pe_current).pos * 100
+    return out + '<span class="font-semibold ' + textClass[tone] + '">' + peFmt(assigned) + '</span></div>' +
+        '<div class="flex items-center gap-1 text-xs text-gray-500 mt-2">' +
+        '<span>' + peFmt(company.pe_p5) + '</span>' +
+        '<span class="relative inline-block rounded" style="width:140px;height:8px;margin:0 6px;background:linear-gradient(90deg,#bbf7d0,#fde68a,#fecaca)">' +
+        '<i class="absolute" style="left:' + (peBarPosition(company, company.pe_median).pos * 100).toFixed(1) + '%;top:-2px;width:2px;height:12px;background:#6b7280"></i>' +
+        '<i class="absolute rounded-full" data-pe-today-dot title="Today\'s P/E" style="left:' + today.toFixed(1) + '%;top:-2px;width:12px;height:12px;transform:translateX(-50%);background:#fff;border:2px solid #6b7280"></i>' +
+        '<i class="absolute rounded-full" data-pe-assigned-dot style="left:' + dot.toFixed(1) + '%;top:-4px;width:16px;height:16px;transform:translateX(-50%);background:' + dotColour[tone] + ';border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)"></i>' +
+        '</span><span>' + peFmt(company.pe_p95) + '</span></div>' +
+        '<p class="text-xs text-gray-600 mt-1">' + where + '. $' + net.toFixed(2) + ' &divide; trailing EPS $' + eps.toFixed(2) +
+        ' &middot; the hollow ring is today&#39;s P/E (' + peFmt(company.pe_current) + ').</p></div>'
+}

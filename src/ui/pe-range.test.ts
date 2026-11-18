@@ -101,3 +101,40 @@ describe('wiring', () => {
     expect(read('src/routes/frontend.ts')).toContain('10-yr P/E:')
   })
 })
+
+describe('P/E if assigned (short puts)', () => {
+  const approx = (v: number) => w().peApproxPercentile(co(), v)
+  it('interpolates a percentile from the stored 5th, 50th and 95th points', () => {
+    expect(approx(10)).toEqual({ pct: 5, beyond: null }); expect(approx(100)).toEqual({ pct: 50, beyond: null }); expect(approx(1000)).toEqual({ pct: 95, beyond: null })
+    expect(Math.abs(approx(Math.sqrt(10 * 100)).pct - 27.5)).toBeLessThanOrEqual(0.5)   // halfway (log) between the 5th and the median
+    expect(approx(5)).toEqual({ pct: 5, beyond: 'below' }); expect(approx(4000)).toEqual({ pct: 95, beyond: 'above' })
+  })
+  const html = (c: any, strike: any, premium: any) => { const d = document.createElement('div'); d.innerHTML = w().peAssignedHtml(c, strike, premium); return d }
+  it('shows nothing until a company, a strike and a premium are entered, or when the premium swallows the strike', () => {
+    expect(w().peAssignedHtml(null, 50, 2)).toBe(''); expect(w().peAssignedHtml(co(), '', 2)).toBe(''); expect(w().peAssignedHtml(co(), 50, '')).toBe('')
+    expect(w().peAssignedHtml(co(), 2, 5)).toBe('')
+  })
+  it('P/E at strike less premium, the dot on the bar, and today as a hollow ring', () => {
+    const d = html(co({ pe_eps_ttm: 4, pe_p5: 10, pe_median: 20, pe_p95: 40, pe_current: 12.5 }), 50, 2)
+    expect(d.textContent).toContain('P/E if assigned'); expect(d.textContent).toContain('12'); expect(d.textContent).toContain('$48.00')
+    expect(d.textContent).toContain('17th percentile'); expect(d.textContent).toContain("today's P/E (13)")
+    expect((d.querySelector('[data-pe-assigned-dot]') as HTMLElement).style.left).toBe('13.2%')   // ln(12/10) / ln(40/10)
+    expect((d.querySelector('[data-pe-today-dot]') as HTMLElement).style.left).toBe('16.1%')      // ln(12.5/10) / ln(4)
+    expect((d.querySelector('[data-pe-assigned-dot]') as HTMLElement).style.backgroundColor).toContain('22, 163, 74')   // low in its own history: green
+  })
+  it('an assigned P/E above the usual range is red and says so', () => {
+    const d = html(co({ pe_eps_ttm: 1, pe_p5: 10, pe_median: 20, pe_p95: 40 }), 100, 2)
+    expect(d.textContent).toContain('above its usual 10-year range')
+    expect((d.querySelector('[data-pe-assigned-dot]') as HTMLElement).style.backgroundColor).toContain('220, 38, 38')
+  })
+  it('no earnings (loss-making or non-US) says n/a with the reason, and no bar', () => {
+    const d = html(co({ pe_eps_ttm: null, pe_current: null, pe_error: 'not found at the SEC' }), 50, 2)
+    expect(d.textContent).toContain('n/a - this happens on loss-making companies (which have no P/E), and non-US companies.')
+    expect(d.querySelector('[data-pe-assigned-dot]')).toBeNull()
+    expect((d.querySelector('p') as HTMLElement).getAttribute('title')).toBe('not found at the SEC')
+  })
+  it('earnings but no range yet shows the P/E without a bar', () => {
+    const d = html(co({ pe_p5: null, pe_p95: null, pe_percentile: null, pe_eps_ttm: 4 }), 50, 2)
+    expect(d.textContent).toContain('12'); expect(d.textContent).toContain('No 10-year range yet'); expect(d.querySelector('[data-pe-assigned-dot]')).toBeNull()
+  })
+})

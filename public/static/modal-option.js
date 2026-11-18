@@ -195,6 +195,11 @@ async function showOptionForm(optionId = null) {
       rows.push({ label: 'Realized profit / loss', value: K.fmt.money(b.netPL, { plus: true }), tone: b.netPL >= 0 ? 'good' : 'bad', total: true })
     }
     K.renderAnalysis(panel, rows, [], null)
+    // P/E if assigned: short puts only, while the trade is open. Display only, nothing here is saved.
+    if (!isClosed && ['SELLING_PUT', 'SELLING_PUT_WHEEL', 'SELLING_PUT_LONG_TERM'].indexOf(s) !== -1 && typeof peAssignedHtml === 'function') {
+      const peCompany = companies.find(c => String(c.id) === String(val('company_id')))
+      panel.insertAdjacentHTML('beforeend', peAssignedHtml(peCompany, val('strike_price'), val('premium')))
+    }
   }
 
   // ---- wiring ----

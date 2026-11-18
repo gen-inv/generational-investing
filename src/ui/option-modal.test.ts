@@ -26,7 +26,7 @@ function mock(options: any[] = []) {
 beforeEach(() => {
   document.body.innerHTML = ''
   w().Calc = Calc
-  w().eval(read('modal-kit.js')); w().eval(read('modal-option.js'))
+  w().eval(read('research-merge.js')); w().eval(read('modal-kit.js')); w().eval(read('modal-option.js'))
   w().alert = vi.fn(); w().loadOptions = vi.fn(); w().loadDashboard = vi.fn(); w().loadClosedTrades = vi.fn(); w().showSection = vi.fn()
   w().currentStrategyFilter = 'SELLING_PUT'
   mock()
@@ -156,5 +156,60 @@ describe('edit option modal', () => {
     await w().showOptionForm(99); await flush()
     expect(w().alert).toHaveBeenCalledWith('Option trade not found')
     expect($('#option-form-modal')).toBeNull()
+  })
+})
+
+describe('P/E if assigned in the option form', () => {
+  const peCo = { id: 1, ticker: 'AAA', company_name: 'Alpha', buy_price: 42.5, pe_eps_ttm: 4, pe_current: 12.5, pe_p5: 10, pe_median: 20, pe_p95: 40, pe_percentile: 30, pe_min: 8, pe_max: 60, pe_months: 118, pe_error: null }
+  const noPe = { id: 2, ticker: 'BBB', company_name: 'Beta', buy_price: null, pe_eps_ttm: null, pe_current: null, pe_p5: null, pe_median: null, pe_p95: null, pe_percentile: null, pe_error: 'no positive trailing earnings' }
+  const pick = (id: string) => { const s = $('#option_company_select'); s.value = id; s.dispatchEvent(new Event('change', { bubbles: true })) }
+  const analysis = () => $('#option-analysis').textContent.replace(/\s+/g, ' ')
+  beforeEach(() => {
+    mock()
+    w().fetchCompaniesWithResearch = vi.fn(async () => [peCo, noPe])
+  })
+
+  it('a short put shows the P/E at strike less premium, with the bar', async () => {
+    await w().showOptionForm(); await flush()
+    pick('1'); set('quantity', '1'); set('strike_price', '50'); set('premium', '2')
+    expect(analysis()).toContain('P/E if assigned'); expect(analysis()).toContain('$48.00'); expect(analysis()).toContain('17th percentile')
+    expect($('[data-pe-assigned-dot]').style.left).toBe('13.2%')
+  })
+  it('follows the strike and premium as they change', async () => {
+    await w().showOptionForm(); await flush()
+    pick('1'); set('strike_price', '50'); set('premium', '2')
+    set('strike_price', '200')
+    expect(analysis()).toContain('$198.00'); expect(analysis()).toContain('above its usual 10-year range')
+  })
+  it('all three short put types show it, and no other strategy does', async () => {
+    await w().showOptionForm(); await flush()
+    pick('1'); set('strike_price', '50'); set('premium', '2')
+    for (const s of ['SELLING_PUT', 'SELLING_PUT_WHEEL', 'SELLING_PUT_LONG_TERM']) { choose(s); expect(analysis(), s).toContain('P/E if assigned') }
+    for (const s of ['BUYING_PUT', 'LONG_CALL']) { choose(s); expect(analysis(), s).not.toContain('P/E if assigned') }
+  })
+  it('nothing until a company is chosen; n/a with the reason for a company with no earnings', async () => {
+    await w().showOptionForm(); await flush()
+    set('strike_price', '50'); set('premium', '2')
+    expect(analysis()).not.toContain('P/E if assigned')
+    pick('2'); set('premium', '2.5')
+    expect(analysis()).toContain('n/a - this happens on loss-making companies (which have no P/E), and non-US companies.')
+    expect($('[data-pe-assigned-dot]')).toBeNull()
+  })
+  it('an open put being edited shows it; a closed one does not', async () => {
+    const open = { id: 7, company_id: 1, account_id: 9, strategy_type: 'SELLING_PUT_WHEEL', strike_price: 50, premium: 2, quantity: 1, trade_date: '2026-10-01', expiration_date: '2026-10-31', commission: 0, is_open: 1 }
+    mock([open]); w().fetchCompaniesWithResearch = vi.fn(async () => [peCo, noPe])
+    await w().showOptionForm(7); await flush()
+    expect(analysis()).toContain('P/E if assigned')
+    mock([{ ...open, is_open: 0, close_date: '2026-10-20', close_price: 0.5 }]); w().fetchCompaniesWithResearch = vi.fn(async () => [peCo, noPe])
+    await w().showOptionForm(7); await flush()
+    expect(analysis()).not.toContain('P/E if assigned')
+  })
+  it('does not change what is saved', async () => {
+    await w().showOptionForm(); await flush()
+    set('company_id', '1'); set('account_id', '9'); set('quantity', '2'); set('strike_price', '50'); set('premium', '2'); set('commission', '1.3')
+    set('trade_date', '2026-10-01'); set('expiration_date', '2026-10-31')
+    await submit()
+    expect(w().api.post).toHaveBeenCalledWith('/api/options', expect.objectContaining({ company_id: 1, strike_price: 50, premium: 2, quantity: 2 }))
+    expect(Object.keys(w().api.post.mock.calls[0][1]).filter(k => k.startsWith('pe_'))).toEqual([])
   })
 })
