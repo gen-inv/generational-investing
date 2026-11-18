@@ -129,7 +129,7 @@ describe('P/E if assigned (short puts)', () => {
   })
   it('no earnings (loss-making or non-US) says n/a with the reason, and no bar', () => {
     const d = html(co({ pe_eps_ttm: null, pe_current: null, pe_error: 'not found at the SEC' }), 50, 2)
-    expect(d.textContent).toContain('n/a - this happens on loss-making companies (which have no P/E), and non-US companies.')
+    expect(d.textContent).toContain('n/a - this happens on companies with unavailable EPS reporting data, loss-making companies (which have no P/E), and non-US companies.')
     expect(d.querySelector('[data-pe-assigned-dot]')).toBeNull()
     expect((d.querySelector('p') as HTMLElement).getAttribute('title')).toBe('not found at the SEC')
   })

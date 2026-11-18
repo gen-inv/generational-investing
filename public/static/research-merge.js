@@ -218,7 +218,7 @@ function peApproxPercentile(company, value) {
     return { pct: Math.round(pct), beyond: null }
 }
 
-var PE_NOT_AVAILABLE = 'n/a - this happens on loss-making companies (which have no P/E), and non-US companies.'
+var PE_NOT_AVAILABLE = 'n/a - this happens on companies with unavailable EPS reporting data, loss-making companies (which have no P/E), and non-US companies.'
 
 // Block for the bottom of the Trade Analysis panel. '' until a company, a strike and a premium are entered.
 function peAssignedHtml(company, strike, premium) {

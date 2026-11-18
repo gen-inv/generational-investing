@@ -192,7 +192,7 @@ describe('P/E if assigned in the option form', () => {
     set('strike_price', '50'); set('premium', '2')
     expect(analysis()).not.toContain('P/E if assigned')
     pick('2'); set('premium', '2.5')
-    expect(analysis()).toContain('n/a - this happens on loss-making companies (which have no P/E), and non-US companies.')
+    expect(analysis()).toContain('n/a - this happens on companies with unavailable EPS reporting data, loss-making companies (which have no P/E), and non-US companies.')
     expect($('[data-pe-assigned-dot]')).toBeNull()
   })
   it('an open put being edited shows it; a closed one does not', async () => {
