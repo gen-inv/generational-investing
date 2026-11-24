@@ -5,6 +5,7 @@ import { costBasisPerShare } from '../lib/cost-basis'
 import { holdingPosition } from '../lib/stock-close'
 import { optionPL } from '../lib/calc'
 import { syncCoveredCallAdjustment } from '../lib/cc-adjustment'
+import { addSharesToDividends } from '../lib/dividend-shares'
 import { authMiddleware } from '../lib/auth'
 import type { Bindings } from '../types'
 
@@ -1043,7 +1044,16 @@ routes.get('/api/stocks/:id/dividends', authMiddleware, async (c) => {
       ORDER BY adjustment_date DESC
     `).bind(holdingId).all()
     
-    return c.json(dividends.results || [])
+    // Shares held when each dividend was paid, from the buy/sell history (never today's share count)
+    const holdingRow = await DB.prepare(`SELECT ticker, total_shares FROM stock_holdings WHERE id = ?`).bind(holdingId).first() as any
+    const txns = await DB.prepare(`
+      SELECT transaction_date, transaction_type, shares FROM stock_transactions
+      WHERE holding_id = ? ORDER BY transaction_date ASC
+    `).bind(holdingId).all()
+    const repo = await DB.prepare(`SELECT ex_date, pay_date FROM dividend_repository WHERE ticker = ?`).bind(holdingRow?.ticker || '').all()
+    return c.json(addSharesToDividends(
+      (dividends.results || []) as any[], (txns.results || []) as any[], (repo.results || []) as any[], Number(holdingRow?.total_shares) || 0
+    ))
   } catch (error) {
     console.error('Get dividends error:', error)
     return c.json({ error: 'Failed to fetch dividends' }, 500)

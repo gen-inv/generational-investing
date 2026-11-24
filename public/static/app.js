@@ -2930,8 +2930,8 @@ async function showStockDetails(id) {
                                                 <tr class="hover:bg-gray-50">
                                                     <td class="px-4 py-2">${div.adjustment_date}</td>
                                                     <td class="px-4 py-2 text-right font-semibold text-green-600">$${div.amount.toFixed(4)}</td>
-                                                    <td class="px-4 py-2 text-right">$${(div.amount / stock.quantity).toFixed(4)}</td>
-                                                    <td class="px-4 py-2 text-center">${stock.quantity}</td>
+                                                    <td class="px-4 py-2 text-right">${div.amount_per_share != null ? '$' + div.amount_per_share.toFixed(4) : '-'}</td>
+                                                    <td class="px-4 py-2 text-center">${div.shares_held != null ? div.shares_held : '-'}</td>
                                                     <td class="px-4 py-2 text-gray-600">${div.notes || '-'}</td>
                                                 </tr>
                                             `).join('')}
@@ -3144,8 +3144,8 @@ async function refreshDividendSections(holdingId) {
                                     <tr class="hover:bg-gray-50">
                                         <td class="px-4 py-2">${div.adjustment_date}</td>
                                         <td class="px-4 py-2 text-right font-semibold text-green-600">$${div.amount.toFixed(4)}</td>
-                                        <td class="px-4 py-2 text-right">$${(div.amount / stock.quantity).toFixed(4)}</td>
-                                        <td class="px-4 py-2 text-center">${stock.quantity}</td>
+                                        <td class="px-4 py-2 text-right">${div.amount_per_share != null ? '$' + div.amount_per_share.toFixed(4) : '-'}</td>
+                                        <td class="px-4 py-2 text-center">${div.shares_held != null ? div.shares_held : '-'}</td>
                                         <td class="px-4 py-2 text-gray-600">${div.notes || '-'}</td>
                                     </tr>
                                 `).join('')}
