@@ -3,6 +3,7 @@ import { loadRealizedSells, sumRealized } from '../lib/stock-pl'
 import { previewSellEdit } from '../lib/sell-edit'
 import { costBasisPerShare } from '../lib/cost-basis'
 import { holdingPosition } from '../lib/stock-close'
+import { moveHoldingToAccount } from '../lib/holding-account'
 import { optionPL } from '../lib/calc'
 import { syncCoveredCallAdjustment } from '../lib/cc-adjustment'
 import { addSharesToDividends } from '../lib/dividend-shares'
@@ -555,6 +556,12 @@ routes.put('/api/stocks/:id', authMiddleware, async (c) => {
     `).bind(tradeId, userId).first()
     
     if (holding) {
+      // A changed account moves the position (and its covered calls and assigned puts) with it; refused if the
+      // destination already holds this ticker. Checked first so a refusal changes nothing.
+      if (data.account_id !== undefined && data.account_id !== null && Number(data.account_id) !== Number((holding as any).account_id)) {
+        const moved = await moveHoldingToAccount(DB, userId, holding as any, Number(data.account_id))
+        if (!moved.ok) return c.json({ error: moved.error }, moved.status)
+      }
       // Update stock_holdings record - allow updating strategy_type
       if (data.strategy_type) {
         await DB.prepare(`
