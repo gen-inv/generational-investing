@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { deleteCompanySafely } from './company-delete'
 
-// A tiny stand-in for D1 that records every statement and answers the three lookups
-function fakeDb(opts: { company?: any; openHoldings?: number; closedDetached?: number }) {
+// A tiny stand-in for D1 that records every statement and answers the lookups
+function fakeDb(opts: { company?: any; openHoldings?: number; openOptions?: number; closedDetached?: number }) {
   const ran: string[] = []
   const stmt = (sql: string) => ({
     sql,
     bind: () => ({
       sql,
-      first: async () => (sql.includes('FROM companies') ? (opts.company ?? null) : { n: opts.openHoldings ?? 0 }),
+      first: async () => (sql.includes('FROM companies') ? (opts.company ?? null)
+        : sql.includes('FROM option_trades') ? { n: opts.openOptions ?? 0 } : { n: opts.openHoldings ?? 0 }),
       run: async () => { ran.push(sql); return { meta: { changes: 1 } } },
     }),
   })
@@ -21,19 +22,26 @@ function fakeDb(opts: { company?: any; openHoldings?: number; closedDetached?: n
 const GOOY = { id: 7, ticker: 'GOOY' }
 
 describe('removing a company from the roster', () => {
-  it('refuses while the company has an open position, and changes nothing', async () => {
+  it('refuses while the company has an open stock position, and changes nothing', async () => {
     const db = fakeDb({ company: GOOY, openHoldings: 1 })
     const r: any = await deleteCompanySafely(db, 1, 7)
-    expect(r.ok).toBe(false); expect(r.status).toBe(409); expect(r.openPositions).toBe(1)
+    expect(r.ok).toBe(false); expect(r.status).toBe(409); expect(r.openPositions).toBe(1); expect(r.openOptionTrades).toBe(0)
     expect(r.error).toContain('GOOY still has 1 open stock position'); expect(r.error).toContain('Close it first')
     expect(db.ran).toEqual([])
   })
-  it('says positions in the plural for several', async () => {
-    const r: any = await deleteCompanySafely(fakeDb({ company: GOOY, openHoldings: 2 }), 1, 7)
-    expect(r.error).toContain('2 open stock positions'); expect(r.error).toContain('Close them first')
+  it('refuses while the company has an open option trade, and changes nothing', async () => {
+    const db = fakeDb({ company: GOOY, openOptions: 1 })
+    const r: any = await deleteCompanySafely(db, 1, 7)
+    expect(r.ok).toBe(false); expect(r.status).toBe(409); expect(r.openOptionTrades).toBe(1); expect(r.openPositions).toBe(0)
+    expect(r.error).toContain('GOOY still has 1 open option trade'); expect(r.error).toContain('Close it first')
+    expect(db.ran).toEqual([])
   })
-  it('a company with only closed positions is removed, with its history detached first and in the same batch', async () => {
-    const db = fakeDb({ company: GOOY, openHoldings: 0, closedDetached: 3 })
+  it('names both when there are stock positions and option trades, in the plural', async () => {
+    const r: any = await deleteCompanySafely(fakeDb({ company: GOOY, openHoldings: 2, openOptions: 3 }), 1, 7)
+    expect(r.error).toContain('2 open stock positions and 3 open option trades'); expect(r.error).toContain('Close them first')
+  })
+  it('a company with only closed trades is removed, with its stock history detached first and in the same batch', async () => {
+    const db = fakeDb({ company: GOOY, openHoldings: 0, openOptions: 0, closedDetached: 3 })
     const r: any = await deleteCompanySafely(db, 1, 7)
     expect(r).toEqual({ ok: true, detached: 3 })
     expect(db.ran.length).toBe(2)
@@ -41,8 +49,8 @@ describe('removing a company from the roster', () => {
     expect(db.ran[1]).toContain('DELETE FROM companies')
     expect(db.ran.join(' ')).not.toContain('DELETE FROM stock_holdings')
   })
-  it('a company with no positions at all is simply removed', async () => {
-    const r: any = await deleteCompanySafely(fakeDb({ company: GOOY, openHoldings: 0 }), 1, 7)
+  it('a company with no trades at all is simply removed', async () => {
+    const r: any = await deleteCompanySafely(fakeDb({ company: GOOY }), 1, 7)
     expect(r).toEqual({ ok: true, detached: 0 })
   })
   it('an unknown company is a 404', async () => {

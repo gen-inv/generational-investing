@@ -310,6 +310,6 @@ routes.delete('/api/companies/:id', authMiddleware, async (c) => {
   
   // Never a bare DELETE: stock_holdings cascades from companies, which would erase positions, sells and dividends
   const result = await deleteCompanySafely(c.env.DB, userId, companyId)
-  if (!result.ok) return c.json({ error: result.error, open_positions: result.openPositions ?? 0 }, result.status)
+  if (!result.ok) return c.json({ error: result.error, open_positions: result.openPositions ?? 0, open_option_trades: result.openOptionTrades ?? 0 }, result.status)
   return c.json({ success: true, detached_closed_positions: result.detached })
 })
