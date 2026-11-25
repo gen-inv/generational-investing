@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { addCompanyToRoster } from '../lib/add-company'
+import { deleteCompanySafely } from '../lib/company-delete'
 import { refreshCompanyData, safeEqual } from '../lib/refresh-company-data'
 import { listPeTickers, storePeResults } from '../lib/pe-store'
 import { markDiscoveryAdded } from './discovery'
@@ -307,9 +308,8 @@ routes.delete('/api/companies/:id', authMiddleware, async (c) => {
   const userId = c.get('userId')
   const companyId = c.req.param('id')
   
-  await c.env.DB.prepare(`
-    DELETE FROM companies WHERE id = ? AND user_id = ?
-  `).bind(companyId, userId).run()
-  
-  return c.json({ success: true })
+  // Never a bare DELETE: stock_holdings cascades from companies, which would erase positions, sells and dividends
+  const result = await deleteCompanySafely(c.env.DB, userId, companyId)
+  if (!result.ok) return c.json({ error: result.error, open_positions: result.openPositions ?? 0 }, result.status)
+  return c.json({ success: true, detached_closed_positions: result.detached })
 })

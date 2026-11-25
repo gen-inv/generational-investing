@@ -1721,7 +1721,7 @@ async function deleteCompany(id) {
         await api.delete(`/api/companies/${id}`)
         loadCompanies()
     } catch (error) {
-        alert('Delete failed')
+        alert((error.response && error.response.data && error.response.data.error) || 'Delete failed')
     }
 }
 
